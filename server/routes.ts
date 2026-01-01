@@ -1,6 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import session from "express-session";
+import connectPgSimple from "connect-pg-simple";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { storage } from "./storage";
@@ -12,12 +13,24 @@ import {
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, gte, lte, sql, sum, desc } from "drizzle-orm";
+import pg from "pg";
 
 const JWT_SECRET = process.env.SESSION_SECRET || "fallback-secret-key-change-in-production";
 const SALT_ROUNDS = 10;
 
+const PgSession = connectPgSimple(session);
+const pgPool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+});
+
 interface AuthRequest extends Request {
   userId?: string;
+}
+
+declare module "express-session" {
+  interface SessionData {
+    token?: string;
+  }
 }
 
 // Authentication middleware
@@ -39,8 +52,13 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // Session configuration
+  // Session configuration with PostgreSQL store
   app.use(session({
+    store: new PgSession({
+      pool: pgPool,
+      tableName: "session",
+      createTableIfMissing: true,
+    }),
     secret: JWT_SECRET,
     resave: false,
     saveUninitialized: false,
