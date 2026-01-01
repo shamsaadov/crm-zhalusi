@@ -1,0 +1,368 @@
+ТЗ: Web-приложение для учета бизнеса (жалюзи)
+Стек: Backend — Node.js + Express.js, DB — PostgreSQL, Frontend — React + TailwindCSS. Формат: SPA + REST API (или JSON API). Обязательно: регистрация/авторизация.
+
+1) Цель
+Сделать внутреннюю систему учета:
+
+Справочники (Списки) — CRUD.
+Заказы — создание и список заказов + смена статуса.
+Финансы — приход/расход/оплата поставщику/перемещение между кассами.
+Склад — поступления (закупки) ткани/комплектующих.
+Отчеты (только ReadOnly) — ДДС, валовая прибыль, дебиторка/кредиторка, общая сумма денег в кассах.
+2) Пользователи и доступ
+Регистрация/авторизация
+Регистрация по email + пароль (опционально имя).
+Авторизация (логин/пароль).
+Хранение паролей: bcrypt (hash + salt).
+Сессия: JWT в httpOnly cookie (рекомендуется) или Bearer token.
+Защита роутов: все страницы, кроме Login/Register — только для авторизованных.
+Мульти-пользовательский режим (минимум)
+Все данные должны быть привязаны к “workspace/компании” или хотя бы к user_id.
+В MVP можно: 1 пользователь = 1 база данных данных (scoping по user_id).
+3) Навигация (страницы)
+/login
+/register
+/reports/dds
+/reports/profit
+/reports/ar-ap (дебиторка/кредиторка)
+/reports/cash-total (общая сумма денег в кассах)
+/lists (справочники)
+/orders
+/finance
+/warehouse
+Общий layout:
+
+Sidebar меню + верхняя панель с фильтрами/поиском (где уместно).
+Единые компоненты: Table, Modal/Drawer форма, Select, DatePicker, Badge статуса.
+4) Обязательное требование: фильтры на всех страницах
+Минимальный набор:
+
+Поиск (строка)
+Фильтр по дате (диапазон) — для страниц с датами (Финансы/Склад/Отчеты/Заказы)
+Доп. фильтры по контексту:
+Orders: статус, диллер, система, ткань
+Finance: касса, тип операции, диллер, поставщик, вид расхода
+Warehouse: поставщик, тип позиции (ткань/комплектующие)
+Lists: поиск по названию/ФИО
+Фильтры должны влиять на таблицы и отчеты.
+
+5) Справочники (страница “Списки”, CRUD)
+На /lists сделать вкладки/секции, у каждой сущности — таблица + кнопка “Добавить” + “Редактировать” + “Удалить”. Удаление запрещать, если запись используется в заказах/финансах/складе (или делать soft-delete).
+
+5.1 Ткань (fabric)
+Поля:
+
+name (название)
+width (ширина, число)
+material (материал, строка)
+color (цвет, ссылка на Colors или строка)
+category (одно из: 1,2,3,4,5,E)
+5.2 Диллер (dealer)
+Поля:
+
+full_name (ФИО)
+city
+phone
+opening_balance (стартовый баланс, число, может быть + или -) [если нужен] Показывать везде текущий долг/баланс (расчетный).
+5.3 Касса (cashbox)
+Поля:
+
+name
+opening_balance (стартовый остаток) [если нужен]
+5.4 Система (system)
+Поля:
+
+name
+color (ссылка на Colors или строка)
+formula (строка формулы для расчета) — см. раздел 8
+5.5 Виды расходов (expense_types)
+Поля:
+
+name
+direction: "expense" или "income" (тип: расход/доход)
+5.6 Комплектующие (components)
+Поля:
+
+name
+color (ссылка на Colors или строка)
+unit (единица измерения: шт/м/упак и т.д.)
+5.7 Цвета (colors)
+Поля:
+
+name
+5.8 Множители (multipliers)
+Поля:
+
+value (число)
+name/label (опционально, чтобы понимать что это)
+5.9 Поставщики (suppliers)
+Поля:
+
+name
+opening_balance (стартовый баланс, число, может быть + или -) [если нужен] Показывать везде текущий долг/баланс (расчетный).
+ВАЖНО: Все данные из списков должны использоваться в заказах/финансах/складе через select-поля.
+
+6) Заказы (/orders)
+6.1 Добавление заказа
+Кнопка “Добавить заказ” → форма (modal/drawer или отдельная страница). Поля формы:
+
+order_number (авто, счетчик, уникальный, readonly)
+date (по умолчанию текущая дата)
+width (число)
+height (число)
+system_id (выбор из “Система”)
+system_color_id или system_color (выбор цвета системы)
+control_side (enum: "ЛР" или "ПР")
+fabric_id (выбор ткани)
+fabric_color_id или fabric_color (выбор цвета ткани)
+sashes_count (кол-во створок, число)
+dealer_id (выбор диллера)
+status (по умолчанию “Новый”)
+sale_price (продажная цена) нужно для валовой прибыли
+cost_price (себестоимость) нужно для валовой прибыли
+comment (опционально)
+Подтягивание данных:
+
+Все select-поля должны подтягиваться из /lists (colors, fabrics, systems, dealers и т.д.)
+В селекте диллера показывать текущий долг/баланс рядом с именем.
+6.2 Список заказов
+Таблица:
+
+№ заказа, дата, диллер, система, ткань, размеры (Ш×В), статус, sale_price, cost_price, валовая прибыль по заказу (sale-cost) Действия:
+Быстрое изменение статуса (dropdown in-table)
+Редактирование заказа (минимум: статус + цены + основные поля)
+Просмотр деталей
+Фильтры:
+
+дата диапазон
+статус
+диллер
+система
+поиск по номеру
+7) Финансы (/finance)
+На странице 4 блока/вкладки добавления операций + общая таблица операций.
+
+Типы операций:
+
+7.1 Приходный
+Поля:
+
+amount
+cashbox_id
+dealer_id (может быть nullable, но по ТЗ есть)
+date (по умолчанию today)
+comment (опционально)
+7.2 Расходный
+Поля:
+
+amount
+cashbox_id
+expense_type_id (тут только direction="expense", но можно позволить оба и использовать как “прочий доход”)
+date (today)
+comment
+7.3 Оплата поставщику
+Поля:
+
+amount
+cashbox_id
+supplier_id
+date (today)
+comment
+7.4 Перемещение денежных средств
+Поля:
+
+amount
+from_cashbox_id
+to_cashbox_id
+date (today)
+comment
+Отображение долга:
+
+Везде, где выбирается/показывается диллер или поставщик — рядом показывать их текущий долг/баланс (например: “Иванов (долг: -12 000)”).
+Таблица операций:
+
+date, type, amount, cashbox, dealer/supplier, expense_type, from/to (для перемещения), comment
+Фильтры:
+
+дата диапазон
+касса
+тип операции
+диллер
+поставщик
+вид расхода
+8) Склад (/warehouse)
+Форма добавления поступления:
+
+supplier_id
+component_id (опционально)
+fabric_id (опционально)
+quantity
+price (цена за единицу)
+total (итого = quantity * price, автоподсчет)
+date (today)
+comment (опционально)
+Правило: должна быть выбрана либо ткань, либо комплектующие (не оба сразу) — через валидацию. Вывод в таблице:
+
+date, supplier, item_type (ткань/комплектующие), item_name, quantity, price, total
+Фильтры:
+
+дата диапазон
+поставщик
+тип позиции
+конкретная ткань/комплектующие
+9) Отчеты (/reports) — ВСЕ ReadOnly
+9.1 ДДС (движение денежных средств)
+Данные берутся из “Финансы”. Показать:
+
+Общие приходы (sum income)
+Общие расходы (sum expense + supplier_payment)
+Перемещения показывать отдельной строкой (и не влиять на итог “приход-расход”) — или по настройке.
+Таблица/граф (опционально): по дням/неделям/месяцам в зависимости от фильтра.
+Фильтры:
+
+дата диапазон
+касса (опционально)
+тип операции (опционально)
+9.2 Прибыль (валовая)
+Валовая прибыль = sale_price - cost_price по заказам. Показать:
+
+Валовая прибыль за период (sum)
+Таблица заказов (как в Orders) + итог
+Фильтры:
+
+дата диапазон
+диллер
+статус
+9.3 Дебиторка и кредиторка
+Показать:
+
+Дебиторка по диллерам (кто кому должен) — список диллеров и их баланс
+Кредиторка по поставщикам — список поставщиков и их баланс ВАЖНО: знак долга согласовать (см. вопросы ниже), но в UI должно быть однозначно: “они должны нам” / “мы должны им”.
+Фильтры:
+
+поиск
+(опционально) по диллеру/поставщику
+9.4 Общая сумма денег в кассах
+Показать:
+
+Таблица касс: название + текущий остаток
+Общий итог по всем кассам Все поля — readonly.
+Фильтры:
+
+не обязательно, но можно поиск по кассе
+10) Расчетные правила (логика)
+10.1 Остаток кассы (cashbox balance)
+Баланс кассы считается из операций: opening_balance
+
+sum(income.amount where cashbox)
+sum(expense.amount where cashbox)
+sum(supplier_payment.amount where cashbox)
+sum(transfer.amount where from_cashbox)
+sum(transfer.amount where to_cashbox)
+10.2 Баланс диллера (dealer balance)
+Нужна четкая бизнес-логика знака (см. вопросы), но минимум:
+
+учитывать приходы с dealer_id
+учитывать продажи (orders.sale_price) по dealer_id Рекомендованный расчет (если “диллер платит нам за заказы”): dealer_balance = sum(income from dealer) - sum(order.sale_price for dealer) Тогда отрицательный баланс = диллер должен нам.
+10.3 Баланс поставщика (supplier balance)
+supplier_balance = sum(warehouse.total for supplier) - sum(supplier_payments) Тогда положительный баланс = мы должны поставщику.
+
+10.4 Валовая прибыль
+gross_profit = sale_price - cost_price
+
+11) База данных (PostgreSQL) — минимальная схема
+Можно реализовать через Prisma (рекомендовано) или SQL миграции.
+
+Таблицы (пример)
+users: id, email(unique), password_hash, name, created_at
+workspaces (опционально): id, name, created_at
+user_workspaces (опционально): user_id, workspace_id, role
+Справочники (все с workspace_id или user_id):
+
+colors: id, name
+multipliers: id, value, label
+fabrics: id, name, width, material, color_id(or color_text), category
+dealers: id, full_name, city, phone, opening_balance
+suppliers: id, name, opening_balance
+cashboxes: id, name, opening_balance
+systems: id, name, color_id(or color_text), formula
+expense_types: id, name, direction
+components: id, name, color_id(or color_text), unit
+Операции:
+
+orders: id, order_number(unique per workspace), date, width, height, system_id, system_color_id, control_side, fabric_id, fabric_color_id, sashes_count, dealer_id, status, sale_price, cost_price, comment, created_at, updated_at
+finance_transactions: id, type(enum: income/expense/supplier_payment/transfer), date, amount, cashbox_id(nullable), from_cashbox_id(nullable), to_cashbox_id(nullable), dealer_id(nullable), supplier_id(nullable), expense_type_id(nullable), comment, created_at
+warehouse_entries: id, date, supplier_id, fabric_id(nullable), component_id(nullable), quantity, unit_price, total, comment, created_at
+Ограничения:
+
+warehouse_entries: CHECK ((fabric_id IS NOT NULL) <> (component_id IS NOT NULL)) // XOR
+finance_transactions:
+для transfer должны быть from_cashbox_id и to_cashbox_id, cashbox_id = null
+для income/expense/supplier_payment — cashbox_id обязателен
+Индексы:
+
+по date в orders/finance/warehouse
+по dealer_id/supplier_id/cashbox_id
+уникальность order_number в рамках workspace/user
+12) API (Express) — основные эндпоинты
+Auth:
+
+POST /api/auth/register
+POST /api/auth/login
+POST /api/auth/logout
+GET /api/auth/me
+Lists CRUD (пример):
+
+GET/POST /api/fabrics
+GET/PUT/DELETE /api/fabrics/:id Аналогично для: dealers, suppliers, cashboxes, systems, expense-types, components, colors, multipliers.
+Orders:
+
+GET /api/orders (с query фильтрами)
+POST /api/orders
+PUT /api/orders/:id
+PATCH /api/orders/:id/status
+Finance:
+
+GET /api/finance (с фильтрами)
+POST /api/finance/income
+POST /api/finance/expense
+POST /api/finance/supplier-payment
+POST /api/finance/transfer
+Warehouse:
+
+GET /api/warehouse (с фильтрами)
+POST /api/warehouse
+PUT /api/warehouse/:id
+DELETE /api/warehouse/:id
+Reports (ReadOnly):
+
+GET /api/reports/dds?from=&to=&cashboxId=
+GET /api/reports/profit?from=&to=&dealerId=&status=
+GET /api/reports/ar-ap
+GET /api/reports/cash-total
+13) Frontend (React + Tailwind)
+Vite + React Router
+TailwindCSS
+Формы: react-hook-form + zod (желательно)
+Состояние: React Query (желательно) для запросов/кэша
+UI: минималистично, быстро, удобные таблицы, модальные формы.
+Требования UI:
+
+Все select-поля загружают справочники.
+Везде показывать “долг/баланс” диллера/поставщика рядом с названием.
+Везде даты подставлять текущие.
+В отчетах все поля readonly.
+14) Нефункциональные требования
+Валидация входных данных на backend.
+Обработка ошибок (единый формат ошибок JSON).
+Логи серверных ошибок.
+Защита от SQL-инъекций (ORM/parameterized queries).
+Конфиг через env: DATABASE_URL, JWT_SECRET, NODE_ENV, PORT.
+15) Критерии приемки (MVP)
+Пользователь регистрируется/логинится и видит приложение.
+“Списки”: CRUD всех сущностей.
+“Заказы”: создание + список + смена статуса, данные подтягиваются из списков.
+“Финансы”: добавление 4 типов операций + таблица, работает расчет остатков касс.
+“Склад”: добавление поступлений + таблица.
+“Отчеты”: ДДС, прибыль, дебиторка/кредиторка, общая сумма по кассам — readonly и корректно считаются.
+Фильтры есть на всех страницах и реально фильтруют.
