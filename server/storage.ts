@@ -1,9 +1,9 @@
-import { eq, and, sql, gte, lte, desc, sum } from "drizzle-orm";
+import { eq, and, sql, gte, lte, desc, sum, isNull, ne, or } from "drizzle-orm";
 import { db } from "./db";
 import {
   users, colors, fabrics, dealers, cashboxes, systems,
   expenseTypes, components, multipliers, suppliers,
-  orders, financeOperations, warehouseReceipts,
+  orders, orderSashes, financeOperations, warehouseReceipts, warehouseReceiptItems,
   type User, type InsertUser,
   type Color, type InsertColor,
   type Fabric, type InsertFabric,
@@ -15,8 +15,10 @@ import {
   type Multiplier, type InsertMultiplier,
   type Supplier, type InsertSupplier,
   type Order, type InsertOrder,
+  type OrderSash, type InsertOrderSash,
   type FinanceOperation, type InsertFinanceOperation,
   type WarehouseReceipt, type InsertWarehouseReceipt,
+  type WarehouseReceiptItem, type InsertWarehouseReceiptItem,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -24,6 +26,7 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  updateUser(id: string, data: Partial<User>): Promise<User | undefined>;
 
   // Colors
   getColors(userId: string): Promise<Color[]>;
@@ -81,20 +84,40 @@ export interface IStorage {
 
   // Orders
   getOrders(userId: string): Promise<Order[]>;
+  getOrder(id: string): Promise<Order | undefined>;
   getNextOrderNumber(userId: string): Promise<number>;
   createOrder(order: InsertOrder): Promise<Order>;
   updateOrder(id: string, order: Partial<InsertOrder>): Promise<Order | undefined>;
   deleteOrder(id: string): Promise<void>;
 
+  // Order Sashes
+  getOrderSashes(orderId: string): Promise<OrderSash[]>;
+  createOrderSash(sash: InsertOrderSash): Promise<OrderSash>;
+  updateOrderSash(id: string, sash: Partial<InsertOrderSash>): Promise<OrderSash | undefined>;
+  deleteOrderSash(id: string): Promise<void>;
+  deleteOrderSashesByOrderId(orderId: string): Promise<void>;
+
   // Finance Operations
-  getFinanceOperations(userId: string): Promise<FinanceOperation[]>;
+  getFinanceOperations(userId: string, includeDrafts?: boolean): Promise<FinanceOperation[]>;
+  getFinanceOperation(id: string): Promise<FinanceOperation | undefined>;
   createFinanceOperation(operation: InsertFinanceOperation): Promise<FinanceOperation>;
-  deleteFinanceOperation(id: string): Promise<void>;
+  updateFinanceOperation(id: string, operation: Partial<InsertFinanceOperation>): Promise<FinanceOperation | undefined>;
+  softDeleteFinanceOperation(id: string): Promise<FinanceOperation | undefined>;
+  restoreFinanceOperation(id: string): Promise<FinanceOperation | undefined>;
+  hardDeleteFinanceOperation(id: string): Promise<void>;
 
   // Warehouse
   getWarehouseReceipts(userId: string): Promise<WarehouseReceipt[]>;
+  getWarehouseReceipt(id: string): Promise<WarehouseReceipt | undefined>;
   createWarehouseReceipt(receipt: InsertWarehouseReceipt): Promise<WarehouseReceipt>;
+  updateWarehouseReceipt(id: string, receipt: Partial<InsertWarehouseReceipt>): Promise<WarehouseReceipt | undefined>;
   deleteWarehouseReceipt(id: string): Promise<void>;
+
+  // Warehouse Receipt Items
+  getWarehouseReceiptItems(receiptId: string): Promise<WarehouseReceiptItem[]>;
+  createWarehouseReceiptItem(item: InsertWarehouseReceiptItem): Promise<WarehouseReceiptItem>;
+  deleteWarehouseReceiptItemsByReceiptId(receiptId: string): Promise<void>;
+  getPreviousPrice(itemType: string, itemId: string): Promise<string | null>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -112,6 +135,11 @@ export class DatabaseStorage implements IStorage {
   async createUser(insertUser: InsertUser): Promise<User> {
     const [user] = await db.insert(users).values(insertUser).returning();
     return user;
+  }
+
+  async updateUser(id: string, data: Partial<User>): Promise<User | undefined> {
+    const [updated] = await db.update(users).set(data).where(eq(users.id, id)).returning();
+    return updated;
   }
 
   // Colors
@@ -377,6 +405,11 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(orders).where(eq(orders.userId, userId)).orderBy(desc(orders.date));
   }
 
+  async getOrder(id: string): Promise<Order | undefined> {
+    const [order] = await db.select().from(orders).where(eq(orders.id, id));
+    return order || undefined;
+  }
+
   async getNextOrderNumber(userId: string): Promise<number> {
     const result = await db
       .select({ maxNum: sql<number>`COALESCE(MAX(${orders.orderNumber}), 0)` })
@@ -399,9 +432,42 @@ export class DatabaseStorage implements IStorage {
     await db.delete(orders).where(eq(orders.id, id));
   }
 
+  // Order Sashes
+  async getOrderSashes(orderId: string): Promise<OrderSash[]> {
+    return db.select().from(orderSashes).where(eq(orderSashes.orderId, orderId));
+  }
+
+  async createOrderSash(sash: InsertOrderSash): Promise<OrderSash> {
+    const [created] = await db.insert(orderSashes).values(sash).returning();
+    return created;
+  }
+
+  async updateOrderSash(id: string, sash: Partial<InsertOrderSash>): Promise<OrderSash | undefined> {
+    const [updated] = await db.update(orderSashes).set(sash).where(eq(orderSashes.id, id)).returning();
+    return updated;
+  }
+
+  async deleteOrderSash(id: string): Promise<void> {
+    await db.delete(orderSashes).where(eq(orderSashes.id, id));
+  }
+
+  async deleteOrderSashesByOrderId(orderId: string): Promise<void> {
+    await db.delete(orderSashes).where(eq(orderSashes.orderId, orderId));
+  }
+
   // Finance Operations
-  async getFinanceOperations(userId: string): Promise<FinanceOperation[]> {
-    return db.select().from(financeOperations).where(eq(financeOperations.userId, userId)).orderBy(desc(financeOperations.date));
+  async getFinanceOperations(userId: string, includeDrafts: boolean = false): Promise<FinanceOperation[]> {
+    if (includeDrafts) {
+      return db.select().from(financeOperations).where(eq(financeOperations.userId, userId)).orderBy(desc(financeOperations.date));
+    }
+    return db.select().from(financeOperations).where(
+      and(eq(financeOperations.userId, userId), eq(financeOperations.isDraft, false))
+    ).orderBy(desc(financeOperations.date));
+  }
+
+  async getFinanceOperation(id: string): Promise<FinanceOperation | undefined> {
+    const [op] = await db.select().from(financeOperations).where(eq(financeOperations.id, id));
+    return op || undefined;
   }
 
   async createFinanceOperation(operation: InsertFinanceOperation): Promise<FinanceOperation> {
@@ -409,7 +475,28 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async deleteFinanceOperation(id: string): Promise<void> {
+  async updateFinanceOperation(id: string, operation: Partial<InsertFinanceOperation>): Promise<FinanceOperation | undefined> {
+    const [updated] = await db.update(financeOperations).set(operation).where(eq(financeOperations.id, id)).returning();
+    return updated;
+  }
+
+  async softDeleteFinanceOperation(id: string): Promise<FinanceOperation | undefined> {
+    const [updated] = await db.update(financeOperations)
+      .set({ isDraft: true, deletedAt: new Date() })
+      .where(eq(financeOperations.id, id))
+      .returning();
+    return updated;
+  }
+
+  async restoreFinanceOperation(id: string): Promise<FinanceOperation | undefined> {
+    const [updated] = await db.update(financeOperations)
+      .set({ isDraft: false, deletedAt: null })
+      .where(eq(financeOperations.id, id))
+      .returning();
+    return updated;
+  }
+
+  async hardDeleteFinanceOperation(id: string): Promise<void> {
     await db.delete(financeOperations).where(eq(financeOperations.id, id));
   }
 
@@ -418,13 +505,52 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(warehouseReceipts).where(eq(warehouseReceipts.userId, userId)).orderBy(desc(warehouseReceipts.date));
   }
 
+  async getWarehouseReceipt(id: string): Promise<WarehouseReceipt | undefined> {
+    const [receipt] = await db.select().from(warehouseReceipts).where(eq(warehouseReceipts.id, id));
+    return receipt || undefined;
+  }
+
   async createWarehouseReceipt(receipt: InsertWarehouseReceipt): Promise<WarehouseReceipt> {
     const [created] = await db.insert(warehouseReceipts).values(receipt).returning();
     return created;
   }
 
+  async updateWarehouseReceipt(id: string, receipt: Partial<InsertWarehouseReceipt>): Promise<WarehouseReceipt | undefined> {
+    const [updated] = await db.update(warehouseReceipts).set(receipt).where(eq(warehouseReceipts.id, id)).returning();
+    return updated;
+  }
+
   async deleteWarehouseReceipt(id: string): Promise<void> {
     await db.delete(warehouseReceipts).where(eq(warehouseReceipts.id, id));
+  }
+
+  // Warehouse Receipt Items
+  async getWarehouseReceiptItems(receiptId: string): Promise<WarehouseReceiptItem[]> {
+    return db.select().from(warehouseReceiptItems).where(eq(warehouseReceiptItems.receiptId, receiptId));
+  }
+
+  async createWarehouseReceiptItem(item: InsertWarehouseReceiptItem): Promise<WarehouseReceiptItem> {
+    const [created] = await db.insert(warehouseReceiptItems).values(item).returning();
+    return created;
+  }
+
+  async deleteWarehouseReceiptItemsByReceiptId(receiptId: string): Promise<void> {
+    await db.delete(warehouseReceiptItems).where(eq(warehouseReceiptItems.receiptId, receiptId));
+  }
+
+  async getPreviousPrice(itemType: string, itemId: string): Promise<string | null> {
+    const condition = itemType === "component" 
+      ? eq(warehouseReceiptItems.componentId, itemId)
+      : eq(warehouseReceiptItems.fabricId, itemId);
+    
+    const result = await db
+      .select({ price: warehouseReceiptItems.price })
+      .from(warehouseReceiptItems)
+      .where(condition)
+      .orderBy(desc(warehouseReceiptItems.id))
+      .limit(1);
+    
+    return result[0]?.price?.toString() || null;
   }
 }
 

@@ -9,6 +9,7 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   password: text("password").notNull(),
   name: text("name"),
+  reportPassword: text("report_password"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -179,6 +180,29 @@ export const orders = pgTable("orders", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   orderNumber: integer("order_number").notNull(),
   date: date("date").notNull(),
+  dealerId: varchar("dealer_id").references(() => dealers.id),
+  status: text("status").default("Новый"), // Новый, В производстве, Готов, Отгружен
+  salePrice: decimal("sale_price", { precision: 12, scale: 2 }).default("0"),
+  costPrice: decimal("cost_price", { precision: 12, scale: 2 }).default("0"),
+  dealerDebt: decimal("dealer_debt", { precision: 12, scale: 2 }).default("0"),
+  comment: text("comment"),
+  userId: varchar("user_id").notNull().references(() => users.id),
+});
+
+export const ordersRelations = relations(orders, ({ one, many }) => ({
+  user: one(users, { fields: [orders.userId], references: [users.id] }),
+  dealer: one(dealers, { fields: [orders.dealerId], references: [dealers.id] }),
+  sashes: many(orderSashes),
+}));
+
+export const insertOrderSchema = createInsertSchema(orders).omit({ id: true });
+export type InsertOrder = z.infer<typeof insertOrderSchema>;
+export type Order = typeof orders.$inferSelect;
+
+// Order Sashes table (multiple sashes per order)
+export const orderSashes = pgTable("order_sashes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orderId: varchar("order_id").notNull().references(() => orders.id, { onDelete: "cascade" }),
   width: decimal("width", { precision: 10, scale: 2 }).notNull(),
   height: decimal("height", { precision: 10, scale: 2 }).notNull(),
   systemId: varchar("system_id").references(() => systems.id),
@@ -186,27 +210,22 @@ export const orders = pgTable("orders", {
   controlSide: text("control_side"), // "ЛР" or "ПР"
   fabricId: varchar("fabric_id").references(() => fabrics.id),
   fabricColorId: varchar("fabric_color_id").references(() => colors.id),
-  sashesCount: integer("sashes_count").default(1),
-  dealerId: varchar("dealer_id").references(() => dealers.id),
-  status: text("status").default("Новый"), // Новый, В работе, Готов, Выдан
-  salePrice: decimal("sale_price", { precision: 12, scale: 2 }).default("0"),
-  costPrice: decimal("cost_price", { precision: 12, scale: 2 }).default("0"),
-  comment: text("comment"),
-  userId: varchar("user_id").notNull().references(() => users.id),
+  quantity: integer("quantity").default(1),
+  sashPrice: decimal("sash_price", { precision: 12, scale: 2 }).default("0"),
+  sashCost: decimal("sash_cost", { precision: 12, scale: 2 }).default("0"),
 });
 
-export const ordersRelations = relations(orders, ({ one }) => ({
-  user: one(users, { fields: [orders.userId], references: [users.id] }),
-  system: one(systems, { fields: [orders.systemId], references: [systems.id] }),
-  systemColor: one(colors, { fields: [orders.systemColorId], references: [colors.id] }),
-  fabric: one(fabrics, { fields: [orders.fabricId], references: [fabrics.id] }),
-  fabricColor: one(colors, { fields: [orders.fabricColorId], references: [colors.id] }),
-  dealer: one(dealers, { fields: [orders.dealerId], references: [dealers.id] }),
+export const orderSashesRelations = relations(orderSashes, ({ one }) => ({
+  order: one(orders, { fields: [orderSashes.orderId], references: [orders.id] }),
+  system: one(systems, { fields: [orderSashes.systemId], references: [systems.id] }),
+  systemColor: one(colors, { fields: [orderSashes.systemColorId], references: [colors.id] }),
+  fabric: one(fabrics, { fields: [orderSashes.fabricId], references: [fabrics.id] }),
+  fabricColor: one(colors, { fields: [orderSashes.fabricColorId], references: [colors.id] }),
 }));
 
-export const insertOrderSchema = createInsertSchema(orders).omit({ id: true });
-export type InsertOrder = z.infer<typeof insertOrderSchema>;
-export type Order = typeof orders.$inferSelect;
+export const insertOrderSashSchema = createInsertSchema(orderSashes).omit({ id: true });
+export type InsertOrderSash = z.infer<typeof insertOrderSashSchema>;
+export type OrderSash = typeof orderSashes.$inferSelect;
 
 // Finance Operations table
 export const financeOperations = pgTable("finance_operations", {
@@ -221,6 +240,8 @@ export const financeOperations = pgTable("finance_operations", {
   supplierId: varchar("supplier_id").references(() => suppliers.id),
   expenseTypeId: varchar("expense_type_id").references(() => expenseTypes.id),
   comment: text("comment"),
+  isDraft: boolean("is_draft").default(false),
+  deletedAt: timestamp("deleted_at"),
   userId: varchar("user_id").notNull().references(() => users.id),
 });
 
@@ -238,30 +259,47 @@ export const insertFinanceOperationSchema = createInsertSchema(financeOperations
 export type InsertFinanceOperation = z.infer<typeof insertFinanceOperationSchema>;
 export type FinanceOperation = typeof financeOperations.$inferSelect;
 
-// Warehouse Receipts table
+// Warehouse Receipts table (header)
 export const warehouseReceipts = pgTable("warehouse_receipts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   supplierId: varchar("supplier_id").references(() => suppliers.id),
-  componentId: varchar("component_id").references(() => components.id),
-  fabricId: varchar("fabric_id").references(() => fabrics.id),
-  quantity: decimal("quantity", { precision: 12, scale: 2 }).notNull(),
-  price: decimal("price", { precision: 12, scale: 2 }).notNull(),
-  total: decimal("total", { precision: 12, scale: 2 }).notNull(),
   date: date("date").notNull(),
+  total: decimal("total", { precision: 12, scale: 2 }).default("0"),
   comment: text("comment"),
   userId: varchar("user_id").notNull().references(() => users.id),
 });
 
-export const warehouseReceiptsRelations = relations(warehouseReceipts, ({ one }) => ({
+export const warehouseReceiptsRelations = relations(warehouseReceipts, ({ one, many }) => ({
   user: one(users, { fields: [warehouseReceipts.userId], references: [users.id] }),
   supplier: one(suppliers, { fields: [warehouseReceipts.supplierId], references: [suppliers.id] }),
-  component: one(components, { fields: [warehouseReceipts.componentId], references: [components.id] }),
-  fabric: one(fabrics, { fields: [warehouseReceipts.fabricId], references: [fabrics.id] }),
+  items: many(warehouseReceiptItems),
 }));
 
 export const insertWarehouseReceiptSchema = createInsertSchema(warehouseReceipts).omit({ id: true });
 export type InsertWarehouseReceipt = z.infer<typeof insertWarehouseReceiptSchema>;
 export type WarehouseReceipt = typeof warehouseReceipts.$inferSelect;
+
+// Warehouse Receipt Items table (multiple items per receipt)
+export const warehouseReceiptItems = pgTable("warehouse_receipt_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  receiptId: varchar("receipt_id").notNull().references(() => warehouseReceipts.id, { onDelete: "cascade" }),
+  itemType: text("item_type").notNull(), // "component" or "fabric"
+  componentId: varchar("component_id").references(() => components.id),
+  fabricId: varchar("fabric_id").references(() => fabrics.id),
+  quantity: decimal("quantity", { precision: 12, scale: 2 }).notNull(),
+  price: decimal("price", { precision: 12, scale: 2 }).notNull(),
+  total: decimal("total", { precision: 12, scale: 2 }).notNull(),
+});
+
+export const warehouseReceiptItemsRelations = relations(warehouseReceiptItems, ({ one }) => ({
+  receipt: one(warehouseReceipts, { fields: [warehouseReceiptItems.receiptId], references: [warehouseReceipts.id] }),
+  component: one(components, { fields: [warehouseReceiptItems.componentId], references: [components.id] }),
+  fabric: one(fabrics, { fields: [warehouseReceiptItems.fabricId], references: [fabrics.id] }),
+}));
+
+export const insertWarehouseReceiptItemSchema = createInsertSchema(warehouseReceiptItems).omit({ id: true });
+export type InsertWarehouseReceiptItem = z.infer<typeof insertWarehouseReceiptItemSchema>;
+export type WarehouseReceiptItem = typeof warehouseReceiptItems.$inferSelect;
 
 // Auth schemas for validation
 export const loginSchema = z.object({
@@ -279,7 +317,7 @@ export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
 
 // Order statuses
-export const ORDER_STATUSES = ["Новый", "В работе", "Готов", "Выдан"] as const;
+export const ORDER_STATUSES = ["Новый", "В производстве", "Готов", "Отгружен"] as const;
 export type OrderStatus = typeof ORDER_STATUSES[number];
 
 // Fabric categories

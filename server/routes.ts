@@ -479,15 +479,15 @@ export async function registerRoutes(
     try {
       const orderList = await storage.getOrders(req.userId!);
       const dealerList = await storage.getDealers(req.userId!);
-      const systemList = await storage.getSystems(req.userId!);
-      const fabricList = await storage.getFabrics(req.userId!);
       
-      const enriched = orderList.map(order => ({
-        ...order,
-        dealer: dealerList.find(d => d.id === order.dealerId),
-        system: systemList.find(s => s.id === order.systemId),
-        fabric: fabricList.find(f => f.id === order.fabricId),
-        dealerBalance: dealerList.find(d => d.id === order.dealerId)?.balance,
+      const enriched = await Promise.all(orderList.map(async order => {
+        const sashes = await storage.getOrderSashes(order.id);
+        return {
+          ...order,
+          dealer: dealerList.find(d => d.id === order.dealerId),
+          dealerBalance: dealerList.find(d => d.id === order.dealerId)?.balance,
+          sashesCount: sashes.length,
+        };
       }));
       
       res.json(enriched);
@@ -496,14 +496,56 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/orders/:id", authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const order = await storage.getOrder(req.params.id);
+      if (!order) {
+        return res.status(404).json({ message: "Заказ не найден" });
+      }
+      const sashes = await storage.getOrderSashes(order.id);
+      const dealerList = await storage.getDealers(req.userId!);
+      const systemList = await storage.getSystems(req.userId!);
+      const fabricList = await storage.getFabrics(req.userId!);
+      const colorList = await storage.getColors(req.userId!);
+      
+      const enrichedSashes = sashes.map(sash => ({
+        ...sash,
+        system: systemList.find(s => s.id === sash.systemId),
+        systemColor: colorList.find(c => c.id === sash.systemColorId),
+        fabric: fabricList.find(f => f.id === sash.fabricId),
+        fabricColor: colorList.find(c => c.id === sash.fabricColorId),
+      }));
+      
+      res.json({
+        ...order,
+        dealer: dealerList.find(d => d.id === order.dealerId),
+        sashes: enrichedSashes,
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Ошибка сервера" });
+    }
+  });
+
   app.post("/api/orders", authMiddleware, async (req: AuthRequest, res: Response) => {
     try {
+      const { sashes, ...orderData } = req.body;
       const orderNumber = await storage.getNextOrderNumber(req.userId!);
+      
       const order = await storage.createOrder({
-        ...req.body,
+        ...orderData,
         orderNumber,
         userId: req.userId,
       });
+      
+      if (sashes && Array.isArray(sashes)) {
+        for (const sash of sashes) {
+          await storage.createOrderSash({
+            ...sash,
+            orderId: order.id,
+          });
+        }
+      }
+      
       res.json(order);
     } catch (error) {
       console.error("Create order error:", error);
@@ -513,8 +555,42 @@ export async function registerRoutes(
 
   app.patch("/api/orders/:id", authMiddleware, async (req: AuthRequest, res: Response) => {
     try {
-      const order = await storage.updateOrder(req.params.id, req.body);
+      const { sashes, ...orderData } = req.body;
+      const order = await storage.updateOrder(req.params.id, orderData);
+      
+      if (sashes && Array.isArray(sashes)) {
+        await storage.deleteOrderSashesByOrderId(req.params.id);
+        for (const sash of sashes) {
+          await storage.createOrderSash({
+            ...sash,
+            orderId: req.params.id,
+          });
+        }
+      }
+      
       res.json(order);
+    } catch (error) {
+      res.status(500).json({ message: "Ошибка сервера" });
+    }
+  });
+
+  app.patch("/api/orders/:id/status", authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const { status } = req.body;
+      const order = await storage.getOrder(req.params.id);
+      if (!order) {
+        return res.status(404).json({ message: "Заказ не найден" });
+      }
+      
+      const oldStatus = order.status;
+      let dealerDebt = parseFloat(order.dealerDebt?.toString() || "0");
+      
+      if (status === "В производстве" && oldStatus === "Новый") {
+        dealerDebt = parseFloat(order.salePrice?.toString() || "0");
+      }
+      
+      const updated = await storage.updateOrder(req.params.id, { status, dealerDebt: dealerDebt.toString() });
+      res.json(updated);
     } catch (error) {
       res.status(500).json({ message: "Ошибка сервера" });
     }
@@ -529,10 +605,33 @@ export async function registerRoutes(
     }
   });
 
+  // ===== ORDER SASHES =====
+  app.get("/api/orders/:orderId/sashes", authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const sashes = await storage.getOrderSashes(req.params.orderId);
+      res.json(sashes);
+    } catch (error) {
+      res.status(500).json({ message: "Ошибка сервера" });
+    }
+  });
+
+  app.post("/api/orders/:orderId/sashes", authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const sash = await storage.createOrderSash({
+        ...req.body,
+        orderId: req.params.orderId,
+      });
+      res.json(sash);
+    } catch (error) {
+      res.status(500).json({ message: "Ошибка сервера" });
+    }
+  });
+
   // ===== FINANCE OPERATIONS =====
   app.get("/api/finance", authMiddleware, async (req: AuthRequest, res: Response) => {
     try {
-      const operations = await storage.getFinanceOperations(req.userId!);
+      const includeDrafts = req.query.includeDrafts === "true";
+      const operations = await storage.getFinanceOperations(req.userId!, includeDrafts);
       const dealerList = await storage.getDealers(req.userId!);
       const supplierList = await storage.getSuppliers(req.userId!);
       const cashboxList = await storage.getCashboxes(req.userId!);
@@ -554,6 +653,18 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/finance/:id", authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const operation = await storage.getFinanceOperation(req.params.id);
+      if (!operation) {
+        return res.status(404).json({ message: "Операция не найдена" });
+      }
+      res.json(operation);
+    } catch (error) {
+      res.status(500).json({ message: "Ошибка сервера" });
+    }
+  });
+
   app.post("/api/finance", authMiddleware, async (req: AuthRequest, res: Response) => {
     try {
       const operation = await storage.createFinanceOperation({
@@ -567,9 +678,36 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/finance/:id", authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const operation = await storage.updateFinanceOperation(req.params.id, req.body);
+      res.json(operation);
+    } catch (error) {
+      res.status(500).json({ message: "Ошибка сервера" });
+    }
+  });
+
   app.delete("/api/finance/:id", authMiddleware, async (req: AuthRequest, res: Response) => {
     try {
-      await storage.deleteFinanceOperation(req.params.id);
+      await storage.softDeleteFinanceOperation(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Ошибка сервера" });
+    }
+  });
+
+  app.post("/api/finance/:id/restore", authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const operation = await storage.restoreFinanceOperation(req.params.id);
+      res.json(operation);
+    } catch (error) {
+      res.status(500).json({ message: "Ошибка сервера" });
+    }
+  });
+
+  app.delete("/api/finance/:id/hard", authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      await storage.hardDeleteFinanceOperation(req.params.id);
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ message: "Ошибка сервера" });
@@ -581,14 +719,15 @@ export async function registerRoutes(
     try {
       const receipts = await storage.getWarehouseReceipts(req.userId!);
       const supplierList = await storage.getSuppliers(req.userId!);
-      const fabricList = await storage.getFabrics(req.userId!);
-      const componentList = await storage.getComponents(req.userId!);
       
-      const enriched = receipts.map(r => ({
-        ...r,
-        supplier: supplierList.find(s => s.id === r.supplierId),
-        fabric: fabricList.find(f => f.id === r.fabricId),
-        component: componentList.find(c => c.id === r.componentId),
+      const enriched = await Promise.all(receipts.map(async r => {
+        const items = await storage.getWarehouseReceiptItems(r.id);
+        return {
+          ...r,
+          supplier: supplierList.find(s => s.id === r.supplierId),
+          supplierBalance: supplierList.find(s => s.id === r.supplierId)?.balance,
+          itemsCount: items.length,
+        };
       }));
       
       res.json(enriched);
@@ -597,15 +736,73 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/warehouse/:id", authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const receipt = await storage.getWarehouseReceipt(req.params.id);
+      if (!receipt) {
+        return res.status(404).json({ message: "Поступление не найдено" });
+      }
+      const items = await storage.getWarehouseReceiptItems(receipt.id);
+      const supplierList = await storage.getSuppliers(req.userId!);
+      const fabricList = await storage.getFabrics(req.userId!);
+      const componentList = await storage.getComponents(req.userId!);
+      
+      const enrichedItems = items.map(item => ({
+        ...item,
+        fabric: fabricList.find(f => f.id === item.fabricId),
+        component: componentList.find(c => c.id === item.componentId),
+      }));
+      
+      res.json({
+        ...receipt,
+        supplier: supplierList.find(s => s.id === receipt.supplierId),
+        items: enrichedItems,
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Ошибка сервера" });
+    }
+  });
+
   app.post("/api/warehouse", authMiddleware, async (req: AuthRequest, res: Response) => {
     try {
+      const { items, ...receiptData } = req.body;
+      
+      let total = 0;
+      if (items && Array.isArray(items)) {
+        total = items.reduce((sum: number, item: any) => sum + parseFloat(item.total || "0"), 0);
+      }
+      
       const receipt = await storage.createWarehouseReceipt({
-        ...req.body,
+        ...receiptData,
+        total: total.toString(),
         userId: req.userId,
       });
+      
+      if (items && Array.isArray(items)) {
+        for (const item of items) {
+          await storage.createWarehouseReceiptItem({
+            ...item,
+            receiptId: receipt.id,
+          });
+        }
+      }
+      
       res.json(receipt);
     } catch (error) {
       console.error("Create warehouse error:", error);
+      res.status(500).json({ message: "Ошибка сервера" });
+    }
+  });
+
+  app.get("/api/warehouse/previous-price", authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const { itemType, itemId } = req.query;
+      if (!itemType || !itemId) {
+        return res.json({ price: null });
+      }
+      const price = await storage.getPreviousPrice(itemType as string, itemId as string);
+      res.json({ price });
+    } catch (error) {
       res.status(500).json({ message: "Ошибка сервера" });
     }
   });
@@ -730,6 +927,87 @@ export async function registerRoutes(
         cashboxes: cashboxList,
         totalBalance,
       });
+    } catch (error) {
+      res.status(500).json({ message: "Ошибка сервера" });
+    }
+  });
+
+  // ===== PROFILE =====
+  app.get("/api/profile", authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const user = await storage.getUser(req.userId!);
+      if (!user) {
+        return res.status(404).json({ message: "Пользователь не найден" });
+      }
+      res.json({
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        hasReportPassword: !!user.reportPassword,
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Ошибка сервера" });
+    }
+  });
+
+  app.patch("/api/profile", authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const { email, name, currentPassword, newPassword } = req.body;
+      const user = await storage.getUser(req.userId!);
+      if (!user) {
+        return res.status(404).json({ message: "Пользователь не найден" });
+      }
+      
+      const updateData: any = {};
+      if (email) updateData.email = email;
+      if (name !== undefined) updateData.name = name;
+      
+      if (newPassword) {
+        if (!currentPassword) {
+          return res.status(400).json({ message: "Введите текущий пароль" });
+        }
+        const valid = await bcrypt.compare(currentPassword, user.password);
+        if (!valid) {
+          return res.status(400).json({ message: "Неверный текущий пароль" });
+        }
+        updateData.password = await bcrypt.hash(newPassword, SALT_ROUNDS);
+      }
+      
+      const updated = await storage.updateUser(req.userId!, updateData);
+      res.json({
+        id: updated?.id,
+        email: updated?.email,
+        name: updated?.name,
+        hasReportPassword: !!updated?.reportPassword,
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Ошибка сервера" });
+    }
+  });
+
+  app.post("/api/profile/report-password", authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const { reportPassword } = req.body;
+      const hashedPassword = reportPassword ? await bcrypt.hash(reportPassword, SALT_ROUNDS) : null;
+      await storage.updateUser(req.userId!, { reportPassword: hashedPassword });
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Ошибка сервера" });
+    }
+  });
+
+  app.post("/api/verify-report-password", authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const { password } = req.body;
+      const user = await storage.getUser(req.userId!);
+      if (!user) {
+        return res.status(404).json({ message: "Пользователь не найден" });
+      }
+      if (!user.reportPassword) {
+        return res.json({ valid: true });
+      }
+      const valid = await bcrypt.compare(password, user.reportPassword);
+      res.json({ valid });
     } catch (error) {
       res.status(500).json({ message: "Ошибка сервера" });
     }
