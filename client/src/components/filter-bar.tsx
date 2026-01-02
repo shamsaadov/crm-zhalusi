@@ -44,7 +44,7 @@ export function FilterBar({
   filters = [],
   onReset,
 }: FilterBarProps) {
-  const hasActiveFilters = search || dateRange?.from || dateRange?.to || filters.some(f => f.value);
+  const hasActiveFilters = search || dateRange?.from || dateRange?.to || filters.some(f => f.value && f.value !== "all");
 
   return (
     <div className="flex flex-wrap items-center gap-3 mb-4 p-4 bg-card rounded-md border">
@@ -83,7 +83,7 @@ export function FilterBar({
           <PopoverContent className="w-auto p-0" align="start">
             <Calendar
               mode="range"
-              selected={dateRange}
+              selected={dateRange as { from: Date; to?: Date } | undefined}
               onSelect={(range) => onDateRangeChange(range || {})}
               numberOfMonths={2}
               locale={ru}

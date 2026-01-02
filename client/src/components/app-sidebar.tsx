@@ -11,7 +11,8 @@ import {
   Building2,
   LogOut,
   Moon,
-  Sun
+  Sun,
+  User
 } from "lucide-react";
 import {
   Sidebar,
@@ -112,9 +113,10 @@ export function AppSidebar() {
       <SidebarFooter className="p-4">
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground truncate max-w-[140px]">
-              {user?.email}
-            </span>
+            <Link href="/profile" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors truncate max-w-[140px]" data-testid="nav-profile">
+              <User className="h-4 w-4 flex-shrink-0" />
+              <span className="truncate">{user?.email}</span>
+            </Link>
             <Button
               size="icon"
               variant="ghost"

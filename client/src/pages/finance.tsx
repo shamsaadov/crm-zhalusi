@@ -3,22 +3,24 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import { DataTable } from "@/components/data-table";
 import { FilterBar } from "@/components/filter-bar";
-import { formatCurrency, BalanceBadge } from "@/components/status-badge";
+import { formatCurrency } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Loader2, ArrowUpCircle, ArrowDownCircle, ArrowRightLeft, CreditCard } from "lucide-react";
+import { Plus, Loader2, ArrowUpCircle, ArrowDownCircle, ArrowRightLeft, CreditCard, Edit, Trash2, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { FINANCE_TYPES, type FinanceOperation, type Dealer, type Supplier, type Cashbox, type ExpenseType } from "@shared/schema";
+import { type FinanceOperation, type Dealer, type Supplier, type Cashbox, type ExpenseType } from "@shared/schema";
 import { format } from "date-fns";
 
 const incomeSchema = z.object({
@@ -80,13 +82,22 @@ export default function FinancePage() {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("income");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingOperation, setEditingOperation] = useState<FinanceOperationWithRelations | null>(null);
   const [search, setSearch] = useState("");
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({});
   const [typeFilter, setTypeFilter] = useState("all");
   const [cashboxFilter, setCashboxFilter] = useState("all");
+  const [showDrafts, setShowDrafts] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [operationToDelete, setOperationToDelete] = useState<FinanceOperationWithRelations | null>(null);
 
   const { data: operations = [], isLoading } = useQuery<FinanceOperationWithRelations[]>({
-    queryKey: ["/api/finance"],
+    queryKey: ["/api/finance", { includeDrafts: showDrafts }],
+    queryFn: async () => {
+      const res = await fetch(`/api/finance?includeDrafts=${showDrafts}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Ошибка загрузки");
+      return res.json();
+    },
   });
 
   const { data: cashboxes = [] } = useQuery<Cashbox[]>({
@@ -130,11 +141,10 @@ export default function FinancePage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/finance"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cashboxes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dealers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
       setIsDialogOpen(false);
-      incomeForm.reset();
-      expenseForm.reset();
-      supplierForm.reset();
-      transferForm.reset();
+      resetForms();
       toast({ title: "Успешно", description: "Операция создана" });
     },
     onError: (error: Error) => {
@@ -142,23 +152,156 @@ export default function FinancePage() {
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) => apiRequest("PATCH", `/api/finance/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/finance"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cashboxes"] });
+      setIsDialogOpen(false);
+      setEditingOperation(null);
+      resetForms();
+      toast({ title: "Успешно", description: "Операция обновлена" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Ошибка", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const softDeleteMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/finance/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/finance"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cashboxes"] });
+      setIsDeleteDialogOpen(false);
+      setOperationToDelete(null);
+      toast({ title: "Успешно", description: "Операция перемещена в черновики" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Ошибка", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const hardDeleteMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/finance/${id}/hard`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/finance"] });
+      setIsDeleteDialogOpen(false);
+      setOperationToDelete(null);
+      toast({ title: "Успешно", description: "Операция удалена" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Ошибка", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("POST", `/api/finance/${id}/restore`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/finance"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cashboxes"] });
+      toast({ title: "Успешно", description: "Операция восстановлена" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Ошибка", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const resetForms = () => {
+    incomeForm.reset({ amount: "", cashboxId: "", dealerId: "", date: format(new Date(), "yyyy-MM-dd"), comment: "" });
+    expenseForm.reset({ amount: "", cashboxId: "", expenseTypeId: "", date: format(new Date(), "yyyy-MM-dd"), comment: "" });
+    supplierForm.reset({ amount: "", cashboxId: "", supplierId: "", date: format(new Date(), "yyyy-MM-dd"), comment: "" });
+    transferForm.reset({ amount: "", fromCashboxId: "", toCashboxId: "", date: format(new Date(), "yyyy-MM-dd"), comment: "" });
+  };
+
+  const openEditDialog = (op: FinanceOperationWithRelations) => {
+    setEditingOperation(op);
+    setActiveTab(op.type === "supplier_payment" ? "supplier" : op.type);
+    
+    if (op.type === "income") {
+      incomeForm.reset({
+        amount: op.amount?.toString() || "",
+        cashboxId: op.cashboxId || "",
+        dealerId: op.dealerId || "",
+        date: op.date,
+        comment: op.comment || "",
+      });
+    } else if (op.type === "expense") {
+      expenseForm.reset({
+        amount: op.amount?.toString() || "",
+        cashboxId: op.cashboxId || "",
+        expenseTypeId: op.expenseTypeId || "",
+        date: op.date,
+        comment: op.comment || "",
+      });
+    } else if (op.type === "supplier_payment") {
+      supplierForm.reset({
+        amount: op.amount?.toString() || "",
+        cashboxId: op.cashboxId || "",
+        supplierId: op.supplierId || "",
+        date: op.date,
+        comment: op.comment || "",
+      });
+    } else if (op.type === "transfer") {
+      transferForm.reset({
+        amount: op.amount?.toString() || "",
+        fromCashboxId: op.fromCashboxId || "",
+        toCashboxId: op.toCashboxId || "",
+        date: op.date,
+        comment: op.comment || "",
+      });
+    }
+    setIsDialogOpen(true);
+  };
+
   const onSubmitIncome = (data: z.infer<typeof incomeSchema>) => {
-    createMutation.mutate({ type: "income", ...data });
+    if (editingOperation) {
+      updateMutation.mutate({ id: editingOperation.id, data: { type: "income", ...data } });
+    } else {
+      createMutation.mutate({ type: "income", ...data });
+    }
   };
 
   const onSubmitExpense = (data: z.infer<typeof expenseSchema>) => {
-    createMutation.mutate({ type: "expense", ...data });
+    if (editingOperation) {
+      updateMutation.mutate({ id: editingOperation.id, data: { type: "expense", ...data } });
+    } else {
+      createMutation.mutate({ type: "expense", ...data });
+    }
   };
 
   const onSubmitSupplierPayment = (data: z.infer<typeof supplierPaymentSchema>) => {
-    createMutation.mutate({ type: "supplier_payment", ...data });
+    if (editingOperation) {
+      updateMutation.mutate({ id: editingOperation.id, data: { type: "supplier_payment", ...data } });
+    } else {
+      createMutation.mutate({ type: "supplier_payment", ...data });
+    }
   };
 
   const onSubmitTransfer = (data: z.infer<typeof transferSchema>) => {
-    createMutation.mutate({ type: "transfer", ...data });
+    if (editingOperation) {
+      updateMutation.mutate({ id: editingOperation.id, data: { type: "transfer", ...data } });
+    } else {
+      createMutation.mutate({ type: "transfer", ...data });
+    }
+  };
+
+  const openDeleteDialog = (op: FinanceOperationWithRelations) => {
+    setOperationToDelete(op);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handleDelete = () => {
+    if (!operationToDelete) return;
+    if (operationToDelete.isDraft) {
+      hardDeleteMutation.mutate(operationToDelete.id);
+    } else {
+      softDeleteMutation.mutate(operationToDelete.id);
+    }
   };
 
   const filteredOperations = operations.filter((op) => {
+    if (!showDrafts && op.isDraft) return false;
+    if (showDrafts && !op.isDraft) return false;
     if (typeFilter !== "all" && op.type !== typeFilter) return false;
     if (cashboxFilter !== "all" && op.cashboxId !== cashboxFilter && op.fromCashboxId !== cashboxFilter && op.toCashboxId !== cashboxFilter) return false;
     if (dateRange.from && new Date(op.date) < dateRange.from) return false;
@@ -225,12 +368,65 @@ export default function FinancePage() {
         </span>
       ),
     },
+    {
+      key: "actions",
+      header: "",
+      cell: (op: FinanceOperationWithRelations) => (
+        <div className="flex gap-1">
+          {op.isDraft ? (
+            <>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => restoreMutation.mutate(op.id)}
+                data-testid={`button-restore-${op.id}`}
+              >
+                <RotateCcw className="h-4 w-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => openDeleteDialog(op)}
+                data-testid={`button-hard-delete-${op.id}`}
+              >
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => openEditDialog(op)}
+                data-testid={`button-edit-${op.id}`}
+              >
+                <Edit className="h-4 w-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => openDeleteDialog(op)}
+                data-testid={`button-delete-${op.id}`}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </>
+          )}
+        </div>
+      ),
+    },
   ];
 
   return (
     <Layout title="Финансы">
       <div className="flex items-center justify-between gap-4 mb-4">
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <Dialog open={isDialogOpen} onOpenChange={(open) => {
+          setIsDialogOpen(open);
+          if (!open) {
+            setEditingOperation(null);
+            resetForms();
+          }
+        }}>
           <DialogTrigger asChild>
             <Button data-testid="button-add-operation">
               <Plus className="h-4 w-4 mr-2" />
@@ -239,23 +435,23 @@ export default function FinancePage() {
           </DialogTrigger>
           <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle>Новая операция</DialogTitle>
+              <DialogTitle>{editingOperation ? "Редактировать операцию" : "Новая операция"}</DialogTitle>
             </DialogHeader>
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="income" className="gap-1">
+                <TabsTrigger value="income" className="gap-1" disabled={!!editingOperation}>
                   <ArrowUpCircle className="h-4 w-4" />
                   <span className="hidden sm:inline">Приход</span>
                 </TabsTrigger>
-                <TabsTrigger value="expense" className="gap-1">
+                <TabsTrigger value="expense" className="gap-1" disabled={!!editingOperation}>
                   <ArrowDownCircle className="h-4 w-4" />
                   <span className="hidden sm:inline">Расход</span>
                 </TabsTrigger>
-                <TabsTrigger value="supplier" className="gap-1">
+                <TabsTrigger value="supplier" className="gap-1" disabled={!!editingOperation}>
                   <CreditCard className="h-4 w-4" />
                   <span className="hidden sm:inline">Поставщик</span>
                 </TabsTrigger>
-                <TabsTrigger value="transfer" className="gap-1">
+                <TabsTrigger value="transfer" className="gap-1" disabled={!!editingOperation}>
                   <ArrowRightLeft className="h-4 w-4" />
                   <span className="hidden sm:inline">Перемещение</span>
                 </TabsTrigger>
@@ -347,9 +543,9 @@ export default function FinancePage() {
                         </FormItem>
                       )}
                     />
-                    <Button type="submit" className="w-full" disabled={createMutation.isPending} data-testid="button-submit-income">
-                      {createMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                      Добавить приход
+                    <Button type="submit" className="w-full" disabled={createMutation.isPending || updateMutation.isPending} data-testid="button-submit-income">
+                      {(createMutation.isPending || updateMutation.isPending) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                      {editingOperation ? "Сохранить" : "Добавить приход"}
                     </Button>
                   </form>
                 </Form>
@@ -441,9 +637,9 @@ export default function FinancePage() {
                         </FormItem>
                       )}
                     />
-                    <Button type="submit" className="w-full" disabled={createMutation.isPending} data-testid="button-submit-expense">
-                      {createMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                      Добавить расход
+                    <Button type="submit" className="w-full" disabled={createMutation.isPending || updateMutation.isPending} data-testid="button-submit-expense">
+                      {(createMutation.isPending || updateMutation.isPending) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                      {editingOperation ? "Сохранить" : "Добавить расход"}
                     </Button>
                   </form>
                 </Form>
@@ -535,9 +731,9 @@ export default function FinancePage() {
                         </FormItem>
                       )}
                     />
-                    <Button type="submit" className="w-full" disabled={createMutation.isPending} data-testid="button-submit-supplier">
-                      {createMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                      Оплатить поставщику
+                    <Button type="submit" className="w-full" disabled={createMutation.isPending || updateMutation.isPending} data-testid="button-submit-supplier">
+                      {(createMutation.isPending || updateMutation.isPending) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                      {editingOperation ? "Сохранить" : "Добавить оплату"}
                     </Button>
                   </form>
                 </Form>
@@ -629,9 +825,9 @@ export default function FinancePage() {
                         </FormItem>
                       )}
                     />
-                    <Button type="submit" className="w-full" disabled={createMutation.isPending} data-testid="button-submit-transfer">
-                      {createMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                      Переместить
+                    <Button type="submit" className="w-full" disabled={createMutation.isPending || updateMutation.isPending} data-testid="button-submit-transfer">
+                      {(createMutation.isPending || updateMutation.isPending) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                      {editingOperation ? "Сохранить" : "Добавить перемещение"}
                     </Button>
                   </form>
                 </Form>
@@ -639,42 +835,80 @@ export default function FinancePage() {
             </Tabs>
           </DialogContent>
         </Dialog>
+
+        <div className="flex items-center gap-2">
+          <Switch
+            id="show-drafts"
+            checked={showDrafts}
+            onCheckedChange={setShowDrafts}
+            data-testid="switch-show-drafts"
+          />
+          <Label htmlFor="show-drafts">Черновики</Label>
+        </div>
       </div>
 
       <FilterBar
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Поиск..."
+        showDateFilter
         dateRange={dateRange}
         onDateRangeChange={setDateRange}
-        showDateFilter
         filters={[
           {
             key: "type",
-            label: "Тип операции",
-            options: FINANCE_TYPES.map((t) => ({ value: t, label: typeLabels[t] })),
+            label: "Тип",
             value: typeFilter,
+            options: [
+              { value: "income", label: "Приход" },
+              { value: "expense", label: "Расход" },
+              { value: "supplier_payment", label: "Оплата поставщику" },
+              { value: "transfer", label: "Перемещение" },
+            ],
             onChange: setTypeFilter,
           },
           {
             key: "cashbox",
             label: "Касса",
-            options: cashboxes.map((c) => ({ value: c.id, label: c.name })),
             value: cashboxFilter,
+            options: cashboxes.map(c => ({ value: c.id, label: c.name })),
             onChange: setCashboxFilter,
           },
         ]}
-        onReset={() => {
-          setDateRange({});
-          setTypeFilter("all");
-          setCashboxFilter("all");
-        }}
       />
 
       <DataTable
         columns={columns}
         data={filteredOperations}
         isLoading={isLoading}
-        emptyMessage="Операции не найдены"
+        emptyMessage={showDrafts ? "Черновики не найдены" : "Операции не найдены"}
         getRowKey={(op) => op.id}
       />
+
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{operationToDelete?.isDraft ? "Удалить безвозвратно?" : "Переместить в черновики?"}</DialogTitle>
+          </DialogHeader>
+          <p>
+            {operationToDelete?.isDraft
+              ? "Эта операция будет удалена безвозвратно."
+              : "Операция будет перемещена в черновики. Вы сможете восстановить её позже или удалить полностью."}
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>Отмена</Button>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={softDeleteMutation.isPending || hardDeleteMutation.isPending}
+              data-testid="button-confirm-delete"
+            >
+              {(softDeleteMutation.isPending || hardDeleteMutation.isPending) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {operationToDelete?.isDraft ? "Удалить" : "В черновики"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 }

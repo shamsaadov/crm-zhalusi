@@ -5,22 +5,24 @@ import { DataTable } from "@/components/data-table";
 import { FilterBar } from "@/components/filter-bar";
 import { StatusBadge, formatCurrency, BalanceBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { useForm } from "react-hook-form";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Edit, Loader2 } from "lucide-react";
+import { Plus, Edit, Trash2, Eye, FileText, Loader2, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ORDER_STATUSES, CONTROL_SIDES, type Order, type OrderStatus, type Dealer, type System, type Fabric, type Color } from "@shared/schema";
 import { format } from "date-fns";
 
-const orderFormSchema = z.object({
-  date: z.string().min(1, "Обязательное поле"),
+const sashSchema = z.object({
   width: z.string().min(1, "Обязательное поле"),
   height: z.string().min(1, "Обязательное поле"),
   systemId: z.string().optional(),
@@ -28,27 +30,56 @@ const orderFormSchema = z.object({
   controlSide: z.string().optional(),
   fabricId: z.string().optional(),
   fabricColorId: z.string().optional(),
-  sashesCount: z.string().optional(),
+  sashPrice: z.string().optional(),
+  sashCost: z.string().optional(),
+});
+
+const orderFormSchema = z.object({
+  date: z.string().min(1, "Обязательное поле"),
   dealerId: z.string().optional(),
   status: z.string().default("Новый"),
   salePrice: z.string().optional(),
   costPrice: z.string().optional(),
   comment: z.string().optional(),
+  sashes: z.array(sashSchema).min(1, "Добавьте минимум одну створку"),
 });
 
+type SashFormValues = z.infer<typeof sashSchema>;
 type OrderFormValues = z.infer<typeof orderFormSchema>;
+
+interface OrderSash {
+  id: string;
+  orderId: string;
+  width: string | null;
+  height: string | null;
+  systemId: string | null;
+  systemColorId: string | null;
+  fabricId: string | null;
+  fabricColorId: string | null;
+  controlSide: string | null;
+  sashPrice: string | null;
+  sashCost: string | null;
+  system?: System;
+  systemColor?: Color;
+  fabric?: Fabric;
+  fabricColor?: Color;
+}
 
 interface OrderWithRelations extends Order {
   dealer?: Dealer;
-  system?: System;
-  fabric?: Fabric;
   dealerBalance?: number;
+  sashesCount?: number;
+  sashes?: OrderSash[];
 }
 
 export default function OrdersPage() {
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<OrderWithRelations | null>(null);
+  const [viewingOrder, setViewingOrder] = useState<OrderWithRelations | null>(null);
+  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [orderToDelete, setOrderToDelete] = useState<OrderWithRelations | null>(null);
   const [search, setSearch] = useState("");
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({});
   const [statusFilter, setStatusFilter] = useState("all");
@@ -78,20 +109,18 @@ export default function OrdersPage() {
     resolver: zodResolver(orderFormSchema),
     defaultValues: {
       date: format(new Date(), "yyyy-MM-dd"),
-      width: "",
-      height: "",
-      systemId: "",
-      systemColorId: "",
-      controlSide: "",
-      fabricId: "",
-      fabricColorId: "",
-      sashesCount: "1",
       dealerId: "",
       status: "Новый",
       salePrice: "",
       costPrice: "",
       comment: "",
+      sashes: [{ width: "", height: "", systemId: "", systemColorId: "", controlSide: "", fabricId: "", fabricColorId: "", sashPrice: "", sashCost: "" }],
     },
+  });
+
+  const { fields, append, remove } = useFieldArray({
+    control: form.control,
+    name: "sashes",
   });
 
   const createMutation = useMutation({
@@ -108,7 +137,7 @@ export default function OrdersPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<OrderFormValues> }) =>
+    mutationFn: ({ id, data }: { id: string; data: OrderFormValues }) =>
       apiRequest("PATCH", `/api/orders/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
@@ -122,9 +151,22 @@ export default function OrdersPage() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/orders/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      setIsDeleteDialogOpen(false);
+      setOrderToDelete(null);
+      toast({ title: "Успешно", description: "Заказ удален" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Ошибка", description: error.message, variant: "destructive" });
+    },
+  });
+
   const updateStatusMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
-      apiRequest("PATCH", `/api/orders/${id}`, { status }),
+      apiRequest("PATCH", `/api/orders/${id}/status`, { status }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
       toast({ title: "Статус обновлен" });
@@ -142,25 +184,83 @@ export default function OrdersPage() {
     }
   };
 
-  const openEditDialog = (order: OrderWithRelations) => {
-    setEditingOrder(order);
-    form.reset({
-      date: order.date,
-      width: order.width?.toString() || "",
-      height: order.height?.toString() || "",
-      systemId: order.systemId || "",
-      systemColorId: order.systemColorId || "",
-      controlSide: order.controlSide || "",
-      fabricId: order.fabricId || "",
-      fabricColorId: order.fabricColorId || "",
-      sashesCount: order.sashesCount?.toString() || "1",
-      dealerId: order.dealerId || "",
-      status: order.status || "Новый",
-      salePrice: order.salePrice?.toString() || "",
-      costPrice: order.costPrice?.toString() || "",
-      comment: order.comment || "",
-    });
-    setIsDialogOpen(true);
+  const openViewDialog = async (order: OrderWithRelations) => {
+    try {
+      const response = await fetch(`/api/orders/${order.id}`, { credentials: "include" });
+      const fullOrder = await response.json();
+      setViewingOrder(fullOrder);
+      setIsViewDialogOpen(true);
+    } catch {
+      toast({ title: "Ошибка загрузки заказа", variant: "destructive" });
+    }
+  };
+
+  const openEditDialog = async (order: OrderWithRelations) => {
+    try {
+      const response = await fetch(`/api/orders/${order.id}`, { credentials: "include" });
+      const fullOrder: OrderWithRelations = await response.json();
+      setEditingOrder(fullOrder);
+      form.reset({
+        date: fullOrder.date,
+        dealerId: fullOrder.dealerId || "",
+        status: fullOrder.status || "Новый",
+        salePrice: fullOrder.salePrice?.toString() || "",
+        costPrice: fullOrder.costPrice?.toString() || "",
+        comment: fullOrder.comment || "",
+        sashes: fullOrder.sashes?.map(s => ({
+          width: s.width?.toString() || "",
+          height: s.height?.toString() || "",
+          systemId: s.systemId || "",
+          systemColorId: s.systemColorId || "",
+          controlSide: s.controlSide || "",
+          fabricId: s.fabricId || "",
+          fabricColorId: s.fabricColorId || "",
+          sashPrice: s.sashPrice?.toString() || "",
+          sashCost: s.sashCost?.toString() || "",
+        })) || [{ width: "", height: "", systemId: "", systemColorId: "", controlSide: "", fabricId: "", fabricColorId: "", sashPrice: "", sashCost: "" }],
+      });
+      setIsDialogOpen(true);
+    } catch {
+      toast({ title: "Ошибка загрузки заказа", variant: "destructive" });
+    }
+  };
+
+  const openDeleteDialog = (order: OrderWithRelations) => {
+    setOrderToDelete(order);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const printInvoice = (order: OrderWithRelations) => {
+    const win = window.open("", "_blank");
+    if (!win) return;
+    
+    win.document.write(`
+      <html>
+        <head>
+          <title>Счет #${order.orderNumber}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; }
+            h1 { margin-bottom: 20px; }
+            table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+            th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+            th { background: #f5f5f5; }
+            .total { font-size: 18px; font-weight: bold; margin-top: 20px; }
+          </style>
+        </head>
+        <body>
+          <h1>Счет #${order.orderNumber}</h1>
+          <p>Дата: ${format(new Date(order.date), "dd.MM.yyyy")}</p>
+          <p>Дилер: ${order.dealer?.fullName || "-"}</p>
+          <table>
+            <tr><th>Позиция</th><th>Створки</th><th>Сумма</th></tr>
+            <tr><td>Заказ #${order.orderNumber}</td><td>${order.sashesCount || 1}</td><td>${formatCurrency(order.salePrice)}</td></tr>
+          </table>
+          <p class="total">Итого к оплате: ${formatCurrency(order.salePrice)}</p>
+        </body>
+      </html>
+    `);
+    win.document.close();
+    win.print();
   };
 
   const filteredOrders = orders.filter((order) => {
@@ -190,32 +290,13 @@ export default function OrdersPage() {
     {
       key: "dealer",
       header: "Дилер",
+      cell: (order: OrderWithRelations) => order.dealer?.fullName || "-",
+    },
+    {
+      key: "sashesCount",
+      header: "Створок",
       cell: (order: OrderWithRelations) => (
-        <div className="flex flex-col">
-          <span>{order.dealer?.fullName || "-"}</span>
-          {order.dealerBalance !== undefined && (
-            <BalanceBadge balance={order.dealerBalance} className="text-xs" />
-          )}
-        </div>
-      ),
-    },
-    {
-      key: "system",
-      header: "Система",
-      cell: (order: OrderWithRelations) => order.system?.name || "-",
-    },
-    {
-      key: "fabric",
-      header: "Ткань",
-      cell: (order: OrderWithRelations) => order.fabric?.name || "-",
-    },
-    {
-      key: "dimensions",
-      header: "Размеры (Ш×В)",
-      cell: (order: OrderWithRelations) => (
-        <span className="font-mono">
-          {order.width}×{order.height}
-        </span>
+        <Badge variant="secondary">{order.sashesCount || 0}</Badge>
       ),
     },
     {
@@ -226,7 +307,7 @@ export default function OrdersPage() {
           value={order.status || "Новый"}
           onValueChange={(value) => updateStatusMutation.mutate({ id: order.id, status: value })}
         >
-          <SelectTrigger className="w-[130px]" data-testid={`select-status-${order.id}`}>
+          <SelectTrigger className="w-[140px]" data-testid={`select-status-${order.id}`}>
             <StatusBadge status={order.status as OrderStatus || "Новый"} />
           </SelectTrigger>
           <SelectContent>
@@ -248,10 +329,10 @@ export default function OrdersPage() {
       className: "text-right",
     },
     {
-      key: "costPrice",
-      header: "Себестоимость",
+      key: "dealerDebt",
+      header: "Долг дилера",
       cell: (order: OrderWithRelations) => (
-        <span className="font-mono">{formatCurrency(order.costPrice)}</span>
+        <BalanceBadge balance={parseFloat(order.dealerDebt?.toString() || "0")} />
       ),
       className: "text-right",
     },
@@ -268,14 +349,40 @@ export default function OrdersPage() {
       key: "actions",
       header: "",
       cell: (order: OrderWithRelations) => (
-        <Button
-          size="icon"
-          variant="ghost"
-          onClick={() => openEditDialog(order)}
-          data-testid={`button-edit-${order.id}`}
-        >
-          <Edit className="h-4 w-4" />
-        </Button>
+        <div className="flex gap-1">
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => openViewDialog(order)}
+            data-testid={`button-view-${order.id}`}
+          >
+            <Eye className="h-4 w-4" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => openEditDialog(order)}
+            data-testid={`button-edit-${order.id}`}
+          >
+            <Edit className="h-4 w-4" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => printInvoice(order)}
+            data-testid={`button-invoice-${order.id}`}
+          >
+            <FileText className="h-4 w-4" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => openDeleteDialog(order)}
+            data-testid={`button-delete-${order.id}`}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       ),
     },
   ];
@@ -287,7 +394,15 @@ export default function OrdersPage() {
           setIsDialogOpen(open);
           if (!open) {
             setEditingOrder(null);
-            form.reset();
+            form.reset({
+              date: format(new Date(), "yyyy-MM-dd"),
+              dealerId: "",
+              status: "Новый",
+              salePrice: "",
+              costPrice: "",
+              comment: "",
+              sashes: [{ width: "", height: "", systemId: "", systemColorId: "", controlSide: "", fabricId: "", fabricColorId: "", sashPrice: "", sashCost: "" }],
+            });
           }
         }}>
           <DialogTrigger asChild>
@@ -296,13 +411,13 @@ export default function OrdersPage() {
               Добавить заказ
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{editingOrder ? "Редактировать заказ" : "Новый заказ"}</DialogTitle>
             </DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <FormField
                     control={form.control}
                     name="date"
@@ -340,177 +455,6 @@ export default function OrdersPage() {
                       </FormItem>
                     )}
                   />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="width"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Ширина</FormLabel>
-                        <FormControl>
-                          <Input type="number" step="0.01" {...field} data-testid="input-width" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="height"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Высота</FormLabel>
-                        <FormControl>
-                          <Input type="number" step="0.01" {...field} data-testid="input-height" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="systemId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Система</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger data-testid="select-system">
-                              <SelectValue placeholder="Выберите систему" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {systems.map((system) => (
-                              <SelectItem key={system.id} value={system.id}>
-                                {system.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="systemColorId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Цвет системы</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger data-testid="select-system-color">
-                              <SelectValue placeholder="Выберите цвет" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {colors.map((color) => (
-                              <SelectItem key={color.id} value={color.id}>
-                                {color.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="fabricId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Ткань</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger data-testid="select-fabric">
-                              <SelectValue placeholder="Выберите ткань" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {fabrics.map((fabric) => (
-                              <SelectItem key={fabric.id} value={fabric.id}>
-                                {fabric.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="fabricColorId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Цвет ткани</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger data-testid="select-fabric-color">
-                              <SelectValue placeholder="Выберите цвет" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {colors.map((color) => (
-                              <SelectItem key={color.id} value={color.id}>
-                                {color.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <div className="grid grid-cols-3 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="controlSide"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Сторона управления</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger data-testid="select-control-side">
-                              <SelectValue placeholder="Выберите" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {CONTROL_SIDES.map((side) => (
-                              <SelectItem key={side} value={side}>
-                                {side}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="sashesCount"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Кол-во створок</FormLabel>
-                        <FormControl>
-                          <Input type="number" min="1" {...field} data-testid="input-sashes" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
                   <FormField
                     control={form.control}
                     name="status"
@@ -537,13 +481,232 @@ export default function OrdersPage() {
                   />
                 </div>
 
+                <Separator />
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-medium">Створки</h3>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => append({ width: "", height: "", systemId: "", systemColorId: "", controlSide: "", fabricId: "", fabricColorId: "", sashPrice: "", sashCost: "" })}
+                      data-testid="button-add-sash"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Добавить створку
+                    </Button>
+                  </div>
+
+                  {fields.map((field, index) => (
+                    <Card key={field.id}>
+                      <CardHeader className="py-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <CardTitle className="text-sm">Створка {index + 1}</CardTitle>
+                          {fields.length > 1 && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => remove(index)}
+                              data-testid={`button-remove-sash-${index}`}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="grid grid-cols-4 gap-4">
+                          <FormField
+                            control={form.control}
+                            name={`sashes.${index}.width`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Ширина</FormLabel>
+                                <FormControl>
+                                  <Input type="number" step="0.01" {...field} data-testid={`input-sash-width-${index}`} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name={`sashes.${index}.height`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Высота</FormLabel>
+                                <FormControl>
+                                  <Input type="number" step="0.01" {...field} data-testid={`input-sash-height-${index}`} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name={`sashes.${index}.sashPrice`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Цена</FormLabel>
+                                <FormControl>
+                                  <Input type="number" step="0.01" {...field} data-testid={`input-sash-price-${index}`} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name={`sashes.${index}.sashCost`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Себестоимость</FormLabel>
+                                <FormControl>
+                                  <Input type="number" step="0.01" {...field} data-testid={`input-sash-cost-${index}`} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                        <div className="grid grid-cols-5 gap-4">
+                          <FormField
+                            control={form.control}
+                            name={`sashes.${index}.systemId`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Система</FormLabel>
+                                <Select onValueChange={field.onChange} value={field.value}>
+                                  <FormControl>
+                                    <SelectTrigger data-testid={`select-sash-system-${index}`}>
+                                      <SelectValue placeholder="Система" />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    {systems.map((system) => (
+                                      <SelectItem key={system.id} value={system.id}>
+                                        {system.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name={`sashes.${index}.systemColorId`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Цвет системы</FormLabel>
+                                <Select onValueChange={field.onChange} value={field.value}>
+                                  <FormControl>
+                                    <SelectTrigger data-testid={`select-sash-system-color-${index}`}>
+                                      <SelectValue placeholder="Цвет" />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    {colors.map((color) => (
+                                      <SelectItem key={color.id} value={color.id}>
+                                        {color.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name={`sashes.${index}.fabricId`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Ткань</FormLabel>
+                                <Select onValueChange={field.onChange} value={field.value}>
+                                  <FormControl>
+                                    <SelectTrigger data-testid={`select-sash-fabric-${index}`}>
+                                      <SelectValue placeholder="Ткань" />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    {fabrics.map((fabric) => (
+                                      <SelectItem key={fabric.id} value={fabric.id}>
+                                        {fabric.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name={`sashes.${index}.fabricColorId`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Цвет ткани</FormLabel>
+                                <Select onValueChange={field.onChange} value={field.value}>
+                                  <FormControl>
+                                    <SelectTrigger data-testid={`select-sash-fabric-color-${index}`}>
+                                      <SelectValue placeholder="Цвет" />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    {colors.map((color) => (
+                                      <SelectItem key={color.id} value={color.id}>
+                                        {color.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name={`sashes.${index}.controlSide`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Управление</FormLabel>
+                                <Select onValueChange={field.onChange} value={field.value}>
+                                  <FormControl>
+                                    <SelectTrigger data-testid={`select-sash-control-${index}`}>
+                                      <SelectValue placeholder="Сторона" />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    {CONTROL_SIDES.map((side) => (
+                                      <SelectItem key={side} value={side}>
+                                        {side}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+
+                <Separator />
+
                 <div className="grid grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
                     name="salePrice"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Цена продажи</FormLabel>
+                        <FormLabel>Общая цена продажи</FormLabel>
                         <FormControl>
                           <Input type="number" step="0.01" {...field} data-testid="input-sale-price" />
                         </FormControl>
@@ -556,7 +719,7 @@ export default function OrdersPage() {
                     name="costPrice"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Себестоимость</FormLabel>
+                        <FormLabel>Общая себестоимость</FormLabel>
                         <FormControl>
                           <Input type="number" step="0.01" {...field} data-testid="input-cost-price" />
                         </FormControl>
@@ -585,9 +748,7 @@ export default function OrdersPage() {
                     Отмена
                   </Button>
                   <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending} data-testid="button-submit-order">
-                    {(createMutation.isPending || updateMutation.isPending) && (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    )}
+                    {(createMutation.isPending || updateMutation.isPending) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                     {editingOrder ? "Сохранить" : "Создать"}
                   </Button>
                 </div>
@@ -601,31 +762,25 @@ export default function OrdersPage() {
         search={search}
         onSearchChange={setSearch}
         searchPlaceholder="Поиск по номеру..."
+        showDateFilter
         dateRange={dateRange}
         onDateRangeChange={setDateRange}
-        showDateFilter
         filters={[
           {
             key: "status",
             label: "Статус",
-            options: ORDER_STATUSES.map((s) => ({ value: s, label: s })),
             value: statusFilter,
+            options: ORDER_STATUSES.map(s => ({ value: s, label: s })),
             onChange: setStatusFilter,
           },
           {
             key: "dealer",
             label: "Дилер",
-            options: dealers.map((d) => ({ value: d.id, label: d.fullName })),
             value: dealerFilter,
+            options: dealers.map(d => ({ value: d.id, label: d.fullName })),
             onChange: setDealerFilter,
           },
         ]}
-        onReset={() => {
-          setSearch("");
-          setDateRange({});
-          setStatusFilter("all");
-          setDealerFilter("all");
-        }}
       />
 
       <DataTable
@@ -635,6 +790,105 @@ export default function OrdersPage() {
         emptyMessage="Заказы не найдены"
         getRowKey={(order) => order.id}
       />
+
+      <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Заказ #{viewingOrder?.orderNumber}</DialogTitle>
+          </DialogHeader>
+          {viewingOrder && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-muted-foreground">Дата</p>
+                  <p className="font-medium">{format(new Date(viewingOrder.date), "dd.MM.yyyy")}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Дилер</p>
+                  <p className="font-medium">{viewingOrder.dealer?.fullName || "-"}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Статус</p>
+                  <StatusBadge status={viewingOrder.status as OrderStatus || "Новый"} />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Долг дилера</p>
+                  <BalanceBadge balance={parseFloat(viewingOrder.dealerDebt?.toString() || "0")} />
+                </div>
+              </div>
+              <Separator />
+              <div>
+                <h4 className="font-medium mb-2">Створки ({viewingOrder.sashes?.length || 0})</h4>
+                {viewingOrder.sashes?.map((sash, idx) => (
+                  <Card key={sash.id} className="mb-2">
+                    <CardContent className="py-3">
+                      <div className="grid grid-cols-4 gap-2 text-sm">
+                        <div>
+                          <span className="text-muted-foreground">Размеры:</span> {sash.width}x{sash.height}
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Система:</span> {sash.system?.name || "-"}
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Ткань:</span> {sash.fabric?.name || "-"}
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Цена:</span> {formatCurrency(sash.sashPrice)}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+              <Separator />
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <p className="text-sm text-muted-foreground">Продажа</p>
+                  <p className="font-medium">{formatCurrency(viewingOrder.salePrice)}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Себестоимость</p>
+                  <p className="font-medium">{formatCurrency(viewingOrder.costPrice)}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Прибыль</p>
+                  <BalanceBadge balance={parseFloat(viewingOrder.salePrice?.toString() || "0") - parseFloat(viewingOrder.costPrice?.toString() || "0")} />
+                </div>
+              </div>
+              {viewingOrder.comment && (
+                <>
+                  <Separator />
+                  <div>
+                    <p className="text-sm text-muted-foreground">Комментарий</p>
+                    <p>{viewingOrder.comment}</p>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Удалить заказ?</DialogTitle>
+          </DialogHeader>
+          <p>Вы уверены, что хотите удалить заказ #{orderToDelete?.orderNumber}? Это действие необратимо.</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>Отмена</Button>
+            <Button 
+              variant="destructive" 
+              onClick={() => orderToDelete && deleteMutation.mutate(orderToDelete.id)}
+              disabled={deleteMutation.isPending}
+              data-testid="button-confirm-delete"
+            >
+              {deleteMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Удалить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 }

@@ -736,6 +736,19 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/warehouse/previous-price", authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const { itemType, itemId } = req.query;
+      if (!itemType || !itemId) {
+        return res.json({ price: null });
+      }
+      const price = await storage.getPreviousPrice(itemType as string, itemId as string);
+      res.json({ price });
+    } catch (error) {
+      res.status(500).json({ message: "Ошибка сервера" });
+    }
+  });
+
   app.get("/api/warehouse/:id", authMiddleware, async (req: AuthRequest, res: Response) => {
     try {
       const receipt = await storage.getWarehouseReceipt(req.params.id);
@@ -790,19 +803,6 @@ export async function registerRoutes(
       res.json(receipt);
     } catch (error) {
       console.error("Create warehouse error:", error);
-      res.status(500).json({ message: "Ошибка сервера" });
-    }
-  });
-
-  app.get("/api/warehouse/previous-price", authMiddleware, async (req: AuthRequest, res: Response) => {
-    try {
-      const { itemType, itemId } = req.query;
-      if (!itemType || !itemId) {
-        return res.json({ price: null });
-      }
-      const price = await storage.getPreviousPrice(itemType as string, itemId as string);
-      res.json({ price });
-    } catch (error) {
       res.status(500).json({ message: "Ошибка сервера" });
     }
   });
