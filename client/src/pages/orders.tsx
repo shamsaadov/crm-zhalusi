@@ -16,7 +16,8 @@ import { Separator } from "@/components/ui/separator";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Edit, Trash2, Eye, FileText, Loader2, X } from "lucide-react";
+import { Plus, Edit, Trash2, Eye, FileText, Loader2, X, Info } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ORDER_STATUSES, CONTROL_SIDES, type Order, type OrderStatus, type Dealer, type System, type Fabric, type Color } from "@shared/schema";
@@ -72,6 +73,17 @@ interface OrderWithRelations extends Order {
   sashes?: OrderSash[];
 }
 
+interface StockItem {
+  quantity: number;
+  lastPrice: number;
+  avgPrice: number;
+  totalValue: number;
+}
+
+interface FabricWithStock extends Fabric {
+  stock: StockItem;
+}
+
 export default function OrdersPage() {
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -104,6 +116,12 @@ export default function OrdersPage() {
   const { data: colors = [] } = useQuery<Color[]>({
     queryKey: ["/api/colors"],
   });
+
+  const { data: stockData } = useQuery<{ fabrics: FabricWithStock[] }>({
+    queryKey: ["/api/stock"],
+  });
+
+  const fabricStock = stockData?.fabrics || [];
 
   const form = useForm<OrderFormValues>({
     resolver: zodResolver(orderFormSchema),
@@ -623,26 +641,66 @@ export default function OrdersPage() {
                           <FormField
                             control={form.control}
                             name={`sashes.${index}.fabricId`}
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Ткань</FormLabel>
-                                <Select onValueChange={field.onChange} value={field.value}>
-                                  <FormControl>
-                                    <SelectTrigger data-testid={`select-sash-fabric-${index}`}>
-                                      <SelectValue placeholder="Ткань" />
-                                    </SelectTrigger>
-                                  </FormControl>
-                                  <SelectContent>
-                                    {fabrics.map((fabric) => (
-                                      <SelectItem key={fabric.id} value={fabric.id}>
-                                        {fabric.name}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                                <FormMessage />
-                              </FormItem>
-                            )}
+                            render={({ field }) => {
+                              const selectedFabricInfo = fabricStock.find(f => f.id === field.value);
+                              return (
+                                <FormItem>
+                                  <FormLabel className="flex items-center gap-1">
+                                    Ткань
+                                    {field.value && selectedFabricInfo && (
+                                      <Popover>
+                                        <PopoverTrigger asChild>
+                                          <Button size="icon" variant="ghost" className="h-5 w-5" type="button" data-testid={`button-fabric-info-${index}`}>
+                                            <Info className="h-3 w-3" />
+                                          </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-64" align="start">
+                                          <div className="space-y-2 text-sm">
+                                            <p className="font-medium">{selectedFabricInfo.name}</p>
+                                            {selectedFabricInfo.category && <p className="text-muted-foreground">Категория: {selectedFabricInfo.category}</p>}
+                                            {selectedFabricInfo.width && <p className="text-muted-foreground">Ширина: {selectedFabricInfo.width} м</p>}
+                                            <Separator />
+                                            <div className="grid grid-cols-2 gap-2">
+                                              <div>
+                                                <p className="text-muted-foreground">Остаток</p>
+                                                <p className="font-medium">{selectedFabricInfo.stock.quantity.toFixed(2)}</p>
+                                              </div>
+                                              <div>
+                                                <p className="text-muted-foreground">Посл. цена</p>
+                                                <p className="font-medium">{formatCurrency(selectedFabricInfo.stock.lastPrice)}</p>
+                                              </div>
+                                              <div>
+                                                <p className="text-muted-foreground">Ср. цена</p>
+                                                <p className="font-medium">{formatCurrency(selectedFabricInfo.stock.avgPrice)}</p>
+                                              </div>
+                                              <div>
+                                                <p className="text-muted-foreground">Сумма</p>
+                                                <p className="font-medium">{formatCurrency(selectedFabricInfo.stock.totalValue)}</p>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </PopoverContent>
+                                      </Popover>
+                                    )}
+                                  </FormLabel>
+                                  <Select onValueChange={field.onChange} value={field.value}>
+                                    <FormControl>
+                                      <SelectTrigger data-testid={`select-sash-fabric-${index}`}>
+                                        <SelectValue placeholder="Ткань" />
+                                      </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                      {fabrics.map((fabric) => (
+                                        <SelectItem key={fabric.id} value={fabric.id}>
+                                          {fabric.name}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                  <FormMessage />
+                                </FormItem>
+                              );
+                            }}
                           />
                           <FormField
                             control={form.control}

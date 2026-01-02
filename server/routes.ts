@@ -833,6 +833,79 @@ export async function registerRoutes(
     }
   });
 
+  // Stock levels endpoint
+  app.get("/api/stock", authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const [receipts, fabrics, components] = await Promise.all([
+        storage.getWarehouseReceipts(req.userId!),
+        storage.getFabrics(req.userId!),
+        storage.getComponents(req.userId!),
+      ]);
+      
+      // Get all receipt items in parallel
+      const itemsArrays = await Promise.all(
+        receipts.map(receipt => storage.getWarehouseReceiptItems(receipt.id))
+      );
+      const allItems = itemsArrays.flat();
+      
+      // Calculate fabric stock
+      const fabricStock: Record<string, { quantity: number; lastPrice: number; avgPrice: number; totalValue: number }> = {};
+      for (const item of allItems.filter(i => i.fabricId)) {
+        if (!fabricStock[item.fabricId]) {
+          fabricStock[item.fabricId] = { quantity: 0, lastPrice: 0, avgPrice: 0, totalValue: 0 };
+        }
+        const qty = parseFloat(item.quantity?.toString() || "0");
+        const price = parseFloat(item.price?.toString() || "0");
+        fabricStock[item.fabricId].quantity += qty;
+        fabricStock[item.fabricId].lastPrice = price;
+        fabricStock[item.fabricId].totalValue += qty * price;
+      }
+      
+      // Calculate component stock
+      const componentStock: Record<string, { quantity: number; lastPrice: number; avgPrice: number; totalValue: number }> = {};
+      for (const item of allItems.filter(i => i.componentId)) {
+        if (!componentStock[item.componentId]) {
+          componentStock[item.componentId] = { quantity: 0, lastPrice: 0, avgPrice: 0, totalValue: 0 };
+        }
+        const qty = parseFloat(item.quantity?.toString() || "0");
+        const price = parseFloat(item.price?.toString() || "0");
+        componentStock[item.componentId].quantity += qty;
+        componentStock[item.componentId].lastPrice = price;
+        componentStock[item.componentId].totalValue += qty * price;
+      }
+      
+      // Calculate average prices
+      for (const id of Object.keys(fabricStock)) {
+        if (fabricStock[id].quantity > 0) {
+          fabricStock[id].avgPrice = fabricStock[id].totalValue / fabricStock[id].quantity;
+        }
+      }
+      for (const id of Object.keys(componentStock)) {
+        if (componentStock[id].quantity > 0) {
+          componentStock[id].avgPrice = componentStock[id].totalValue / componentStock[id].quantity;
+        }
+      }
+      
+      // Build response with fabric/component details
+      const fabricStockList = fabrics.map(f => ({
+        ...f,
+        stock: fabricStock[f.id] || { quantity: 0, lastPrice: 0, avgPrice: 0, totalValue: 0 },
+      }));
+      
+      const componentStockList = components.map(c => ({
+        ...c,
+        stock: componentStock[c.id] || { quantity: 0, lastPrice: 0, avgPrice: 0, totalValue: 0 },
+      }));
+      
+      res.json({
+        fabrics: fabricStockList,
+        components: componentStockList,
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Ошибка сервера" });
+    }
+  });
+
   // ===== REPORTS =====
   
   // DDS Report (Cash Flow)

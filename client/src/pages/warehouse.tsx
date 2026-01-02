@@ -18,7 +18,8 @@ import { Separator } from "@/components/ui/separator";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Loader2, Eye, Trash2, X } from "lucide-react";
+import { Plus, Loader2, Eye, Trash2, X, Package } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { type WarehouseReceipt, type Supplier, type Fabric, type Component } from "@shared/schema";
@@ -63,6 +64,21 @@ interface WarehouseReceiptWithRelations extends WarehouseReceipt {
   items?: ReceiptItem[];
 }
 
+interface StockItem {
+  quantity: number;
+  lastPrice: number;
+  avgPrice: number;
+  totalValue: number;
+}
+
+interface FabricWithStock extends Fabric {
+  stock: StockItem;
+}
+
+interface ComponentWithStock extends Component {
+  stock: StockItem;
+}
+
 export default function WarehousePage() {
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -89,6 +105,13 @@ export default function WarehousePage() {
   const { data: components = [] } = useQuery<Component[]>({
     queryKey: ["/api/components"],
   });
+
+  const { data: stockData, isLoading: stockLoading } = useQuery<{ fabrics: FabricWithStock[]; components: ComponentWithStock[] }>({
+    queryKey: ["/api/stock"],
+  });
+
+  const fabricStock = stockData?.fabrics || [];
+  const componentStock = stockData?.components || [];
 
   const form = useForm<WarehouseFormValues>({
     resolver: zodResolver(warehouseSchema),
@@ -138,6 +161,7 @@ export default function WarehousePage() {
       queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/fabrics"] });
       queryClient.invalidateQueries({ queryKey: ["/api/components"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stock"] });
       setIsDialogOpen(false);
       form.reset({
         supplierId: "",
@@ -157,6 +181,7 @@ export default function WarehousePage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/warehouse"] });
       queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stock"] });
       setIsDeleteDialogOpen(false);
       setReceiptToDelete(null);
       toast({ title: "Успешно", description: "Поступление удалено" });
@@ -541,31 +566,144 @@ export default function WarehousePage() {
         </Dialog>
       </div>
 
-      <FilterBar
-        search={search}
-        onSearchChange={setSearch}
-        searchPlaceholder="Поиск..."
-        showDateFilter
-        dateRange={dateRange}
-        onDateRangeChange={setDateRange}
-        filters={[
-          {
-            key: "supplier",
-            label: "Поставщик",
-            value: supplierFilter,
-            options: suppliers.map(s => ({ value: s.id, label: s.name })),
-            onChange: setSupplierFilter,
-          },
-        ]}
-      />
+      <Tabs defaultValue="receipts" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="receipts" data-testid="tab-receipts">Поступления</TabsTrigger>
+          <TabsTrigger value="stock" data-testid="tab-stock">Остатки</TabsTrigger>
+        </TabsList>
 
-      <DataTable
-        columns={columns}
-        data={filteredReceipts}
-        isLoading={isLoading}
-        emptyMessage="Поступления не найдены"
-        getRowKey={(r) => r.id}
-      />
+        <TabsContent value="receipts" className="space-y-4">
+          <FilterBar
+            search={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Поиск..."
+            showDateFilter
+            dateRange={dateRange}
+            onDateRangeChange={setDateRange}
+            filters={[
+              {
+                key: "supplier",
+                label: "Поставщик",
+                value: supplierFilter,
+                options: suppliers.map(s => ({ value: s.id, label: s.name })),
+                onChange: setSupplierFilter,
+              },
+            ]}
+          />
+
+          <DataTable
+            columns={columns}
+            data={filteredReceipts}
+            isLoading={isLoading}
+            emptyMessage="Поступления не найдены"
+            getRowKey={(r) => r.id}
+          />
+        </TabsContent>
+
+        <TabsContent value="stock" className="space-y-6">
+          {stockLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+          <>
+          <div>
+            <h3 className="text-lg font-medium mb-4 flex items-center gap-2">
+              <Package className="h-5 w-5" />
+              Остатки тканей
+            </h3>
+            {fabricStock.length === 0 ? (
+              <p className="text-muted-foreground">Ткани не найдены</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {fabricStock.filter(f => f.stock.quantity > 0).map((fabric) => (
+                  <Card key={fabric.id}>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base flex items-center justify-between gap-2">
+                        <span className="truncate">{fabric.name}</span>
+                        {fabric.category && <Badge variant="secondary">{fabric.category}</Badge>}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div>
+                          <p className="text-muted-foreground">Остаток</p>
+                          <p className="font-medium">{fabric.stock.quantity.toFixed(2)} {fabric.width ? "м" : ""}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Посл. цена</p>
+                          <p className="font-medium">{formatCurrency(fabric.stock.lastPrice)}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Ср. цена</p>
+                          <p className="font-medium">{formatCurrency(fabric.stock.avgPrice)}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Сумма</p>
+                          <p className="font-medium">{formatCurrency(fabric.stock.totalValue)}</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+            {fabricStock.filter(f => f.stock.quantity > 0).length === 0 && fabricStock.length > 0 && (
+              <p className="text-muted-foreground">Нет тканей с остатком</p>
+            )}
+          </div>
+
+          <Separator />
+
+          <div>
+            <h3 className="text-lg font-medium mb-4 flex items-center gap-2">
+              <Package className="h-5 w-5" />
+              Остатки комплектующих
+            </h3>
+            {componentStock.length === 0 ? (
+              <p className="text-muted-foreground">Комплектующие не найдены</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {componentStock.filter(c => c.stock.quantity > 0).map((component) => (
+                  <Card key={component.id}>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base flex items-center justify-between gap-2">
+                        <span className="truncate">{component.name}</span>
+                        {component.unit && <Badge variant="secondary">{component.unit}</Badge>}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div>
+                          <p className="text-muted-foreground">Остаток</p>
+                          <p className="font-medium">{component.stock.quantity.toFixed(2)} {component.unit || ""}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Посл. цена</p>
+                          <p className="font-medium">{formatCurrency(component.stock.lastPrice)}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Ср. цена</p>
+                          <p className="font-medium">{formatCurrency(component.stock.avgPrice)}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Сумма</p>
+                          <p className="font-medium">{formatCurrency(component.stock.totalValue)}</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+            {componentStock.filter(c => c.stock.quantity > 0).length === 0 && componentStock.length > 0 && (
+              <p className="text-muted-foreground">Нет комплектующих с остатком</p>
+            )}
+          </div>
+          </>
+          )}
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
         <DialogContent className="max-w-2xl">
