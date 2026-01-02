@@ -707,6 +707,23 @@ export async function registerRoutes(
 
   app.delete("/api/finance/:id/hard", authMiddleware, async (req: AuthRequest, res: Response) => {
     try {
+      const { password } = req.body;
+      const user = await storage.getUser(req.userId!);
+      
+      if (!user) {
+        return res.status(401).json({ message: "Пользователь не найден" });
+      }
+      
+      if (user.reportPassword) {
+        if (!password) {
+          return res.status(403).json({ message: "Требуется пароль", requiresPassword: true });
+        }
+        const isValid = await bcrypt.compare(password, user.reportPassword);
+        if (!isValid) {
+          return res.status(403).json({ message: "Неверный пароль" });
+        }
+      }
+      
       await storage.hardDeleteFinanceOperation(req.params.id);
       res.json({ success: true });
     } catch (error) {
