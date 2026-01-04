@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
@@ -363,18 +364,20 @@ export default function WarehousePage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Поставщик</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger data-testid="select-supplier">
-                              <SelectValue placeholder="Выберите поставщика" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {suppliers.map((s) => (
-                              <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <FormControl>
+                          <SearchableSelect
+                            options={suppliers.map((supplier) => ({
+                              value: supplier.id,
+                              label: supplier.name,
+                            }))}
+                            value={field.value}
+                            onValueChange={field.onChange}
+                            placeholder="Выберите поставщика"
+                            searchPlaceholder="Поиск поставщика..."
+                            emptyText="Поставщик не найден"
+                            data-testid="select-supplier"
+                          />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -465,24 +468,23 @@ export default function WarehousePage() {
                               render={({ field }) => (
                                 <FormItem>
                                   <FormLabel>Ткань</FormLabel>
-                                  <Select 
-                                    onValueChange={(value) => {
-                                      field.onChange(value);
-                                      fetchPreviousPrice("fabric", value, index);
-                                    }} 
-                                    value={field.value}
-                                  >
-                                    <FormControl>
-                                      <SelectTrigger data-testid={`select-fabric-${index}`}>
-                                        <SelectValue placeholder="Выберите ткань" />
-                                      </SelectTrigger>
-                                    </FormControl>
-                                    <SelectContent>
-                                      {fabrics.map((f) => (
-                                        <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
+                                  <FormControl>
+                                    <SearchableSelect
+                                      options={fabrics.map((fabric) => ({
+                                        value: fabric.id,
+                                        label: fabric.name,
+                                      }))}
+                                      value={field.value}
+                                      onValueChange={(value) => {
+                                        field.onChange(value);
+                                        fetchPreviousPrice("fabric", value, index);
+                                      }}
+                                      placeholder="Выберите ткань"
+                                      searchPlaceholder="Поиск ткани..."
+                                      emptyText="Ткань не найдена"
+                                      data-testid={`select-fabric-${index}`}
+                                    />
+                                  </FormControl>
                                   <FormMessage />
                                 </FormItem>
                               )}
@@ -494,24 +496,23 @@ export default function WarehousePage() {
                               render={({ field }) => (
                                 <FormItem>
                                   <FormLabel>Комплектующие</FormLabel>
-                                  <Select 
-                                    onValueChange={(value) => {
-                                      field.onChange(value);
-                                      fetchPreviousPrice("component", value, index);
-                                    }} 
-                                    value={field.value}
-                                  >
-                                    <FormControl>
-                                      <SelectTrigger data-testid={`select-component-${index}`}>
-                                        <SelectValue placeholder="Выберите" />
-                                      </SelectTrigger>
-                                    </FormControl>
-                                    <SelectContent>
-                                      {components.map((c) => (
-                                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
+                                  <FormControl>
+                                    <SearchableSelect
+                                      options={components.map((component) => ({
+                                        value: component.id,
+                                        label: component.name,
+                                      }))}
+                                      value={field.value}
+                                      onValueChange={(value) => {
+                                        field.onChange(value);
+                                        fetchPreviousPrice("component", value, index);
+                                      }}
+                                      placeholder="Выберите комплектующую"
+                                      searchPlaceholder="Поиск комплектующей..."
+                                      emptyText="Комплектующая не найдена"
+                                      data-testid={`select-component-${index}`}
+                                    />
+                                  </FormControl>
                                   <FormMessage />
                                 </FormItem>
                               )}

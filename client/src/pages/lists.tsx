@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -592,15 +593,15 @@ function SystemsTab({ search }: { search: string }) {
                 <div className="grid grid-cols-2 gap-2">
                   <FormField control={form.control} name="name" render={({ field }) => (<FormItem><FormControl><Input placeholder="Название" {...field} className="h-8 text-sm" data-testid="input-system-name" /></FormControl><FormMessage /></FormItem>)} />
                   <FormField control={form.control} name="colorId" render={({ field }) => (
-                    <FormItem><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Цвет" /></SelectTrigger></FormControl><SelectContent>{colors.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
+                    <FormItem><FormControl><SearchableSelect options={colors.map((color) => ({ value: color.id, label: color.name }))} value={field.value} onValueChange={field.onChange} placeholder="Цвет" searchPlaceholder="Поиск цвета..." emptyText="Цвет не найден" className="h-8 text-sm" /></FormControl><FormMessage /></FormItem>
                   )} />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <FormField control={form.control} name="systemKey" render={({ field }) => (
-                    <FormItem><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Ключ системы" /></SelectTrigger></FormControl><SelectContent>{availableKeys.systemKeys.map((k) => <SelectItem key={k} value={k}>{k}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
+                    <FormItem><FormControl><SearchableSelect options={availableKeys.systemKeys.map((key) => ({ value: key, label: key }))} value={field.value} onValueChange={field.onChange} placeholder="Ключ системы" searchPlaceholder="Поиск ключа..." emptyText="Ключ не найден" className="h-8 text-sm" /></FormControl><FormMessage /></FormItem>
                   )} />
                   <FormField control={form.control} name="multiplierId" render={({ field }) => (
-                    <FormItem><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Множитель" /></SelectTrigger></FormControl><SelectContent>{multipliersData.map((m) => <SelectItem key={m.id} value={m.id}>{m.name || m.value} (×{m.value})</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
+                    <FormItem><FormControl><SearchableSelect options={multipliersData.map((multiplier) => ({ value: multiplier.id, label: `${multiplier.name || multiplier.value} (×${multiplier.value})` }))} value={field.value} onValueChange={field.onChange} placeholder="Множитель" searchPlaceholder="Поиск множителя..." emptyText="Множитель не найден" className="h-8 text-sm" /></FormControl><FormMessage /></FormItem>
                   )} />
                 </div>
                 <FormField control={form.control} name="formula" render={({ field }) => (<FormItem><FormControl><Input placeholder="Формула (опционально)" {...field} className="h-8 text-sm" data-testid="input-system-formula" /></FormControl><FormMessage /></FormItem>)} />
@@ -615,10 +616,19 @@ function SystemsTab({ search }: { search: string }) {
                     return (
                       <div key={idx} className="pb-2 mb-2 border-b border-border/50 last:border-0 last:pb-0 last:mb-0">
                         <div className="flex gap-1 items-center">
-                          <Select value={sc.componentId} onValueChange={(v) => updateComponent(idx, "componentId", v)}>
-                            <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="Комплектующее" /></SelectTrigger>
-                            <SelectContent>{componentsData.map((c) => <SelectItem key={c.id} value={c.id}>{c.name} ({c.unit})</SelectItem>)}</SelectContent>
-                          </Select>
+                          <SearchableSelect
+                            options={componentsData.map((component) => ({
+                              value: component.id,
+                              label: component.name,
+                              secondaryLabel: `(${component.unit})`,
+                            }))}
+                            value={sc.componentId}
+                            onValueChange={(v) => updateComponent(idx, "componentId", v)}
+                            placeholder="Комплектующее"
+                            searchPlaceholder="Поиск комплектующего..."
+                            emptyText="Комплектующее не найдено"
+                            className="h-7 text-xs flex-1"
+                          />
                           {/* Количество для всех типов */}
                           <Input type="number" placeholder="Кол-во" value={sc.quantity} onChange={(e) => updateComponent(idx, "quantity", e.target.value)} className="h-7 w-14 text-xs" />
                           {/* Для метровых комплектующих - выбор размера и множитель */}
