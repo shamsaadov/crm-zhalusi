@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useState, useMemo } from "react";
+import { useQuery, useMutation, useInfiniteQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import { DataTable } from "@/components/data-table";
 import { FilterBar } from "@/components/filter-bar";
@@ -19,6 +19,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Plus, Loader2, ArrowUpCircle, ArrowDownCircle, ArrowRightLeft, CreditCard, Edit, Trash2, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { type FinanceOperation, type Dealer, type Supplier, type Cashbox, type ExpenseType } from "@shared/schema";
 import { format } from "date-fns";
@@ -94,13 +95,41 @@ export default function FinancePage() {
   const [deletePassword, setDeletePassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
 
-  const { data: operations = [], isLoading } = useQuery<FinanceOperationWithRelations[]>({
-    queryKey: ["/api/finance", { includeDrafts: showDrafts }],
-    queryFn: async () => {
-      const res = await fetch(`/api/finance?includeDrafts=${showDrafts}`, { credentials: "include" });
+  const {
+    data: operationsData,
+    isLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery<{
+    data: FinanceOperationWithRelations[];
+    nextCursor: string | null;
+    hasMore: boolean;
+  }>({
+    queryKey: ["/api/finance", { includeDrafts: showDrafts, paginated: true }],
+    queryFn: async ({ pageParam }) => {
+      const params = new URLSearchParams({
+        paginated: "true",
+        limit: "20",
+        includeDrafts: String(showDrafts),
+      });
+      if (pageParam) params.set("cursor", pageParam as string);
+      const res = await fetch(`/api/finance?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error("Ошибка загрузки");
       return res.json();
     },
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+  });
+
+  const operations = useMemo(() => {
+    return operationsData?.pages.flatMap((page) => page.data) ?? [];
+  }, [operationsData]);
+
+  const { loadMoreRef } = useInfiniteScroll({
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
   });
 
   const { data: cashboxes = [] } = useQuery<Cashbox[]>({
@@ -903,6 +932,9 @@ export default function FinancePage() {
         isLoading={isLoading}
         emptyMessage={showDrafts ? "Черновики не найдены" : "Операции не найдены"}
         getRowKey={(op) => op.id}
+        hasNextPage={hasNextPage}
+        isFetchingNextPage={isFetchingNextPage}
+        loadMoreRef={loadMoreRef}
       />
 
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>

@@ -1,15 +1,16 @@
 import { eq, and, sql, gte, lte, desc, sum, isNull, ne, or } from "drizzle-orm";
 import { db } from "./db";
 import {
-  users, colors, fabrics, dealers, cashboxes, systems,
+  users, colors, fabrics, dealers, cashboxes, systems, systemComponents,
   expenseTypes, components, multipliers, suppliers,
-  orders, orderSashes, financeOperations, warehouseReceipts, warehouseReceiptItems,
+  orders, orderSashes, financeOperations, warehouseReceipts, warehouseReceiptItems, warehouseWriteoffs,
   type User, type InsertUser,
   type Color, type InsertColor,
   type Fabric, type InsertFabric,
   type Dealer, type InsertDealer,
   type Cashbox, type InsertCashbox,
   type System, type InsertSystem,
+  type SystemComponent, type InsertSystemComponent,
   type ExpenseType, type InsertExpenseType,
   type Component, type InsertComponent,
   type Multiplier, type InsertMultiplier,
@@ -19,7 +20,20 @@ import {
   type FinanceOperation, type InsertFinanceOperation,
   type WarehouseReceipt, type InsertWarehouseReceipt,
   type WarehouseReceiptItem, type InsertWarehouseReceiptItem,
+  type WarehouseWriteoff, type InsertWarehouseWriteoff,
 } from "@shared/schema";
+
+// Pagination types
+export interface PaginationParams {
+  limit?: number;
+  cursor?: string;
+}
+
+export interface PaginatedResult<T> {
+  data: T[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
 
 export interface IStorage {
   // Users
@@ -58,6 +72,11 @@ export interface IStorage {
   updateSystem(id: string, system: Partial<InsertSystem>): Promise<System | undefined>;
   deleteSystem(id: string): Promise<void>;
 
+  // System Components
+  getSystemComponents(systemId: string): Promise<SystemComponent[]>;
+  createSystemComponent(systemComponent: InsertSystemComponent): Promise<SystemComponent>;
+  deleteSystemComponentsBySystemId(systemId: string): Promise<void>;
+
   // Expense Types
   getExpenseTypes(userId: string): Promise<ExpenseType[]>;
   createExpenseType(expenseType: InsertExpenseType): Promise<ExpenseType>;
@@ -84,6 +103,7 @@ export interface IStorage {
 
   // Orders
   getOrders(userId: string): Promise<Order[]>;
+  getOrdersPaginated(userId: string, params: PaginationParams): Promise<PaginatedResult<Order>>;
   getOrder(id: string): Promise<Order | undefined>;
   getNextOrderNumber(userId: string): Promise<number>;
   createOrder(order: InsertOrder): Promise<Order>;
@@ -99,6 +119,7 @@ export interface IStorage {
 
   // Finance Operations
   getFinanceOperations(userId: string, includeDrafts?: boolean): Promise<FinanceOperation[]>;
+  getFinanceOperationsPaginated(userId: string, includeDrafts: boolean, params: PaginationParams): Promise<PaginatedResult<FinanceOperation>>;
   getFinanceOperation(id: string): Promise<FinanceOperation | undefined>;
   createFinanceOperation(operation: InsertFinanceOperation): Promise<FinanceOperation>;
   updateFinanceOperation(id: string, operation: Partial<InsertFinanceOperation>): Promise<FinanceOperation | undefined>;
@@ -108,6 +129,7 @@ export interface IStorage {
 
   // Warehouse
   getWarehouseReceipts(userId: string): Promise<WarehouseReceipt[]>;
+  getWarehouseReceiptsPaginated(userId: string, params: PaginationParams): Promise<PaginatedResult<WarehouseReceipt>>;
   getWarehouseReceipt(id: string): Promise<WarehouseReceipt | undefined>;
   createWarehouseReceipt(receipt: InsertWarehouseReceipt): Promise<WarehouseReceipt>;
   updateWarehouseReceipt(id: string, receipt: Partial<InsertWarehouseReceipt>): Promise<WarehouseReceipt | undefined>;
@@ -118,6 +140,12 @@ export interface IStorage {
   createWarehouseReceiptItem(item: InsertWarehouseReceiptItem): Promise<WarehouseReceiptItem>;
   deleteWarehouseReceiptItemsByReceiptId(receiptId: string): Promise<void>;
   getPreviousPrice(itemType: string, itemId: string): Promise<string | null>;
+
+  // Warehouse Writeoffs
+  getWarehouseWriteoffs(userId: string): Promise<WarehouseWriteoff[]>;
+  getWarehouseWriteoffsByOrderId(orderId: string): Promise<WarehouseWriteoff[]>;
+  createWarehouseWriteoff(writeoff: InsertWarehouseWriteoff): Promise<WarehouseWriteoff>;
+  deleteWarehouseWriteoffsByOrderId(orderId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -301,6 +329,20 @@ export class DatabaseStorage implements IStorage {
     await db.delete(systems).where(eq(systems.id, id));
   }
 
+  // System Components
+  async getSystemComponents(systemId: string): Promise<SystemComponent[]> {
+    return db.select().from(systemComponents).where(eq(systemComponents.systemId, systemId));
+  }
+
+  async createSystemComponent(systemComponent: InsertSystemComponent): Promise<SystemComponent> {
+    const [created] = await db.insert(systemComponents).values(systemComponent).returning();
+    return created;
+  }
+
+  async deleteSystemComponentsBySystemId(systemId: string): Promise<void> {
+    await db.delete(systemComponents).where(eq(systemComponents.systemId, systemId));
+  }
+
   // Expense Types
   async getExpenseTypes(userId: string): Promise<ExpenseType[]> {
     return db.select().from(expenseTypes).where(eq(expenseTypes.userId, userId));
@@ -405,6 +447,40 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(orders).where(eq(orders.userId, userId)).orderBy(desc(orders.date));
   }
 
+  async getOrdersPaginated(userId: string, params: PaginationParams): Promise<PaginatedResult<Order>> {
+    const limit = params.limit || 20;
+    const cursor = params.cursor;
+    
+    let query = db.select().from(orders).where(eq(orders.userId, userId));
+    
+    if (cursor) {
+      // Cursor is the date-id combination for stable pagination
+      const [cursorDate, cursorId] = cursor.split('_');
+      query = db.select().from(orders).where(
+        and(
+          eq(orders.userId, userId),
+          or(
+            sql`${orders.date} < ${cursorDate}`,
+            and(
+              sql`${orders.date} = ${cursorDate}`,
+              sql`${orders.id} < ${cursorId}`
+            )
+          )
+        )
+      );
+    }
+    
+    const data = await query.orderBy(desc(orders.date), desc(orders.id)).limit(limit + 1);
+    
+    const hasMore = data.length > limit;
+    const results = hasMore ? data.slice(0, limit) : data;
+    
+    const lastItem = results[results.length - 1];
+    const nextCursor = hasMore && lastItem ? `${lastItem.date}_${lastItem.id}` : null;
+    
+    return { data: results, nextCursor, hasMore };
+  }
+
   async getOrder(id: string): Promise<Order | undefined> {
     const [order] = await db.select().from(orders).where(eq(orders.id, id));
     return order || undefined;
@@ -465,6 +541,45 @@ export class DatabaseStorage implements IStorage {
     ).orderBy(desc(financeOperations.date));
   }
 
+  async getFinanceOperationsPaginated(userId: string, includeDrafts: boolean, params: PaginationParams): Promise<PaginatedResult<FinanceOperation>> {
+    const limit = params.limit || 20;
+    const cursor = params.cursor;
+    
+    const baseCondition = includeDrafts
+      ? eq(financeOperations.userId, userId)
+      : and(eq(financeOperations.userId, userId), eq(financeOperations.isDraft, false));
+    
+    let query;
+    
+    if (cursor) {
+      const [cursorDate, cursorId] = cursor.split('_');
+      query = db.select().from(financeOperations).where(
+        and(
+          baseCondition,
+          or(
+            sql`${financeOperations.date} < ${cursorDate}`,
+            and(
+              sql`${financeOperations.date} = ${cursorDate}`,
+              sql`${financeOperations.id} < ${cursorId}`
+            )
+          )
+        )
+      );
+    } else {
+      query = db.select().from(financeOperations).where(baseCondition);
+    }
+    
+    const data = await query.orderBy(desc(financeOperations.date), desc(financeOperations.id)).limit(limit + 1);
+    
+    const hasMore = data.length > limit;
+    const results = hasMore ? data.slice(0, limit) : data;
+    
+    const lastItem = results[results.length - 1];
+    const nextCursor = hasMore && lastItem ? `${lastItem.date}_${lastItem.id}` : null;
+    
+    return { data: results, nextCursor, hasMore };
+  }
+
   async getFinanceOperation(id: string): Promise<FinanceOperation | undefined> {
     const [op] = await db.select().from(financeOperations).where(eq(financeOperations.id, id));
     return op || undefined;
@@ -503,6 +618,41 @@ export class DatabaseStorage implements IStorage {
   // Warehouse
   async getWarehouseReceipts(userId: string): Promise<WarehouseReceipt[]> {
     return db.select().from(warehouseReceipts).where(eq(warehouseReceipts.userId, userId)).orderBy(desc(warehouseReceipts.date));
+  }
+
+  async getWarehouseReceiptsPaginated(userId: string, params: PaginationParams): Promise<PaginatedResult<WarehouseReceipt>> {
+    const limit = params.limit || 20;
+    const cursor = params.cursor;
+    
+    let query;
+    
+    if (cursor) {
+      const [cursorDate, cursorId] = cursor.split('_');
+      query = db.select().from(warehouseReceipts).where(
+        and(
+          eq(warehouseReceipts.userId, userId),
+          or(
+            sql`${warehouseReceipts.date} < ${cursorDate}`,
+            and(
+              sql`${warehouseReceipts.date} = ${cursorDate}`,
+              sql`${warehouseReceipts.id} < ${cursorId}`
+            )
+          )
+        )
+      );
+    } else {
+      query = db.select().from(warehouseReceipts).where(eq(warehouseReceipts.userId, userId));
+    }
+    
+    const data = await query.orderBy(desc(warehouseReceipts.date), desc(warehouseReceipts.id)).limit(limit + 1);
+    
+    const hasMore = data.length > limit;
+    const results = hasMore ? data.slice(0, limit) : data;
+    
+    const lastItem = results[results.length - 1];
+    const nextCursor = hasMore && lastItem ? `${lastItem.date}_${lastItem.id}` : null;
+    
+    return { data: results, nextCursor, hasMore };
   }
 
   async getWarehouseReceipt(id: string): Promise<WarehouseReceipt | undefined> {
@@ -551,6 +701,24 @@ export class DatabaseStorage implements IStorage {
       .limit(1);
     
     return result[0]?.price?.toString() || null;
+  }
+
+  // Warehouse Writeoffs
+  async getWarehouseWriteoffs(userId: string): Promise<WarehouseWriteoff[]> {
+    return db.select().from(warehouseWriteoffs).where(eq(warehouseWriteoffs.userId, userId));
+  }
+
+  async getWarehouseWriteoffsByOrderId(orderId: string): Promise<WarehouseWriteoff[]> {
+    return db.select().from(warehouseWriteoffs).where(eq(warehouseWriteoffs.orderId, orderId));
+  }
+
+  async createWarehouseWriteoff(writeoff: InsertWarehouseWriteoff): Promise<WarehouseWriteoff> {
+    const [created] = await db.insert(warehouseWriteoffs).values(writeoff).returning();
+    return created;
+  }
+
+  async deleteWarehouseWriteoffsByOrderId(orderId: string): Promise<void> {
+    await db.delete(warehouseWriteoffs).where(eq(warehouseWriteoffs.orderId, orderId));
   }
 }
 

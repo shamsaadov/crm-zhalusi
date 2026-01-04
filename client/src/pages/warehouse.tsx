@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useState, useEffect, useMemo } from "react";
+import { useQuery, useMutation, useInfiniteQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import { DataTable } from "@/components/data-table";
 import { FilterBar } from "@/components/filter-bar";
@@ -21,6 +21,7 @@ import { z } from "zod";
 import { Plus, Loader2, Eye, Trash2, X, Package } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
+import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { type WarehouseReceipt, type Supplier, type Fabric, type Component } from "@shared/schema";
 import { format } from "date-fns";
@@ -90,8 +91,37 @@ export default function WarehousePage() {
   const [supplierFilter, setSupplierFilter] = useState("all");
   const [search, setSearch] = useState("");
 
-  const { data: receipts = [], isLoading } = useQuery<WarehouseReceiptWithRelations[]>({
-    queryKey: ["/api/warehouse"],
+  const {
+    data: receiptsData,
+    isLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery<{
+    data: WarehouseReceiptWithRelations[];
+    nextCursor: string | null;
+    hasMore: boolean;
+  }>({
+    queryKey: ["/api/warehouse", { paginated: true }],
+    queryFn: async ({ pageParam }) => {
+      const params = new URLSearchParams({ paginated: "true", limit: "20" });
+      if (pageParam) params.set("cursor", pageParam as string);
+      const res = await fetch(`/api/warehouse?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Ошибка загрузки");
+      return res.json();
+    },
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+  });
+
+  const receipts = useMemo(() => {
+    return receiptsData?.pages.flatMap((page) => page.data) ?? [];
+  }, [receiptsData]);
+
+  const { loadMoreRef } = useInfiniteScroll({
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
   });
 
   const { data: suppliers = [] } = useQuery<Supplier[]>({
@@ -597,10 +627,13 @@ export default function WarehousePage() {
             isLoading={isLoading}
             emptyMessage="Поступления не найдены"
             getRowKey={(r) => r.id}
+            hasNextPage={hasNextPage}
+            isFetchingNextPage={isFetchingNextPage}
+            loadMoreRef={loadMoreRef}
           />
         </TabsContent>
 
-        <TabsContent value="stock" className="space-y-6">
+        <TabsContent value="stock" className="space-y-4">
           {stockLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -608,96 +641,90 @@ export default function WarehousePage() {
           ) : (
           <>
           <div>
-            <h3 className="text-lg font-medium mb-4 flex items-center gap-2">
-              <Package className="h-5 w-5" />
-              Остатки тканей
+            <h3 className="text-sm font-medium mb-2 flex items-center gap-2 text-muted-foreground">
+              <Package className="h-4 w-4" />
+              Ткани ({fabricStock.filter(f => f.stock.quantity > 0).length})
             </h3>
-            {fabricStock.length === 0 ? (
-              <p className="text-muted-foreground">Ткани не найдены</p>
+            {fabricStock.filter(f => f.stock.quantity > 0).length === 0 ? (
+              <p className="text-muted-foreground text-sm">Нет тканей с остатком</p>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {fabricStock.filter(f => f.stock.quantity > 0).map((fabric) => (
-                  <Card key={fabric.id}>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-base flex items-center justify-between gap-2">
-                        <span className="truncate">{fabric.name}</span>
-                        {fabric.category && <Badge variant="secondary">{fabric.category}</Badge>}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        <div>
-                          <p className="text-muted-foreground">Остаток</p>
-                          <p className="font-medium">{fabric.stock.quantity.toFixed(2)} {fabric.width ? "м" : ""}</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Посл. цена</p>
-                          <p className="font-medium">{formatCurrency(fabric.stock.lastPrice)}</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Ср. цена</p>
-                          <p className="font-medium">{formatCurrency(fabric.stock.avgPrice)}</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Сумма</p>
-                          <p className="font-medium">{formatCurrency(fabric.stock.totalValue)}</p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+              <div className="border rounded-md overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50">
+                    <tr className="border-b">
+                      <th className="text-left py-2 px-3 font-medium">Наименование</th>
+                      <th className="text-left py-2 px-3 font-medium w-24">Категория</th>
+                      <th className="text-right py-2 px-3 font-medium w-24">Остаток</th>
+                      <th className="text-right py-2 px-3 font-medium w-28">Цена</th>
+                      <th className="text-right py-2 px-3 font-medium w-32">Сумма</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {fabricStock.filter(f => f.stock.quantity > 0).map((fabric) => (
+                      <tr key={fabric.id} className="hover:bg-muted/30 transition-colors">
+                        <td className="py-1.5 px-3">{fabric.name}</td>
+                        <td className="py-1.5 px-3">
+                          {fabric.category && <Badge variant="outline" className="text-xs py-0">{fabric.category}</Badge>}
+                        </td>
+                        <td className="py-1.5 px-3 text-right font-mono">{fabric.stock.quantity.toFixed(2)}</td>
+                        <td className="py-1.5 px-3 text-right font-mono">{formatCurrency(fabric.stock.lastPrice)}</td>
+                        <td className="py-1.5 px-3 text-right font-mono font-medium">{formatCurrency(fabric.stock.totalValue)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-muted/50 border-t">
+                    <tr>
+                      <td colSpan={4} className="py-2 px-3 text-right font-medium">Итого:</td>
+                      <td className="py-2 px-3 text-right font-mono font-semibold">
+                        {formatCurrency(fabricStock.filter(f => f.stock.quantity > 0).reduce((sum, f) => sum + f.stock.totalValue, 0))}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
               </div>
-            )}
-            {fabricStock.filter(f => f.stock.quantity > 0).length === 0 && fabricStock.length > 0 && (
-              <p className="text-muted-foreground">Нет тканей с остатком</p>
             )}
           </div>
 
-          <Separator />
-
           <div>
-            <h3 className="text-lg font-medium mb-4 flex items-center gap-2">
-              <Package className="h-5 w-5" />
-              Остатки комплектующих
+            <h3 className="text-sm font-medium mb-2 flex items-center gap-2 text-muted-foreground">
+              <Package className="h-4 w-4" />
+              Комплектующие ({componentStock.filter(c => c.stock.quantity > 0).length})
             </h3>
-            {componentStock.length === 0 ? (
-              <p className="text-muted-foreground">Комплектующие не найдены</p>
+            {componentStock.filter(c => c.stock.quantity > 0).length === 0 ? (
+              <p className="text-muted-foreground text-sm">Нет комплектующих с остатком</p>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {componentStock.filter(c => c.stock.quantity > 0).map((component) => (
-                  <Card key={component.id}>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-base flex items-center justify-between gap-2">
-                        <span className="truncate">{component.name}</span>
-                        {component.unit && <Badge variant="secondary">{component.unit}</Badge>}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        <div>
-                          <p className="text-muted-foreground">Остаток</p>
-                          <p className="font-medium">{component.stock.quantity.toFixed(2)} {component.unit || ""}</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Посл. цена</p>
-                          <p className="font-medium">{formatCurrency(component.stock.lastPrice)}</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Ср. цена</p>
-                          <p className="font-medium">{formatCurrency(component.stock.avgPrice)}</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Сумма</p>
-                          <p className="font-medium">{formatCurrency(component.stock.totalValue)}</p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+              <div className="border rounded-md overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50">
+                    <tr className="border-b">
+                      <th className="text-left py-2 px-3 font-medium">Наименование</th>
+                      <th className="text-left py-2 px-3 font-medium w-20">Ед.</th>
+                      <th className="text-right py-2 px-3 font-medium w-24">Остаток</th>
+                      <th className="text-right py-2 px-3 font-medium w-28">Цена</th>
+                      <th className="text-right py-2 px-3 font-medium w-32">Сумма</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {componentStock.filter(c => c.stock.quantity > 0).map((component) => (
+                      <tr key={component.id} className="hover:bg-muted/30 transition-colors">
+                        <td className="py-1.5 px-3">{component.name}</td>
+                        <td className="py-1.5 px-3 text-muted-foreground">{component.unit || "-"}</td>
+                        <td className="py-1.5 px-3 text-right font-mono">{component.stock.quantity.toFixed(2)}</td>
+                        <td className="py-1.5 px-3 text-right font-mono">{formatCurrency(component.stock.lastPrice)}</td>
+                        <td className="py-1.5 px-3 text-right font-mono font-medium">{formatCurrency(component.stock.totalValue)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-muted/50 border-t">
+                    <tr>
+                      <td colSpan={4} className="py-2 px-3 text-right font-medium">Итого:</td>
+                      <td className="py-2 px-3 text-right font-mono font-semibold">
+                        {formatCurrency(componentStock.filter(c => c.stock.quantity > 0).reduce((sum, c) => sum + c.stock.totalValue, 0))}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
               </div>
-            )}
-            {componentStock.filter(c => c.stock.quantity > 0).length === 0 && componentStock.length > 0 && (
-              <p className="text-muted-foreground">Нет комплектующих с остатком</p>
             )}
           </div>
           </>

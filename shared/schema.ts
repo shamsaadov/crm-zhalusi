@@ -42,7 +42,7 @@ export const fabrics = pgTable("fabrics", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
   width: decimal("width", { precision: 10, scale: 2 }),
-  material: text("material"),
+  fabricType: text("fabric_type"), // "zebra" или "roll"
   colorId: varchar("color_id").references(() => colors.id),
   category: text("category"), // 1,2,3,4,5,E
   userId: varchar("user_id").notNull().references(() => users.id),
@@ -96,18 +96,40 @@ export const systems = pgTable("systems", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
   colorId: varchar("color_id").references(() => colors.id),
+  systemKey: text("system_key"),
   formula: text("formula"),
+  multiplierId: varchar("multiplier_id").references(() => multipliers.id, { onDelete: "set null" }),
   userId: varchar("user_id").notNull().references(() => users.id),
 });
 
-export const systemsRelations = relations(systems, ({ one }) => ({
+export const systemsRelations = relations(systems, ({ one, many }) => ({
   user: one(users, { fields: [systems.userId], references: [users.id] }),
   color: one(colors, { fields: [systems.colorId], references: [colors.id] }),
+  systemComponents: many(systemComponents),
 }));
 
 export const insertSystemSchema = createInsertSchema(systems).omit({ id: true });
 export type InsertSystem = z.infer<typeof insertSystemSchema>;
 export type System = typeof systems.$inferSelect;
+
+// System Components junction table
+export const systemComponents = pgTable("system_components", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  systemId: varchar("system_id").notNull().references(() => systems.id, { onDelete: "cascade" }),
+  componentId: varchar("component_id").notNull().references(() => components.id, { onDelete: "cascade" }),
+  quantity: decimal("quantity", { precision: 10, scale: 2 }).default("1"),
+  sizeSource: text("size_source"),
+  sizeMultiplier: decimal("size_multiplier", { precision: 10, scale: 4 }).default("1"),
+});
+
+export const systemComponentsRelations = relations(systemComponents, ({ one }) => ({
+  system: one(systems, { fields: [systemComponents.systemId], references: [systems.id] }),
+  component: one(components, { fields: [systemComponents.componentId], references: [components.id] }),
+}));
+
+export const insertSystemComponentSchema = createInsertSchema(systemComponents).omit({ id: true });
+export type InsertSystemComponent = z.infer<typeof insertSystemComponentSchema>;
+export type SystemComponent = typeof systemComponents.$inferSelect;
 
 // Expense Types reference table
 export const expenseTypes = pgTable("expense_types", {
@@ -208,8 +230,9 @@ export const orderSashes = pgTable("order_sashes", {
   systemId: varchar("system_id").references(() => systems.id),
   systemColorId: varchar("system_color_id").references(() => colors.id),
   controlSide: text("control_side"), // "ЛР" or "ПР"
-  fabricId: varchar("fabric_id").references(() => fabrics.id),
-  fabricColorId: varchar("fabric_color_id").references(() => colors.id),
+  fabricId: varchar("fabric_id").references(() => fabrics.id, { onDelete: "set null" }),
+  fabricColorId: varchar("fabric_color_id").references(() => colors.id, { onDelete: "set null" }),
+  componentId: varchar("component_id").references(() => components.id, { onDelete: "set null" }), // Для заказов товара
   quantity: integer("quantity").default(1),
   sashPrice: decimal("sash_price", { precision: 12, scale: 2 }).default("0"),
   sashCost: decimal("sash_cost", { precision: 12, scale: 2 }).default("0"),
@@ -221,6 +244,7 @@ export const orderSashesRelations = relations(orderSashes, ({ one }) => ({
   systemColor: one(colors, { fields: [orderSashes.systemColorId], references: [colors.id] }),
   fabric: one(fabrics, { fields: [orderSashes.fabricId], references: [fabrics.id] }),
   fabricColor: one(colors, { fields: [orderSashes.fabricColorId], references: [colors.id] }),
+  component: one(components, { fields: [orderSashes.componentId], references: [components.id] }),
 }));
 
 export const insertOrderSashSchema = createInsertSchema(orderSashes).omit({ id: true });
@@ -284,8 +308,8 @@ export const warehouseReceiptItems = pgTable("warehouse_receipt_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   receiptId: varchar("receipt_id").notNull().references(() => warehouseReceipts.id, { onDelete: "cascade" }),
   itemType: text("item_type").notNull(), // "component" or "fabric"
-  componentId: varchar("component_id").references(() => components.id),
-  fabricId: varchar("fabric_id").references(() => fabrics.id),
+  componentId: varchar("component_id").references(() => components.id, { onDelete: "set null" }),
+  fabricId: varchar("fabric_id").references(() => fabrics.id, { onDelete: "set null" }),
   quantity: decimal("quantity", { precision: 12, scale: 2 }).notNull(),
   price: decimal("price", { precision: 12, scale: 2 }).notNull(),
   total: decimal("total", { precision: 12, scale: 2 }).notNull(),
@@ -300,6 +324,31 @@ export const warehouseReceiptItemsRelations = relations(warehouseReceiptItems, (
 export const insertWarehouseReceiptItemSchema = createInsertSchema(warehouseReceiptItems).omit({ id: true });
 export type InsertWarehouseReceiptItem = z.infer<typeof insertWarehouseReceiptItemSchema>;
 export type WarehouseReceiptItem = typeof warehouseReceiptItems.$inferSelect;
+
+// Warehouse Writeoffs table (material consumption by orders)
+export const warehouseWriteoffs = pgTable("warehouse_writeoffs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orderId: varchar("order_id").notNull().references(() => orders.id, { onDelete: "cascade" }),
+  itemType: text("item_type").notNull(), // "component" or "fabric"
+  componentId: varchar("component_id").references(() => components.id),
+  fabricId: varchar("fabric_id").references(() => fabrics.id),
+  quantity: decimal("quantity", { precision: 12, scale: 4 }).notNull(),
+  price: decimal("price", { precision: 12, scale: 2 }).default("0"),
+  total: decimal("total", { precision: 12, scale: 2 }).default("0"),
+  date: date("date").notNull(),
+  userId: varchar("user_id").notNull().references(() => users.id),
+});
+
+export const warehouseWriteoffsRelations = relations(warehouseWriteoffs, ({ one }) => ({
+  order: one(orders, { fields: [warehouseWriteoffs.orderId], references: [orders.id] }),
+  component: one(components, { fields: [warehouseWriteoffs.componentId], references: [components.id] }),
+  fabric: one(fabrics, { fields: [warehouseWriteoffs.fabricId], references: [fabrics.id] }),
+  user: one(users, { fields: [warehouseWriteoffs.userId], references: [users.id] }),
+}));
+
+export const insertWarehouseWriteoffSchema = createInsertSchema(warehouseWriteoffs).omit({ id: true });
+export type InsertWarehouseWriteoff = z.infer<typeof insertWarehouseWriteoffSchema>;
+export type WarehouseWriteoff = typeof warehouseWriteoffs.$inferSelect;
 
 // Auth schemas for validation
 export const loginSchema = z.object({

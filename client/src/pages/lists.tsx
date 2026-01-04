@@ -7,6 +7,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useForm } from "react-hook-form";
@@ -211,8 +213,8 @@ function FabricsTab({ search }: { search: string }) {
   const { data: colors = [] } = useQuery<Color[]>({ queryKey: ["/api/colors"] });
 
   const form = useForm({
-    resolver: zodResolver(z.object({ name: z.string().min(1), width: z.string().optional(), material: z.string().optional(), colorId: z.string().optional(), category: z.string().optional() })),
-    defaultValues: { name: "", width: "", material: "", colorId: "", category: "" },
+    resolver: zodResolver(z.object({ name: z.string().min(1), width: z.string().optional(), fabricType: z.string().optional(), colorId: z.string().optional(), category: z.string().optional() })),
+    defaultValues: { name: "", width: "", fabricType: "roll", colorId: "", category: "" },
   });
 
   const createMutation = useMutation({
@@ -234,13 +236,14 @@ function FabricsTab({ search }: { search: string }) {
   });
 
   const onSubmit = (data: Record<string, unknown>) => {
+    console.log("Fabric submit:", data);
     if (editing) updateMutation.mutate({ id: editing.id, data });
     else createMutation.mutate(data);
   };
 
   const openEdit = (item: Fabric) => {
     setEditing(item);
-    form.reset({ name: item.name, width: item.width?.toString() || "", material: item.material || "", colorId: item.colorId || "", category: item.category || "" });
+    form.reset({ name: item.name, width: item.width?.toString() || "", fabricType: (item as any).fabricType || "roll", colorId: item.colorId || "", category: item.category || "" });
     setIsDialogOpen(true);
   };
 
@@ -251,22 +254,31 @@ function FabricsTab({ search }: { search: string }) {
       <div className="flex justify-end mb-4">
         <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) { setEditing(null); form.reset(); } }}>
           <DialogTrigger asChild><Button data-testid="button-add-fabric"><Plus className="h-4 w-4 mr-2" />Добавить</Button></DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-w-sm">
             <DialogHeader><DialogTitle>{editing ? "Редактировать ткань" : "Новая ткань"}</DialogTitle></DialogHeader>
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <FormField control={form.control} name="name" render={({ field }) => (<FormItem><FormLabel>Название</FormLabel><FormControl><Input {...field} data-testid="input-fabric-name" /></FormControl><FormMessage /></FormItem>)} />
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField control={form.control} name="width" render={({ field }) => (<FormItem><FormLabel>Ширина</FormLabel><FormControl><Input type="number" step="0.01" {...field} data-testid="input-fabric-width" /></FormControl><FormMessage /></FormItem>)} />
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3">
+                <FormField control={form.control} name="name" render={({ field }) => (<FormItem><FormControl><Input placeholder="Название" className="h-9" {...field} data-testid="input-fabric-name" /></FormControl><FormMessage /></FormItem>)} />
+                <div className="grid grid-cols-2 gap-2">
+                  <FormField control={form.control} name="width" render={({ field }) => (<FormItem><FormControl><Input type="number" step="0.01" placeholder="Ширина" className="h-9" {...field} data-testid="input-fabric-width" /></FormControl><FormMessage /></FormItem>)} />
                   <FormField control={form.control} name="category" render={({ field }) => (
-                    <FormItem><FormLabel>Категория</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger data-testid="select-fabric-category"><SelectValue placeholder="Выберите" /></SelectTrigger></FormControl><SelectContent>{FABRIC_CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
+                    <FormItem><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger className="h-9" data-testid="select-fabric-category"><SelectValue placeholder="Категория" /></SelectTrigger></FormControl><SelectContent>{FABRIC_CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
                   )} />
                 </div>
-                <FormField control={form.control} name="material" render={({ field }) => (<FormItem><FormLabel>Материал</FormLabel><FormControl><Input {...field} data-testid="input-fabric-material" /></FormControl><FormMessage /></FormItem>)} />
                 <FormField control={form.control} name="colorId" render={({ field }) => (
-                  <FormItem><FormLabel>Цвет</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger data-testid="select-fabric-color"><SelectValue placeholder="Выберите" /></SelectTrigger></FormControl><SelectContent>{colors.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
+                  <FormItem><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger className="h-9" data-testid="select-fabric-color"><SelectValue placeholder="Цвет" /></SelectTrigger></FormControl><SelectContent>{colors.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
                 )} />
-                <Button type="submit" className="w-full" disabled={createMutation.isPending || updateMutation.isPending} data-testid="button-submit-fabric">
+                <FormField control={form.control} name="fabricType" render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <RadioGroup onValueChange={field.onChange} value={field.value} className="flex gap-4">
+                        <div className="flex items-center gap-2"><RadioGroupItem value="roll" id="fabric-roll" /><Label htmlFor="fabric-roll" className="cursor-pointer text-sm">Рулон</Label></div>
+                        <div className="flex items-center gap-2"><RadioGroupItem value="zebra" id="fabric-zebra" /><Label htmlFor="fabric-zebra" className="cursor-pointer text-sm">Зебра</Label></div>
+                      </RadioGroup>
+                    </FormControl>
+                  </FormItem>
+                )} />
+                <Button type="submit" className="w-full h-9" disabled={createMutation.isPending || updateMutation.isPending} data-testid="button-submit-fabric">
                   {(createMutation.isPending || updateMutation.isPending) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}{editing ? "Сохранить" : "Добавить"}
                 </Button>
               </form>
@@ -278,7 +290,7 @@ function FabricsTab({ search }: { search: string }) {
         columns={[
           { key: "name", header: "Название", cell: (f: Fabric) => f.name },
           { key: "width", header: "Ширина", cell: (f: Fabric) => f.width || "-" },
-          { key: "material", header: "Материал", cell: (f: Fabric) => f.material || "-" },
+          { key: "fabricType", header: "Тип", cell: (f: Fabric) => (f as any).fabricType === "zebra" ? "Зебра" : "Рулон" },
           { key: "category", header: "Категория", cell: (f: Fabric) => f.category || "-" },
           { key: "actions", header: "", cell: (f: Fabric) => (
             <div className="flex gap-1 justify-end">
@@ -470,28 +482,69 @@ function CashboxesTab({ search }: { search: string }) {
   );
 }
 
+type SystemComponentItem = { componentId: string; quantity: string; sizeSource: string; sizeMultiplier: string };
+
 function SystemsTab({ search }: { search: string }) {
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editing, setEditing] = useState<System | null>(null);
+  const [systemComponentsList, setSystemComponentsList] = useState<SystemComponentItem[]>([]);
 
   const { data: systems = [], isLoading } = useQuery<System[]>({ queryKey: ["/api/systems"] });
   const { data: colors = [] } = useQuery<Color[]>({ queryKey: ["/api/colors"] });
+  const { data: componentsData = [] } = useQuery<Component[]>({ queryKey: ["/api/components"] });
+  const { data: multipliersData = [] } = useQuery<Multiplier[]>({ queryKey: ["/api/multipliers"] });
+  const { data: availableKeys = { systemKeys: [] } } = useQuery<{ systemKeys: string[] }>({ queryKey: ["/api/coefficients/available-keys"] });
 
   const form = useForm({
-    resolver: zodResolver(z.object({ name: z.string().min(1), colorId: z.string().optional(), formula: z.string().optional() })),
-    defaultValues: { name: "", colorId: "", formula: "" },
+    resolver: zodResolver(z.object({ name: z.string().min(1), colorId: z.string().optional(), systemKey: z.string().optional(), formula: z.string().optional(), multiplierId: z.string().optional() })),
+    defaultValues: { name: "", colorId: "", systemKey: "", formula: "", multiplierId: "" },
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) => apiRequest("POST", "/api/systems", data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/systems"] }); setIsDialogOpen(false); form.reset(); toast({ title: "Система добавлена" }); },
+    mutationFn: async (data: Record<string, unknown>) => {
+      const res = await apiRequest("POST", "/api/systems", data);
+      return res.json();
+    },
+    onSuccess: async (system: System) => {
+      for (const sc of systemComponentsList) {
+        if (sc.componentId) {
+          await apiRequest("POST", `/api/systems/${system.id}/components`, {
+            componentId: sc.componentId,
+            quantity: sc.quantity || "1",
+            sizeSource: sc.sizeSource || null,
+            sizeMultiplier: sc.sizeMultiplier || "1",
+          });
+        }
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/systems"] });
+      setIsDialogOpen(false); form.reset(); setSystemComponentsList([]);
+      toast({ title: "Система добавлена" });
+    },
     onError: (e: Error) => toast({ title: "Ошибка", description: e.message, variant: "destructive" }),
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) => apiRequest("PATCH", `/api/systems/${id}`, data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/systems"] }); setIsDialogOpen(false); setEditing(null); form.reset(); toast({ title: "Система обновлена" }); },
+    mutationFn: async ({ id, data }: { id: string; data: Record<string, unknown> }) => {
+      const res = await apiRequest("PATCH", `/api/systems/${id}`, data);
+      return { id, result: await res.json() };
+    },
+    onSuccess: async ({ id }) => {
+      await apiRequest("DELETE", `/api/systems/${id}/components`);
+      for (const sc of systemComponentsList) {
+        if (sc.componentId) {
+          await apiRequest("POST", `/api/systems/${id}/components`, {
+            componentId: sc.componentId,
+            quantity: sc.quantity || "1",
+            sizeSource: sc.sizeSource || null,
+            sizeMultiplier: sc.sizeMultiplier || "1",
+          });
+        }
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/systems"] });
+      setIsDialogOpen(false); setEditing(null); form.reset(); setSystemComponentsList([]);
+      toast({ title: "Система обновлена" });
+    },
     onError: (e: Error) => toast({ title: "Ошибка", description: e.message, variant: "destructive" }),
   });
 
@@ -506,30 +559,86 @@ function SystemsTab({ search }: { search: string }) {
     else createMutation.mutate(data);
   };
 
-  const openEdit = (item: System) => {
+  const openEdit = async (item: System) => {
     setEditing(item);
-    form.reset({ name: item.name, colorId: item.colorId || "", formula: item.formula || "" });
+    form.reset({ name: item.name, colorId: item.colorId || "", systemKey: (item as any).systemKey || "", formula: item.formula || "", multiplierId: (item as any).multiplierId || "" });
+    try {
+      const res = await apiRequest("GET", `/api/systems/${item.id}/components`);
+      const comps = await res.json();
+      setSystemComponentsList(comps.map((c: any) => ({ componentId: c.componentId, quantity: c.quantity || "1", sizeSource: c.sizeSource || "", sizeMultiplier: c.sizeMultiplier || "1" })));
+    } catch { setSystemComponentsList([]); }
     setIsDialogOpen(true);
+  };
+
+  const addComponent = () => setSystemComponentsList([...systemComponentsList, { componentId: "", quantity: "1", sizeSource: "", sizeMultiplier: "1" }]);
+  const removeComponent = (idx: number) => setSystemComponentsList(systemComponentsList.filter((_, i) => i !== idx));
+  const updateComponent = (idx: number, field: keyof SystemComponentItem, value: string) => {
+    const updated = [...systemComponentsList];
+    updated[idx] = { ...updated[idx], [field]: value };
+    setSystemComponentsList(updated);
   };
 
   const filtered = systems.filter((s) => s.name.toLowerCase().includes(search.toLowerCase()));
 
   return (
     <>
-      <div className="flex justify-end mb-4">
-        <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) { setEditing(null); form.reset(); } }}>
-          <DialogTrigger asChild><Button data-testid="button-add-system"><Plus className="h-4 w-4 mr-2" />Добавить</Button></DialogTrigger>
-          <DialogContent>
-            <DialogHeader><DialogTitle>{editing ? "Редактировать систему" : "Новая система"}</DialogTitle></DialogHeader>
+      <div className="flex justify-end mb-3">
+        <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) { setEditing(null); form.reset(); setSystemComponentsList([]); } }}>
+          <DialogTrigger asChild><Button size="sm" data-testid="button-add-system"><Plus className="h-4 w-4 mr-1" />Добавить</Button></DialogTrigger>
+          <DialogContent className="max-w-md">
+            <DialogHeader className="pb-2"><DialogTitle className="text-base">{editing ? "Редактировать систему" : "Новая система"}</DialogTitle></DialogHeader>
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <FormField control={form.control} name="name" render={({ field }) => (<FormItem><FormLabel>Название</FormLabel><FormControl><Input {...field} data-testid="input-system-name" /></FormControl><FormMessage /></FormItem>)} />
-                <FormField control={form.control} name="colorId" render={({ field }) => (
-                  <FormItem><FormLabel>Цвет</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Выберите" /></SelectTrigger></FormControl><SelectContent>{colors.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
-                )} />
-                <FormField control={form.control} name="formula" render={({ field }) => (<FormItem><FormLabel>Формула расчета</FormLabel><FormControl><Input {...field} data-testid="input-system-formula" /></FormControl><FormMessage /></FormItem>)} />
-                <Button type="submit" className="w-full" disabled={createMutation.isPending || updateMutation.isPending}>
-                  {(createMutation.isPending || updateMutation.isPending) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}{editing ? "Сохранить" : "Добавить"}
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <FormField control={form.control} name="name" render={({ field }) => (<FormItem><FormControl><Input placeholder="Название" {...field} className="h-8 text-sm" data-testid="input-system-name" /></FormControl><FormMessage /></FormItem>)} />
+                  <FormField control={form.control} name="colorId" render={({ field }) => (
+                    <FormItem><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Цвет" /></SelectTrigger></FormControl><SelectContent>{colors.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
+                  )} />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <FormField control={form.control} name="systemKey" render={({ field }) => (
+                    <FormItem><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Ключ системы" /></SelectTrigger></FormControl><SelectContent>{availableKeys.systemKeys.map((k) => <SelectItem key={k} value={k}>{k}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
+                  )} />
+                  <FormField control={form.control} name="multiplierId" render={({ field }) => (
+                    <FormItem><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Множитель" /></SelectTrigger></FormControl><SelectContent>{multipliersData.map((m) => <SelectItem key={m.id} value={m.id}>{m.name || m.value} (×{m.value})</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
+                  )} />
+                </div>
+                <FormField control={form.control} name="formula" render={({ field }) => (<FormItem><FormControl><Input placeholder="Формула (опционально)" {...field} className="h-8 text-sm" data-testid="input-system-formula" /></FormControl><FormMessage /></FormItem>)} />
+                <div className="pt-1">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-medium text-muted-foreground">Комплектующие</span>
+                    <Button type="button" variant="ghost" size="sm" onClick={addComponent} className="h-6 px-2 text-xs"><Plus className="h-3 w-3 mr-1" />Добавить</Button>
+                  </div>
+                  {systemComponentsList.map((sc, idx) => {
+                    const comp = componentsData.find((c) => c.id === sc.componentId);
+                    const unit = comp?.unit;
+                    return (
+                      <div key={idx} className="pb-2 mb-2 border-b border-border/50 last:border-0 last:pb-0 last:mb-0">
+                        <div className="flex gap-1 items-center">
+                          <Select value={sc.componentId} onValueChange={(v) => updateComponent(idx, "componentId", v)}>
+                            <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="Комплектующее" /></SelectTrigger>
+                            <SelectContent>{componentsData.map((c) => <SelectItem key={c.id} value={c.id}>{c.name} ({c.unit})</SelectItem>)}</SelectContent>
+                          </Select>
+                          {/* Количество для всех типов */}
+                          <Input type="number" placeholder="Кол-во" value={sc.quantity} onChange={(e) => updateComponent(idx, "quantity", e.target.value)} className="h-7 w-14 text-xs" />
+                          {/* Для метровых комплектующих - выбор размера и множитель */}
+                          {unit && ["м", "пм", "п.м.", "м.п."].includes(unit.toLowerCase()) && (
+                            <>
+                              <Select value={sc.sizeSource} onValueChange={(v) => updateComponent(idx, "sizeSource", v)}>
+                                <SelectTrigger className="h-7 w-20 text-xs"><SelectValue placeholder="Размер" /></SelectTrigger>
+                                <SelectContent><SelectItem value="width">Ширина</SelectItem><SelectItem value="height">Высота</SelectItem></SelectContent>
+                              </Select>
+                              <Input type="number" step="0.01" placeholder="×" value={sc.sizeMultiplier} onChange={(e) => updateComponent(idx, "sizeMultiplier", e.target.value)} className="h-7 w-12 text-xs" />
+                            </>
+                          )}
+                          <Button type="button" variant="ghost" size="icon" onClick={() => removeComponent(idx)} className="h-7 w-7"><Trash2 className="h-3 w-3" /></Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <Button type="submit" className="w-full h-8 text-sm" disabled={createMutation.isPending || updateMutation.isPending}>
+                  {(createMutation.isPending || updateMutation.isPending) && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}{editing ? "Сохранить" : "Добавить"}
                 </Button>
               </form>
             </Form>
@@ -539,6 +648,12 @@ function SystemsTab({ search }: { search: string }) {
       <DataTable
         columns={[
           { key: "name", header: "Название", cell: (s: System) => s.name },
+          { key: "systemKey", header: "Ключ", cell: (s: System) => (s as any).systemKey || "-" },
+          { key: "multiplier", header: "Множитель", cell: (s: System) => {
+            const mult = (s as any).multiplier;
+            if (!mult) return "-";
+            return <span className="font-mono text-xs">×{mult.value}{mult.name ? ` (${mult.name})` : ""}</span>;
+          }},
           { key: "formula", header: "Формула", cell: (s: System) => s.formula || "-" },
           { key: "actions", header: "", cell: (s: System) => (
             <div className="flex gap-1 justify-end">
