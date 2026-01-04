@@ -838,6 +838,16 @@ export async function registerRoutes(
 
         const dealerList = await storage.getDealers(req.userId!);
 
+        // Helper to determine order type based on sashes
+        const getOrderType = (sashes: any[]) => {
+          if (sashes.length === 0) return "product";
+          // If any sash has componentId but no systemId/fabricId -> product order
+          const hasProductSash = sashes.some(
+            (s) => s.componentId && !s.systemId && !s.fabricId
+          );
+          return hasProductSash ? "product" : "sash";
+        };
+
         if (paginated) {
           const result = await storage.getOrdersPaginated(req.userId!, {
             limit,
@@ -853,6 +863,7 @@ export async function registerRoutes(
                 dealerBalance: dealerList.find((d) => d.id === order.dealerId)
                   ?.balance,
                 sashesCount: sashes.length,
+                orderType: getOrderType(sashes),
               };
             })
           );
@@ -875,6 +886,7 @@ export async function registerRoutes(
                 dealerBalance: dealerList.find((d) => d.id === order.dealerId)
                   ?.balance,
                 sashesCount: sashes.length,
+                orderType: getOrderType(sashes),
               };
             })
           );

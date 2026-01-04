@@ -82,7 +82,10 @@ export function DataTable<T>({
           </TableHeader>
           <TableBody>
             <TableRow>
-              <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
+              <TableCell
+                colSpan={columns.length}
+                className="h-24 text-center text-muted-foreground"
+              >
                 {emptyMessage}
               </TableCell>
             </TableRow>
@@ -106,7 +109,10 @@ export function DataTable<T>({
         </TableHeader>
         <TableBody>
           {data.map((item) => (
-            <TableRow key={getRowKey(item)} data-testid={`row-${getRowKey(item)}`}>
+            <TableRow
+              key={getRowKey(item)}
+              data-testid={`row-${getRowKey(item)}`}
+            >
               {columns.map((column) => (
                 <TableCell key={column.key} className={column.className}>
                   {column.cell(item)}
@@ -129,9 +135,9 @@ export function DataTable<T>({
               <span className="text-sm">Загрузка...</span>
             </div>
           )}
-          {!hasNextPage && data.length > 0 && (
-            <span className="text-sm text-muted-foreground">Все данные загружены</span>
-          )}
+          {/* {!hasNextPage && data.length > 0 && (
+            <span className="text-sm text-muted-foreground"></span>
+          )} */}
         </div>
       )}
     </div>
