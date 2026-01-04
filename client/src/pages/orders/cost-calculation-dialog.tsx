@@ -34,7 +34,9 @@ export function CostCalculationDialog({
             <Card className="bg-primary/10 border-primary">
               <CardContent className="py-4 space-y-3">
                 <div>
-                  <p className="text-sm text-muted-foreground">Общая формула:</p>
+                  <p className="text-sm text-muted-foreground">
+                    Общая формула:
+                  </p>
                   <p className="font-mono text-sm mt-1">
                     Себестоимость = Ткань + Комплектующие
                   </p>
@@ -62,7 +64,9 @@ export function CostCalculationDialog({
                 <Separator />
 
                 <div>
-                  <p className="text-sm font-medium">🔧 Расчет комплектующих:</p>
+                  <p className="text-sm font-medium">
+                    🔧 Расчет комплектующих:
+                  </p>
                   <ul className="text-sm ml-4 mt-1 space-y-1">
                     <li>
                       • Если единица <Badge variant="outline">м</Badge> /{" "}
@@ -157,9 +161,10 @@ export function CostCalculationDialog({
                         <div className="flex justify-between font-medium">
                           <span>Формула:</span>
                           <span className="font-mono text-xs">
-                            {((sash.width / 1000) * (sash.height / 1000)).toFixed(
-                              4
-                            )}{" "}
+                            {(
+                              (sash.width / 1000) *
+                              (sash.height / 1000)
+                            ).toFixed(4)}{" "}
                             × {sash.fabricAvgPrice.toFixed(2)} ×{" "}
                             {sash.fabricMultiplier}
                           </span>
@@ -226,7 +231,8 @@ export function CostCalculationDialog({
                                   </span>
                                 </div>
                                 <div className="text-xs text-muted-foreground mt-1 font-mono">
-                                  {comp.formula} = {formatCurrency(comp.totalPrice)}
+                                  {comp.formula} ={" "}
+                                  {formatCurrency(comp.totalPrice)}
                                 </div>
                                 <div className="text-[10px] text-muted-foreground/50 mt-1 font-mono bg-muted/30 rounded px-1">
                                   [API: qty={comp.quantity}, src=
@@ -293,4 +299,3 @@ export function CostCalculationDialog({
     </Dialog>
   );
 }
-
