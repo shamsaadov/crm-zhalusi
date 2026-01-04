@@ -7,6 +7,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Loader2 } from "lucide-react";
 
 interface Column<T> {
   key: string;
@@ -21,6 +22,10 @@ interface DataTableProps<T> {
   isLoading?: boolean;
   emptyMessage?: string;
   getRowKey: (item: T) => string;
+  // Infinite scroll props
+  hasNextPage?: boolean;
+  isFetchingNextPage?: boolean;
+  loadMoreRef?: React.RefObject<HTMLDivElement>;
 }
 
 export function DataTable<T>({
@@ -29,6 +34,9 @@ export function DataTable<T>({
   isLoading = false,
   emptyMessage = "Нет данных",
   getRowKey,
+  hasNextPage,
+  isFetchingNextPage,
+  loadMoreRef,
 }: DataTableProps<T>) {
   if (isLoading) {
     return (
@@ -108,6 +116,24 @@ export function DataTable<T>({
           ))}
         </TableBody>
       </Table>
+
+      {/* Infinite scroll trigger element */}
+      {loadMoreRef && (
+        <div
+          ref={loadMoreRef}
+          className="flex items-center justify-center py-4"
+        >
+          {isFetchingNextPage && (
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="text-sm">Загрузка...</span>
+            </div>
+          )}
+          {!hasNextPage && data.length > 0 && (
+            <span className="text-sm text-muted-foreground">Все данные загружены</span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

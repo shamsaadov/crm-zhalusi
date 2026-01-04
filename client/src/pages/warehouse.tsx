@@ -5,10 +5,30 @@ import { DataTable } from "@/components/data-table";
 import { FilterBar } from "@/components/filter-bar";
 import { formatCurrency, BalanceBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -24,7 +44,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { type WarehouseReceipt, type Supplier, type Fabric, type Component } from "@shared/schema";
+import {
+  type WarehouseReceipt,
+  type Supplier,
+  type Fabric,
+  type Component,
+} from "@shared/schema";
 import { format } from "date-fns";
 
 const itemSchema = z.object({
@@ -85,9 +110,11 @@ export default function WarehousePage() {
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
-  const [viewingReceipt, setViewingReceipt] = useState<WarehouseReceiptWithRelations | null>(null);
+  const [viewingReceipt, setViewingReceipt] =
+    useState<WarehouseReceiptWithRelations | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [receiptToDelete, setReceiptToDelete] = useState<WarehouseReceiptWithRelations | null>(null);
+  const [receiptToDelete, setReceiptToDelete] =
+    useState<WarehouseReceiptWithRelations | null>(null);
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({});
   const [supplierFilter, setSupplierFilter] = useState("all");
   const [search, setSearch] = useState("");
@@ -107,7 +134,9 @@ export default function WarehousePage() {
     queryFn: async ({ pageParam }) => {
       const params = new URLSearchParams({ paginated: "true", limit: "20" });
       if (pageParam) params.set("cursor", pageParam as string);
-      const res = await fetch(`/api/warehouse?${params}`, { credentials: "include" });
+      const res = await fetch(`/api/warehouse?${params}`, {
+        credentials: "include",
+      });
       if (!res.ok) throw new Error("Ошибка загрузки");
       return res.json();
     },
@@ -137,7 +166,10 @@ export default function WarehousePage() {
     queryKey: ["/api/components"],
   });
 
-  const { data: stockData, isLoading: stockLoading } = useQuery<{ fabrics: FabricWithStock[]; components: ComponentWithStock[] }>({
+  const { data: stockData, isLoading: stockLoading } = useQuery<{
+    fabrics: FabricWithStock[];
+    components: ComponentWithStock[];
+  }>({
     queryKey: ["/api/stock"],
   });
 
@@ -150,7 +182,16 @@ export default function WarehousePage() {
       supplierId: "",
       date: format(new Date(), "yyyy-MM-dd"),
       comment: "",
-      items: [{ itemType: "fabric", componentId: "", fabricId: "", quantity: "", price: "", total: "" }],
+      items: [
+        {
+          itemType: "fabric",
+          componentId: "",
+          fabricId: "",
+          quantity: "",
+          price: "",
+          total: "",
+        },
+      ],
     },
   });
 
@@ -176,9 +217,10 @@ export default function WarehousePage() {
     mutationFn: (data: WarehouseFormValues) => {
       const payload = {
         ...data,
-        items: data.items.map(item => ({
+        items: data.items.map((item) => ({
           itemType: item.itemType,
-          componentId: item.itemType === "component" ? item.componentId : undefined,
+          componentId:
+            item.itemType === "component" ? item.componentId : undefined,
           fabricId: item.itemType === "fabric" ? item.fabricId : undefined,
           quantity: item.quantity,
           price: item.price,
@@ -198,12 +240,25 @@ export default function WarehousePage() {
         supplierId: "",
         date: format(new Date(), "yyyy-MM-dd"),
         comment: "",
-        items: [{ itemType: "fabric", componentId: "", fabricId: "", quantity: "", price: "", total: "" }],
+        items: [
+          {
+            itemType: "fabric",
+            componentId: "",
+            fabricId: "",
+            quantity: "",
+            price: "",
+            total: "",
+          },
+        ],
       });
       toast({ title: "Успешно", description: "Поступление добавлено" });
     },
     onError: (error: Error) => {
-      toast({ title: "Ошибка", description: error.message, variant: "destructive" });
+      toast({
+        title: "Ошибка",
+        description: error.message,
+        variant: "destructive",
+      });
     },
   });
 
@@ -218,7 +273,11 @@ export default function WarehousePage() {
       toast({ title: "Успешно", description: "Поступление удалено" });
     },
     onError: (error: Error) => {
-      toast({ title: "Ошибка", description: error.message, variant: "destructive" });
+      toast({
+        title: "Ошибка",
+        description: error.message,
+        variant: "destructive",
+      });
     },
   });
 
@@ -228,7 +287,9 @@ export default function WarehousePage() {
 
   const openViewDialog = async (receipt: WarehouseReceiptWithRelations) => {
     try {
-      const response = await fetch(`/api/warehouse/${receipt.id}`, { credentials: "include" });
+      const response = await fetch(`/api/warehouse/${receipt.id}`, {
+        credentials: "include",
+      });
       const fullReceipt = await response.json();
       setViewingReceipt(fullReceipt);
       setIsViewDialogOpen(true);
@@ -242,10 +303,17 @@ export default function WarehousePage() {
     setIsDeleteDialogOpen(true);
   };
 
-  const fetchPreviousPrice = async (itemType: string, itemId: string, index: number) => {
+  const fetchPreviousPrice = async (
+    itemType: string,
+    itemId: string,
+    index: number
+  ) => {
     if (!itemId) return;
     try {
-      const response = await fetch(`/api/warehouse/previous-price?itemType=${itemType}&itemId=${itemId}`, { credentials: "include" });
+      const response = await fetch(
+        `/api/warehouse/previous-price?itemType=${itemType}&itemId=${itemId}`,
+        { credentials: "include" }
+      );
       const data = await response.json();
       if (data.price) {
         form.setValue(`items.${index}.price`, data.price);
@@ -256,7 +324,8 @@ export default function WarehousePage() {
   };
 
   const filteredReceipts = receipts.filter((r) => {
-    if (supplierFilter !== "all" && r.supplierId !== supplierFilter) return false;
+    if (supplierFilter !== "all" && r.supplierId !== supplierFilter)
+      return false;
     if (dateRange.from && new Date(r.date) < dateRange.from) return false;
     if (dateRange.to && new Date(r.date) > dateRange.to) return false;
     return true;
@@ -266,7 +335,8 @@ export default function WarehousePage() {
     {
       key: "date",
       header: "Дата",
-      cell: (r: WarehouseReceiptWithRelations) => format(new Date(r.date), "dd.MM.yyyy"),
+      cell: (r: WarehouseReceiptWithRelations) =>
+        format(new Date(r.date), "dd.MM.yyyy"),
     },
     {
       key: "supplier",
@@ -334,17 +404,29 @@ export default function WarehousePage() {
   return (
     <Layout title="Склад">
       <div className="flex items-center justify-between gap-4 mb-4">
-        <Dialog open={isDialogOpen} onOpenChange={(open) => {
-          setIsDialogOpen(open);
-          if (!open) {
-            form.reset({
-              supplierId: "",
-              date: format(new Date(), "yyyy-MM-dd"),
-              comment: "",
-              items: [{ itemType: "fabric", componentId: "", fabricId: "", quantity: "", price: "", total: "" }],
-            });
-          }
-        }}>
+        <Dialog
+          open={isDialogOpen}
+          onOpenChange={(open) => {
+            setIsDialogOpen(open);
+            if (!open) {
+              form.reset({
+                supplierId: "",
+                date: format(new Date(), "yyyy-MM-dd"),
+                comment: "",
+                items: [
+                  {
+                    itemType: "fabric",
+                    componentId: "",
+                    fabricId: "",
+                    quantity: "",
+                    price: "",
+                    total: "",
+                  },
+                ],
+              });
+            }
+          }}
+        >
           <DialogTrigger asChild>
             <Button data-testid="button-add-receipt">
               <Plus className="h-4 w-4 mr-2" />
@@ -356,7 +438,10 @@ export default function WarehousePage() {
               <DialogTitle>Новое поступление</DialogTitle>
             </DialogHeader>
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <form
+                onSubmit={form.handleSubmit(onSubmit)}
+                className="space-y-4"
+              >
                 <div className="grid grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
@@ -389,7 +474,11 @@ export default function WarehousePage() {
                       <FormItem>
                         <FormLabel>Дата</FormLabel>
                         <FormControl>
-                          <Input type="date" {...field} data-testid="input-date" />
+                          <Input
+                            type="date"
+                            {...field}
+                            data-testid="input-date"
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -406,7 +495,16 @@ export default function WarehousePage() {
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() => append({ itemType: "fabric", componentId: "", fabricId: "", quantity: "", price: "", total: "" })}
+                      onClick={() =>
+                        append({
+                          itemType: "fabric",
+                          componentId: "",
+                          fabricId: "",
+                          quantity: "",
+                          price: "",
+                          total: "",
+                        })
+                      }
                       data-testid="button-add-item"
                     >
                       <Plus className="h-4 w-4 mr-2" />
@@ -418,7 +516,9 @@ export default function WarehousePage() {
                     <Card key={field.id}>
                       <CardHeader className="py-3">
                         <div className="flex items-center justify-between gap-2">
-                          <CardTitle className="text-sm">Позиция {index + 1}</CardTitle>
+                          <CardTitle className="text-sm">
+                            Позиция {index + 1}
+                          </CardTitle>
                           {fields.length > 1 && (
                             <Button
                               type="button"
@@ -446,12 +546,22 @@ export default function WarehousePage() {
                                   className="flex gap-4"
                                 >
                                   <div className="flex items-center gap-2">
-                                    <RadioGroupItem value="fabric" id={`fabric-${index}`} />
-                                    <Label htmlFor={`fabric-${index}`}>Ткань</Label>
+                                    <RadioGroupItem
+                                      value="fabric"
+                                      id={`fabric-${index}`}
+                                    />
+                                    <Label htmlFor={`fabric-${index}`}>
+                                      Ткань
+                                    </Label>
                                   </div>
                                   <div className="flex items-center gap-2">
-                                    <RadioGroupItem value="component" id={`component-${index}`} />
-                                    <Label htmlFor={`component-${index}`}>Комплектующие</Label>
+                                    <RadioGroupItem
+                                      value="component"
+                                      id={`component-${index}`}
+                                    />
+                                    <Label htmlFor={`component-${index}`}>
+                                      Комплектующие
+                                    </Label>
                                   </div>
                                 </RadioGroup>
                               </FormControl>
@@ -477,7 +587,11 @@ export default function WarehousePage() {
                                       value={field.value}
                                       onValueChange={(value) => {
                                         field.onChange(value);
-                                        fetchPreviousPrice("fabric", value, index);
+                                        fetchPreviousPrice(
+                                          "fabric",
+                                          value,
+                                          index
+                                        );
                                       }}
                                       placeholder="Выберите ткань"
                                       searchPlaceholder="Поиск ткани..."
@@ -505,7 +619,11 @@ export default function WarehousePage() {
                                       value={field.value}
                                       onValueChange={(value) => {
                                         field.onChange(value);
-                                        fetchPreviousPrice("component", value, index);
+                                        fetchPreviousPrice(
+                                          "component",
+                                          value,
+                                          index
+                                        );
                                       }}
                                       placeholder="Выберите комплектующую"
                                       searchPlaceholder="Поиск комплектующей..."
@@ -526,7 +644,12 @@ export default function WarehousePage() {
                               <FormItem>
                                 <FormLabel>Кол-во</FormLabel>
                                 <FormControl>
-                                  <Input type="number" step="0.01" {...field} data-testid={`input-quantity-${index}`} />
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    {...field}
+                                    data-testid={`input-quantity-${index}`}
+                                  />
                                 </FormControl>
                                 <FormMessage />
                               </FormItem>
@@ -540,7 +663,12 @@ export default function WarehousePage() {
                               <FormItem>
                                 <FormLabel>Цена</FormLabel>
                                 <FormControl>
-                                  <Input type="number" step="0.01" {...field} data-testid={`input-price-${index}`} />
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    {...field}
+                                    data-testid={`input-price-${index}`}
+                                  />
                                 </FormControl>
                                 <FormMessage />
                               </FormItem>
@@ -554,7 +682,12 @@ export default function WarehousePage() {
                               <FormItem>
                                 <FormLabel>Сумма</FormLabel>
                                 <FormControl>
-                                  <Input {...field} disabled className="bg-muted" data-testid={`input-total-${index}`} />
+                                  <Input
+                                    {...field}
+                                    disabled
+                                    className="bg-muted"
+                                    data-testid={`input-total-${index}`}
+                                  />
                                 </FormControl>
                                 <FormMessage />
                               </FormItem>
@@ -583,11 +716,21 @@ export default function WarehousePage() {
                 />
 
                 <div className="flex justify-end gap-2">
-                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsDialogOpen(false)}
+                  >
                     Отмена
                   </Button>
-                  <Button type="submit" disabled={createMutation.isPending} data-testid="button-submit">
-                    {createMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  <Button
+                    type="submit"
+                    disabled={createMutation.isPending}
+                    data-testid="button-submit"
+                  >
+                    {createMutation.isPending && (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    )}
                     Добавить
                   </Button>
                 </div>
@@ -599,8 +742,12 @@ export default function WarehousePage() {
 
       <Tabs defaultValue="receipts" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="receipts" data-testid="tab-receipts">Поступления</TabsTrigger>
-          <TabsTrigger value="stock" data-testid="tab-stock">Остатки</TabsTrigger>
+          <TabsTrigger value="receipts" data-testid="tab-receipts">
+            Поступления
+          </TabsTrigger>
+          <TabsTrigger value="stock" data-testid="tab-stock">
+            Остатки
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="receipts" className="space-y-4">
@@ -616,7 +763,7 @@ export default function WarehousePage() {
                 key: "supplier",
                 label: "Поставщик",
                 value: supplierFilter,
-                options: suppliers.map(s => ({ value: s.id, label: s.name })),
+                options: suppliers.map((s) => ({ value: s.id, label: s.name })),
                 onChange: setSupplierFilter,
               },
             ]}
@@ -640,95 +787,172 @@ export default function WarehousePage() {
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
           ) : (
-          <>
-          <div>
-            <h3 className="text-sm font-medium mb-2 flex items-center gap-2 text-muted-foreground">
-              <Package className="h-4 w-4" />
-              Ткани ({fabricStock.filter(f => f.stock.quantity > 0).length})
-            </h3>
-            {fabricStock.filter(f => f.stock.quantity > 0).length === 0 ? (
-              <p className="text-muted-foreground text-sm">Нет тканей с остатком</p>
-            ) : (
-              <div className="border rounded-md overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/50">
-                    <tr className="border-b">
-                      <th className="text-left py-2 px-3 font-medium">Наименование</th>
-                      <th className="text-left py-2 px-3 font-medium w-24">Категория</th>
-                      <th className="text-right py-2 px-3 font-medium w-24">Остаток</th>
-                      <th className="text-right py-2 px-3 font-medium w-28">Цена</th>
-                      <th className="text-right py-2 px-3 font-medium w-32">Сумма</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {fabricStock.filter(f => f.stock.quantity > 0).map((fabric) => (
-                      <tr key={fabric.id} className="hover:bg-muted/30 transition-colors">
-                        <td className="py-1.5 px-3">{fabric.name}</td>
-                        <td className="py-1.5 px-3">
-                          {fabric.category && <Badge variant="outline" className="text-xs py-0">{fabric.category}</Badge>}
-                        </td>
-                        <td className="py-1.5 px-3 text-right font-mono">{fabric.stock.quantity.toFixed(2)}</td>
-                        <td className="py-1.5 px-3 text-right font-mono">{formatCurrency(fabric.stock.lastPrice)}</td>
-                        <td className="py-1.5 px-3 text-right font-mono font-medium">{formatCurrency(fabric.stock.totalValue)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot className="bg-muted/50 border-t">
-                    <tr>
-                      <td colSpan={4} className="py-2 px-3 text-right font-medium">Итого:</td>
-                      <td className="py-2 px-3 text-right font-mono font-semibold">
-                        {formatCurrency(fabricStock.filter(f => f.stock.quantity > 0).reduce((sum, f) => sum + f.stock.totalValue, 0))}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
+            <>
+              <div>
+                <h3 className="text-sm font-medium mb-2 flex items-center gap-2 text-muted-foreground">
+                  <Package className="h-4 w-4" />
+                  Ткани (
+                  {fabricStock.filter((f) => f.stock.quantity > 0).length})
+                </h3>
+                {fabricStock.filter((f) => f.stock.quantity > 0).length ===
+                0 ? (
+                  <p className="text-muted-foreground text-sm">
+                    Нет тканей с остатком
+                  </p>
+                ) : (
+                  <div className="border rounded-md overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/50">
+                        <tr className="border-b">
+                          <th className="text-left py-2 px-3 font-medium">
+                            Наименование
+                          </th>
+                          <th className="text-left py-2 px-3 font-medium w-24">
+                            Категория
+                          </th>
+                          <th className="text-right py-2 px-3 font-medium w-24">
+                            Остаток
+                          </th>
+                          <th className="text-right py-2 px-3 font-medium w-28">
+                            Цена
+                          </th>
+                          <th className="text-right py-2 px-3 font-medium w-32">
+                            Сумма
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {fabricStock
+                          .filter((f) => f.stock.quantity > 0)
+                          .map((fabric) => (
+                            <tr
+                              key={fabric.id}
+                              className="hover:bg-muted/30 transition-colors"
+                            >
+                              <td className="py-1.5 px-3">{fabric.name}</td>
+                              <td className="py-1.5 px-3">
+                                {fabric.category && (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-xs py-0"
+                                  >
+                                    {fabric.category}
+                                  </Badge>
+                                )}
+                              </td>
+                              <td className="py-1.5 px-3 text-right font-mono">
+                                {fabric.stock.quantity.toFixed(2)}
+                              </td>
+                              <td className="py-1.5 px-3 text-right font-mono">
+                                {formatCurrency(fabric.stock.lastPrice)}
+                              </td>
+                              <td className="py-1.5 px-3 text-right font-mono font-medium">
+                                {formatCurrency(fabric.stock.totalValue)}
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                      <tfoot className="bg-muted/50 border-t">
+                        <tr>
+                          <td
+                            colSpan={4}
+                            className="py-2 px-3 text-right font-medium"
+                          >
+                            Итого:
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono font-semibold">
+                            {formatCurrency(
+                              fabricStock
+                                .filter((f) => f.stock.quantity > 0)
+                                .reduce((sum, f) => sum + f.stock.totalValue, 0)
+                            )}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          <div>
-            <h3 className="text-sm font-medium mb-2 flex items-center gap-2 text-muted-foreground">
-              <Package className="h-4 w-4" />
-              Комплектующие ({componentStock.filter(c => c.stock.quantity > 0).length})
-            </h3>
-            {componentStock.filter(c => c.stock.quantity > 0).length === 0 ? (
-              <p className="text-muted-foreground text-sm">Нет комплектующих с остатком</p>
-            ) : (
-              <div className="border rounded-md overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/50">
-                    <tr className="border-b">
-                      <th className="text-left py-2 px-3 font-medium">Наименование</th>
-                      <th className="text-left py-2 px-3 font-medium w-20">Ед.</th>
-                      <th className="text-right py-2 px-3 font-medium w-24">Остаток</th>
-                      <th className="text-right py-2 px-3 font-medium w-28">Цена</th>
-                      <th className="text-right py-2 px-3 font-medium w-32">Сумма</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {componentStock.filter(c => c.stock.quantity > 0).map((component) => (
-                      <tr key={component.id} className="hover:bg-muted/30 transition-colors">
-                        <td className="py-1.5 px-3">{component.name}</td>
-                        <td className="py-1.5 px-3 text-muted-foreground">{component.unit || "-"}</td>
-                        <td className="py-1.5 px-3 text-right font-mono">{component.stock.quantity.toFixed(2)}</td>
-                        <td className="py-1.5 px-3 text-right font-mono">{formatCurrency(component.stock.lastPrice)}</td>
-                        <td className="py-1.5 px-3 text-right font-mono font-medium">{formatCurrency(component.stock.totalValue)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot className="bg-muted/50 border-t">
-                    <tr>
-                      <td colSpan={4} className="py-2 px-3 text-right font-medium">Итого:</td>
-                      <td className="py-2 px-3 text-right font-mono font-semibold">
-                        {formatCurrency(componentStock.filter(c => c.stock.quantity > 0).reduce((sum, c) => sum + c.stock.totalValue, 0))}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
+              <div>
+                <h3 className="text-sm font-medium mb-2 flex items-center gap-2 text-muted-foreground">
+                  <Package className="h-4 w-4" />
+                  Комплектующие (
+                  {componentStock.filter((c) => c.stock.quantity > 0).length})
+                </h3>
+                {componentStock.filter((c) => c.stock.quantity > 0).length ===
+                0 ? (
+                  <p className="text-muted-foreground text-sm">
+                    Нет комплектующих с остатком
+                  </p>
+                ) : (
+                  <div className="border rounded-md overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/50">
+                        <tr className="border-b">
+                          <th className="text-left py-2 px-3 font-medium">
+                            Наименование
+                          </th>
+                          <th className="text-left py-2 px-3 font-medium w-20">
+                            Ед.
+                          </th>
+                          <th className="text-right py-2 px-3 font-medium w-24">
+                            Остаток
+                          </th>
+                          <th className="text-right py-2 px-3 font-medium w-28">
+                            Цена
+                          </th>
+                          <th className="text-right py-2 px-3 font-medium w-32">
+                            Сумма
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {componentStock
+                          .filter((c) => c.stock.quantity > 0)
+                          .map((component) => (
+                            <tr
+                              key={component.id}
+                              className="hover:bg-muted/30 transition-colors"
+                            >
+                              <td className="py-1.5 px-3">{component.name}</td>
+                              <td className="py-1.5 px-3 text-muted-foreground">
+                                {component.unit || "-"}
+                              </td>
+                              <td className="py-1.5 px-3 text-right font-mono">
+                                {component.stock.quantity.toFixed(2)}
+                              </td>
+                              <td className="py-1.5 px-3 text-right font-mono">
+                                {formatCurrency(component.stock.lastPrice)}
+                              </td>
+                              <td className="py-1.5 px-3 text-right font-mono font-medium">
+                                {formatCurrency(component.stock.totalValue)}
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                      <tfoot className="bg-muted/50 border-t">
+                        <tr>
+                          <td
+                            colSpan={4}
+                            className="py-2 px-3 text-right font-medium"
+                          >
+                            Итого:
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono font-semibold">
+                            {formatCurrency(
+                              componentStock
+                                .filter((c) => c.stock.quantity > 0)
+                                .reduce((sum, c) => sum + c.stock.totalValue, 0)
+                            )}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-          </>
+            </>
           )}
         </TabsContent>
       </Tabs>
@@ -736,39 +960,54 @@ export default function WarehousePage() {
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Поступление от {viewingReceipt && format(new Date(viewingReceipt.date), "dd.MM.yyyy")}</DialogTitle>
+            <DialogTitle>
+              Поступление от{" "}
+              {viewingReceipt &&
+                format(new Date(viewingReceipt.date), "dd.MM.yyyy")}
+            </DialogTitle>
           </DialogHeader>
           {viewingReceipt && (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Поставщик</p>
-                  <p className="font-medium">{viewingReceipt.supplier?.name || "-"}</p>
+                  <p className="font-medium">
+                    {viewingReceipt.supplier?.name || "-"}
+                  </p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Сумма</p>
-                  <p className="font-medium">{formatCurrency(viewingReceipt.total)}</p>
+                  <p className="font-medium">
+                    {formatCurrency(viewingReceipt.total)}
+                  </p>
                 </div>
               </div>
               <Separator />
               <div>
-                <h4 className="font-medium mb-2">Позиции ({viewingReceipt.items?.length || 0})</h4>
+                <h4 className="font-medium mb-2">
+                  Позиции ({viewingReceipt.items?.length || 0})
+                </h4>
                 {viewingReceipt.items?.map((item, idx) => (
                   <Card key={item.id} className="mb-2">
                     <CardContent className="py-3">
                       <div className="grid grid-cols-4 gap-2 text-sm">
                         <div>
-                          <span className="text-muted-foreground">Позиция:</span>{" "}
+                          <span className="text-muted-foreground">
+                            Позиция:
+                          </span>{" "}
                           {item.fabric?.name || item.component?.name || "-"}
                         </div>
                         <div>
-                          <span className="text-muted-foreground">Кол-во:</span> {item.quantity}
+                          <span className="text-muted-foreground">Кол-во:</span>{" "}
+                          {item.quantity}
                         </div>
                         <div>
-                          <span className="text-muted-foreground">Цена:</span> {formatCurrency(item.price)}
+                          <span className="text-muted-foreground">Цена:</span>{" "}
+                          {formatCurrency(item.price)}
                         </div>
                         <div>
-                          <span className="text-muted-foreground">Сумма:</span> {formatCurrency(item.total)}
+                          <span className="text-muted-foreground">Сумма:</span>{" "}
+                          {formatCurrency(item.total)}
                         </div>
                       </div>
                     </CardContent>
@@ -794,16 +1033,28 @@ export default function WarehousePage() {
           <DialogHeader>
             <DialogTitle>Удалить поступление?</DialogTitle>
           </DialogHeader>
-          <p>Вы уверены, что хотите удалить это поступление? Это действие необратимо.</p>
+          <p>
+            Вы уверены, что хотите удалить это поступление? Это действие
+            необратимо.
+          </p>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>Отмена</Button>
+            <Button
+              variant="outline"
+              onClick={() => setIsDeleteDialogOpen(false)}
+            >
+              Отмена
+            </Button>
             <Button
               variant="destructive"
-              onClick={() => receiptToDelete && deleteMutation.mutate(receiptToDelete.id)}
+              onClick={() =>
+                receiptToDelete && deleteMutation.mutate(receiptToDelete.id)
+              }
               disabled={deleteMutation.isPending}
               data-testid="button-confirm-delete"
             >
-              {deleteMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {deleteMutation.isPending && (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              )}
               Удалить
             </Button>
           </DialogFooter>

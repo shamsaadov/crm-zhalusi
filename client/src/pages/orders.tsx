@@ -33,6 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -1125,26 +1126,18 @@ export default function OrdersPage() {
                           render={({ field }) => (
                             <FormItem>
                               <FormLabel>Дилер</FormLabel>
-                              <Select
-                                onValueChange={field.onChange}
+                              <SearchableSelect
+                                options={dealers.map((dealer) => ({
+                                  value: dealer.id,
+                                  label: dealer.fullName,
+                                }))}
                                 value={field.value}
-                              >
-                                <FormControl>
-                                  <SelectTrigger data-testid="select-dealer">
-                                    <SelectValue placeholder="Выберите дилера" />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  {dealers.map((dealer) => (
-                                    <SelectItem
-                                      key={dealer.id}
-                                      value={dealer.id}
-                                    >
-                                      {dealer.fullName}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                                onValueChange={field.onChange}
+                                placeholder="Выберите дилера"
+                                searchPlaceholder="Поиск дилера..."
+                                emptyText="Дилер не найден"
+                                data-testid="select-dealer"
+                              />
                               <FormMessage />
                             </FormItem>
                           )}
@@ -1386,29 +1379,19 @@ export default function OrdersPage() {
                                         </Popover>
                                       )}
                                     </FormLabel>
-                                    <Select
-                                      onValueChange={field.onChange}
+                                    <SearchableSelect
+                                      options={systems.map((system) => ({
+                                        value: system.id,
+                                        label: system.name,
+                                      }))}
                                       value={field.value}
-                                    >
-                                      <FormControl>
-                                        <SelectTrigger
-                                          className="h-9"
-                                          data-testid={`select-sash-system-${index}`}
-                                        >
-                                          <SelectValue placeholder="Система" />
-                                        </SelectTrigger>
-                                      </FormControl>
-                                      <SelectContent>
-                                        {systems.map((system) => (
-                                          <SelectItem
-                                            key={system.id}
-                                            value={system.id}
-                                          >
-                                            {system.name}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
+                                      onValueChange={field.onChange}
+                                      placeholder="Система"
+                                      searchPlaceholder="Поиск системы..."
+                                      emptyText="Система не найдена"
+                                      className="h-9"
+                                      data-testid={`select-sash-system-${index}`}
+                                    />
                                   </FormItem>
                                 );
                               }}
@@ -1421,29 +1404,19 @@ export default function OrdersPage() {
                                   <FormLabel className="text-xs">
                                     Цвет сист.
                                   </FormLabel>
-                                  <Select
-                                    onValueChange={field.onChange}
+                                  <SearchableSelect
+                                    options={colors.map((color) => ({
+                                      value: color.id,
+                                      label: color.name,
+                                    }))}
                                     value={field.value}
-                                  >
-                                    <FormControl>
-                                      <SelectTrigger
-                                        className="h-9"
-                                        data-testid={`select-sash-system-color-${index}`}
-                                      >
-                                        <SelectValue placeholder="Цвет" />
-                                      </SelectTrigger>
-                                    </FormControl>
-                                    <SelectContent>
-                                      {colors.map((color) => (
-                                        <SelectItem
-                                          key={color.id}
-                                          value={color.id}
-                                        >
-                                          {color.name}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
+                                    onValueChange={field.onChange}
+                                    placeholder="Цвет"
+                                    searchPlaceholder="Поиск цвета..."
+                                    emptyText="Цвет не найден"
+                                    className="h-9"
+                                    data-testid={`select-sash-system-color-${index}`}
+                                  />
                                 </FormItem>
                               )}
                             />
@@ -1542,29 +1515,19 @@ export default function OrdersPage() {
                                         </Popover>
                                       )}
                                     </FormLabel>
-                                    <Select
-                                      onValueChange={field.onChange}
+                                    <SearchableSelect
+                                      options={fabrics.map((fabric) => ({
+                                        value: fabric.id,
+                                        label: fabric.name,
+                                      }))}
                                       value={field.value}
-                                    >
-                                      <FormControl>
-                                        <SelectTrigger
-                                          className="h-9"
-                                          data-testid={`select-sash-fabric-${index}`}
-                                        >
-                                          <SelectValue placeholder="Ткань" />
-                                        </SelectTrigger>
-                                      </FormControl>
-                                      <SelectContent>
-                                        {fabrics.map((fabric) => (
-                                          <SelectItem
-                                            key={fabric.id}
-                                            value={fabric.id}
-                                          >
-                                            {fabric.name}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
+                                      onValueChange={field.onChange}
+                                      placeholder="Ткань"
+                                      searchPlaceholder="Поиск ткани..."
+                                      emptyText="Ткань не найдена"
+                                      className="h-9"
+                                      data-testid={`select-sash-fabric-${index}`}
+                                    />
                                   </FormItem>
                                 );
                               }}
@@ -1577,29 +1540,19 @@ export default function OrdersPage() {
                                   <FormLabel className="text-xs">
                                     Цвет ткани
                                   </FormLabel>
-                                  <Select
-                                    onValueChange={field.onChange}
+                                  <SearchableSelect
+                                    options={colors.map((color) => ({
+                                      value: color.id,
+                                      label: color.name,
+                                    }))}
                                     value={field.value}
-                                  >
-                                    <FormControl>
-                                      <SelectTrigger
-                                        className="h-9"
-                                        data-testid={`select-sash-fabric-color-${index}`}
-                                      >
-                                        <SelectValue placeholder="Цвет" />
-                                      </SelectTrigger>
-                                    </FormControl>
-                                    <SelectContent>
-                                      {colors.map((color) => (
-                                        <SelectItem
-                                          key={color.id}
-                                          value={color.id}
-                                        >
-                                          {color.name}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
+                                    onValueChange={field.onChange}
+                                    placeholder="Цвет"
+                                    searchPlaceholder="Поиск цвета..."
+                                    emptyText="Цвет не найден"
+                                    className="h-9"
+                                    data-testid={`select-sash-fabric-color-${index}`}
+                                  />
                                 </FormItem>
                               )}
                             />
@@ -1820,26 +1773,18 @@ export default function OrdersPage() {
                           render={({ field }) => (
                             <FormItem>
                               <FormLabel>Дилер</FormLabel>
-                              <Select
-                                onValueChange={field.onChange}
+                              <SearchableSelect
+                                options={dealers.map((dealer) => ({
+                                  value: dealer.id,
+                                  label: dealer.fullName,
+                                }))}
                                 value={field.value}
-                              >
-                                <FormControl>
-                                  <SelectTrigger data-testid="select-product-dealer">
-                                    <SelectValue placeholder="Выберите дилера" />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  {dealers.map((dealer) => (
-                                    <SelectItem
-                                      key={dealer.id}
-                                      value={dealer.id}
-                                    >
-                                      {dealer.fullName}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                                onValueChange={field.onChange}
+                                placeholder="Выберите дилера"
+                                searchPlaceholder="Поиск дилера..."
+                                emptyText="Дилер не найден"
+                                data-testid="select-product-dealer"
+                              />
                               <FormMessage />
                             </FormItem>
                           )}
@@ -1909,38 +1854,28 @@ export default function OrdersPage() {
                                     <FormLabel className="text-xs">
                                       Комплектующая
                                     </FormLabel>
-                                    <Select
-                                      onValueChange={field.onChange}
-                                      value={field.value}
-                                    >
-                                      <FormControl>
-                                        <SelectTrigger
-                                          className="h-9"
-                                          data-testid={`select-product-component-${index}`}
-                                        >
-                                          <SelectValue placeholder="Выберите комплектующую" />
-                                        </SelectTrigger>
-                                      </FormControl>
-                                      <SelectContent>
-                                        {componentStock.map((component) => (
-                                          <SelectItem
-                                            key={component.id}
-                                            value={component.id}
-                                          >
-                                            <div className="flex items-center justify-between w-full gap-2">
-                                              <span>{component.name}</span>
-                                              <span className="text-xs text-muted-foreground">
-                                                ({component.unit || "шт"}) —
-                                                ост:{" "}
-                                                {component.stock.quantity.toFixed(
-                                                  1
-                                                )}
-                                              </span>
-                                            </div>
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
+                                    <FormControl>
+                                      <SearchableSelect
+                                        options={componentStock.map(
+                                          (component) => ({
+                                            value: component.id,
+                                            label: component.name,
+                                            secondaryLabel: `(${
+                                              component.unit || "шт"
+                                            }) — ост: ${component.stock.quantity.toFixed(
+                                              1
+                                            )}`,
+                                          })
+                                        )}
+                                        value={field.value}
+                                        onValueChange={field.onChange}
+                                        placeholder="Выберите комплектующую"
+                                        searchPlaceholder="Поиск комплектующей..."
+                                        emptyText="Комплектующая не найдена"
+                                        className="h-9"
+                                        data-testid={`select-product-component-${index}`}
+                                      />
+                                    </FormControl>
                                     <FormMessage />
                                   </FormItem>
                                 )}
@@ -2145,23 +2080,18 @@ export default function OrdersPage() {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Дилер</FormLabel>
-                          <Select
-                            onValueChange={field.onChange}
+                          <SearchableSelect
+                            options={dealers.map((dealer) => ({
+                              value: dealer.id,
+                              label: dealer.fullName,
+                            }))}
                             value={field.value}
-                          >
-                            <FormControl>
-                              <SelectTrigger data-testid="select-dealer">
-                                <SelectValue placeholder="Выберите дилера" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {dealers.map((dealer) => (
-                                <SelectItem key={dealer.id} value={dealer.id}>
-                                  {dealer.fullName}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                            onValueChange={field.onChange}
+                            placeholder="Выберите дилера"
+                            searchPlaceholder="Поиск дилера..."
+                            emptyText="Дилер не найден"
+                            data-testid="select-dealer"
+                          />
                           <FormMessage />
                         </FormItem>
                       )}
@@ -2390,29 +2320,19 @@ export default function OrdersPage() {
                                     </Popover>
                                   )}
                                 </FormLabel>
-                                <Select
-                                  onValueChange={field.onChange}
+                                <SearchableSelect
+                                  options={systems.map((system) => ({
+                                    value: system.id,
+                                    label: system.name,
+                                  }))}
                                   value={field.value}
-                                >
-                                  <FormControl>
-                                    <SelectTrigger
-                                      className="h-9"
-                                      data-testid={`select-sash-system-${index}`}
-                                    >
-                                      <SelectValue placeholder="Система" />
-                                    </SelectTrigger>
-                                  </FormControl>
-                                  <SelectContent>
-                                    {systems.map((system) => (
-                                      <SelectItem
-                                        key={system.id}
-                                        value={system.id}
-                                      >
-                                        {system.name}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
+                                  onValueChange={field.onChange}
+                                  placeholder="Система"
+                                  searchPlaceholder="Поиск системы..."
+                                  emptyText="Система не найдена"
+                                  className="h-9"
+                                  data-testid={`select-sash-system-${index}`}
+                                />
                               </FormItem>
                             );
                           }}
@@ -2425,26 +2345,19 @@ export default function OrdersPage() {
                               <FormLabel className="text-xs">
                                 Цвет сист.
                               </FormLabel>
-                              <Select
-                                onValueChange={field.onChange}
+                              <SearchableSelect
+                                options={colors.map((color) => ({
+                                  value: color.id,
+                                  label: color.name,
+                                }))}
                                 value={field.value}
-                              >
-                                <FormControl>
-                                  <SelectTrigger
-                                    className="h-9"
-                                    data-testid={`select-sash-system-color-${index}`}
-                                  >
-                                    <SelectValue placeholder="Цвет" />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  {colors.map((color) => (
-                                    <SelectItem key={color.id} value={color.id}>
-                                      {color.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                                onValueChange={field.onChange}
+                                placeholder="Цвет"
+                                searchPlaceholder="Поиск цвета..."
+                                emptyText="Цвет не найден"
+                                className="h-9"
+                                data-testid={`select-sash-system-color-${index}`}
+                              />
                             </FormItem>
                           )}
                         />
@@ -2543,29 +2456,19 @@ export default function OrdersPage() {
                                     </Popover>
                                   )}
                                 </FormLabel>
-                                <Select
-                                  onValueChange={field.onChange}
+                                <SearchableSelect
+                                  options={fabrics.map((fabric) => ({
+                                    value: fabric.id,
+                                    label: fabric.name,
+                                  }))}
                                   value={field.value}
-                                >
-                                  <FormControl>
-                                    <SelectTrigger
-                                      className="h-9"
-                                      data-testid={`select-sash-fabric-${index}`}
-                                    >
-                                      <SelectValue placeholder="Ткань" />
-                                    </SelectTrigger>
-                                  </FormControl>
-                                  <SelectContent>
-                                    {fabrics.map((fabric) => (
-                                      <SelectItem
-                                        key={fabric.id}
-                                        value={fabric.id}
-                                      >
-                                        {fabric.name}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
+                                  onValueChange={field.onChange}
+                                  placeholder="Ткань"
+                                  searchPlaceholder="Поиск ткани..."
+                                  emptyText="Ткань не найдена"
+                                  className="h-9"
+                                  data-testid={`select-sash-fabric-${index}`}
+                                />
                               </FormItem>
                             );
                           }}
@@ -2578,26 +2481,19 @@ export default function OrdersPage() {
                               <FormLabel className="text-xs">
                                 Цвет ткани
                               </FormLabel>
-                              <Select
-                                onValueChange={field.onChange}
+                              <SearchableSelect
+                                options={colors.map((color) => ({
+                                  value: color.id,
+                                  label: color.name,
+                                }))}
                                 value={field.value}
-                              >
-                                <FormControl>
-                                  <SelectTrigger
-                                    className="h-9"
-                                    data-testid={`select-sash-fabric-color-${index}`}
-                                  >
-                                    <SelectValue placeholder="Цвет" />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  {colors.map((color) => (
-                                    <SelectItem key={color.id} value={color.id}>
-                                      {color.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                                onValueChange={field.onChange}
+                                placeholder="Цвет"
+                                searchPlaceholder="Поиск цвета..."
+                                emptyText="Цвет не найден"
+                                className="h-9"
+                                data-testid={`select-sash-fabric-color-${index}`}
+                              />
                             </FormItem>
                           )}
                         />
