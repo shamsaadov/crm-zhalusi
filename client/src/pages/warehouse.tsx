@@ -39,7 +39,7 @@ import { Separator } from "@/components/ui/separator";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Loader2, Eye, Trash2, X, Package } from "lucide-react";
+import { Plus, Loader2, Eye, Trash2, X, Package, Pencil, History } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
@@ -67,6 +67,13 @@ const warehouseSchema = z.object({
   comment: z.string().optional(),
   items: z.array(itemSchema).min(1, "Добавьте минимум одну позицию"),
 });
+
+const inventoryAdjustmentSchema = z.object({
+  newQuantity: z.string().min(1, "Обязательное поле"),
+  comment: z.string().optional(),
+});
+
+type InventoryAdjustmentFormValues = z.infer<typeof inventoryAdjustmentSchema>;
 
 type ItemFormValues = z.infer<typeof itemSchema>;
 type WarehouseFormValues = z.infer<typeof warehouseSchema>;
@@ -118,6 +125,16 @@ export default function WarehousePage() {
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({});
   const [supplierFilter, setSupplierFilter] = useState("all");
   const [search, setSearch] = useState("");
+  
+  // Inventory adjustment state
+  const [isAdjustmentDialogOpen, setIsAdjustmentDialogOpen] = useState(false);
+  const [adjustmentItem, setAdjustmentItem] = useState<{
+    type: "fabric" | "component";
+    id: string;
+    name: string;
+    currentQuantity: number;
+    unit?: string;
+  } | null>(null);
 
   const {
     data: receiptsData,
@@ -176,6 +193,19 @@ export default function WarehousePage() {
   const fabricStock = stockData?.fabrics || [];
   const componentStock = stockData?.components || [];
 
+  // Fetch inventory adjustments (writeoffs and receipts without order/supplier)
+  const { data: adjustments = [] } = useQuery<{
+    id: string;
+    type: "increase" | "decrease";
+    itemType: string;
+    itemName: string;
+    quantity: string;
+    date: string;
+    comment: string | null;
+  }[]>({
+    queryKey: ["/api/stock/adjustments"],
+  });
+
   const form = useForm<WarehouseFormValues>({
     resolver: zodResolver(warehouseSchema),
     defaultValues: {
@@ -201,6 +231,15 @@ export default function WarehousePage() {
   });
 
   const watchedItems = useWatch({ control: form.control, name: "items" });
+
+  // Inventory adjustment form
+  const adjustmentForm = useForm<InventoryAdjustmentFormValues>({
+    resolver: zodResolver(inventoryAdjustmentSchema),
+    defaultValues: {
+      newQuantity: "",
+      comment: "",
+    },
+  });
 
   useEffect(() => {
     watchedItems?.forEach((item, index) => {
@@ -281,6 +320,33 @@ export default function WarehousePage() {
     },
   });
 
+  // Inventory adjustment mutation
+  const inventoryAdjustmentMutation = useMutation({
+    mutationFn: (data: {
+      itemType: "fabric" | "component";
+      itemId: string;
+      newQuantity: string;
+      currentQuantity: number;
+      comment?: string;
+    }) => apiRequest("POST", "/api/stock/adjustment", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/stock"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stock/adjustments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/warehouse"] });
+      setIsAdjustmentDialogOpen(false);
+      setAdjustmentItem(null);
+      adjustmentForm.reset();
+      toast({ title: "Успешно", description: "Остаток скорректирован" });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Ошибка",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const onSubmit = (data: WarehouseFormValues) => {
     createMutation.mutate(data);
   };
@@ -301,6 +367,36 @@ export default function WarehousePage() {
   const openDeleteDialog = (receipt: WarehouseReceiptWithRelations) => {
     setReceiptToDelete(receipt);
     setIsDeleteDialogOpen(true);
+  };
+
+  const openAdjustmentDialog = (
+    type: "fabric" | "component",
+    item: FabricWithStock | ComponentWithStock
+  ) => {
+    setAdjustmentItem({
+      type,
+      id: item.id,
+      name: item.name,
+      currentQuantity: item.stock.quantity,
+      unit: type === "component" ? (item as ComponentWithStock).unit || "шт" : "м²",
+    });
+    adjustmentForm.reset({
+      newQuantity: item.stock.quantity.toFixed(2),
+      comment: "",
+    });
+    setIsAdjustmentDialogOpen(true);
+  };
+
+  const onAdjustmentSubmit = (data: InventoryAdjustmentFormValues) => {
+    if (adjustmentItem) {
+      inventoryAdjustmentMutation.mutate({
+        itemType: adjustmentItem.type,
+        itemId: adjustmentItem.id,
+        newQuantity: data.newQuantity,
+        currentQuantity: adjustmentItem.currentQuantity,
+        comment: data.comment,
+      });
+    }
   };
 
   const fetchPreviousPrice = async (
@@ -791,13 +887,11 @@ export default function WarehousePage() {
               <div>
                 <h3 className="text-sm font-medium mb-2 flex items-center gap-2 text-muted-foreground">
                   <Package className="h-4 w-4" />
-                  Ткани (
-                  {fabricStock.filter((f) => f.stock.quantity > 0).length})
+                  Ткани ({fabricStock.length})
                 </h3>
-                {fabricStock.filter((f) => f.stock.quantity > 0).length ===
-                0 ? (
+                {fabricStock.length === 0 ? (
                   <p className="text-muted-foreground text-sm">
-                    Нет тканей с остатком
+                    Нет тканей
                   </p>
                 ) : (
                   <div className="border rounded-md overflow-hidden">
@@ -819,43 +913,57 @@ export default function WarehousePage() {
                           <th className="text-right py-2 px-3 font-medium w-32">
                             Сумма
                           </th>
+                          <th className="w-12"></th>
                         </tr>
                       </thead>
                       <tbody className="divide-y">
-                        {fabricStock
-                          .filter((f) => f.stock.quantity > 0)
-                          .map((fabric) => (
-                            <tr
-                              key={fabric.id}
-                              className="hover:bg-muted/30 transition-colors"
-                            >
-                              <td className="py-1.5 px-3">{fabric.name}</td>
-                              <td className="py-1.5 px-3">
-                                {fabric.category && (
-                                  <Badge
-                                    variant="outline"
-                                    className="text-xs py-0"
-                                  >
-                                    {fabric.category}
-                                  </Badge>
-                                )}
-                              </td>
-                              <td className="py-1.5 px-3 text-right font-mono">
-                                {fabric.stock.quantity.toFixed(2)}
-                              </td>
-                              <td className="py-1.5 px-3 text-right font-mono">
-                                {formatCurrency(fabric.stock.lastPrice)}
-                              </td>
-                              <td className="py-1.5 px-3 text-right font-mono font-medium">
-                                {formatCurrency(fabric.stock.totalValue)}
-                              </td>
-                            </tr>
-                          ))}
+                        {fabricStock.map((fabric) => (
+                          <tr
+                            key={fabric.id}
+                            className={`hover:bg-muted/30 transition-colors ${fabric.stock.quantity <= 0 ? "text-muted-foreground" : ""}`}
+                          >
+                            <td className="py-1.5 px-3">{fabric.name}</td>
+                            <td className="py-1.5 px-3">
+                              {fabric.category && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs py-0"
+                                >
+                                  {fabric.category}
+                                </Badge>
+                              )}
+                            </td>
+                            <td className={`py-1.5 px-3 text-right font-mono ${fabric.stock.quantity < 0 ? "text-destructive" : ""}`}>
+                              {fabric.stock.quantity.toFixed(2)}
+                            </td>
+                            <td className="py-1.5 px-3 text-right font-mono">
+                              {formatCurrency(fabric.stock.lastPrice)}
+                            </td>
+                            <td className="py-1.5 px-3 text-right font-mono font-medium">
+                              {formatCurrency(
+                                fabric.stock.quantity > 0
+                                  ? fabric.stock.quantity * fabric.stock.lastPrice
+                                  : 0
+                              )}
+                            </td>
+                            <td className="py-1.5 px-1">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-7 w-7"
+                                onClick={() => openAdjustmentDialog("fabric", fabric)}
+                                title="Корректировка остатка"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
                       </tbody>
                       <tfoot className="bg-muted/50 border-t">
                         <tr>
                           <td
-                            colSpan={4}
+                            colSpan={5}
                             className="py-2 px-3 text-right font-medium"
                           >
                             Итого:
@@ -864,7 +972,7 @@ export default function WarehousePage() {
                             {formatCurrency(
                               fabricStock
                                 .filter((f) => f.stock.quantity > 0)
-                                .reduce((sum, f) => sum + f.stock.totalValue, 0)
+                                .reduce((sum, f) => sum + f.stock.quantity * f.stock.lastPrice, 0)
                             )}
                           </td>
                         </tr>
@@ -877,13 +985,11 @@ export default function WarehousePage() {
               <div>
                 <h3 className="text-sm font-medium mb-2 flex items-center gap-2 text-muted-foreground">
                   <Package className="h-4 w-4" />
-                  Комплектующие (
-                  {componentStock.filter((c) => c.stock.quantity > 0).length})
+                  Комплектующие ({componentStock.length})
                 </h3>
-                {componentStock.filter((c) => c.stock.quantity > 0).length ===
-                0 ? (
+                {componentStock.length === 0 ? (
                   <p className="text-muted-foreground text-sm">
-                    Нет комплектующих с остатком
+                    Нет комплектующих
                   </p>
                 ) : (
                   <div className="border rounded-md overflow-hidden">
@@ -905,36 +1011,50 @@ export default function WarehousePage() {
                           <th className="text-right py-2 px-3 font-medium w-32">
                             Сумма
                           </th>
+                          <th className="w-12"></th>
                         </tr>
                       </thead>
                       <tbody className="divide-y">
-                        {componentStock
-                          .filter((c) => c.stock.quantity > 0)
-                          .map((component) => (
-                            <tr
-                              key={component.id}
-                              className="hover:bg-muted/30 transition-colors"
-                            >
-                              <td className="py-1.5 px-3">{component.name}</td>
-                              <td className="py-1.5 px-3 text-muted-foreground">
-                                {component.unit || "-"}
-                              </td>
-                              <td className="py-1.5 px-3 text-right font-mono">
-                                {component.stock.quantity.toFixed(2)}
-                              </td>
-                              <td className="py-1.5 px-3 text-right font-mono">
-                                {formatCurrency(component.stock.lastPrice)}
-                              </td>
-                              <td className="py-1.5 px-3 text-right font-mono font-medium">
-                                {formatCurrency(component.stock.totalValue)}
-                              </td>
-                            </tr>
-                          ))}
+                        {componentStock.map((component) => (
+                          <tr
+                            key={component.id}
+                            className={`hover:bg-muted/30 transition-colors ${component.stock.quantity <= 0 ? "text-muted-foreground" : ""}`}
+                          >
+                            <td className="py-1.5 px-3">{component.name}</td>
+                            <td className="py-1.5 px-3 text-muted-foreground">
+                              {component.unit || "-"}
+                            </td>
+                            <td className={`py-1.5 px-3 text-right font-mono ${component.stock.quantity < 0 ? "text-destructive" : ""}`}>
+                              {component.stock.quantity.toFixed(2)}
+                            </td>
+                            <td className="py-1.5 px-3 text-right font-mono">
+                              {formatCurrency(component.stock.lastPrice)}
+                            </td>
+                            <td className="py-1.5 px-3 text-right font-mono font-medium">
+                              {formatCurrency(
+                                component.stock.quantity > 0
+                                  ? component.stock.quantity * component.stock.lastPrice
+                                  : 0
+                              )}
+                            </td>
+                            <td className="py-1.5 px-1">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-7 w-7"
+                                onClick={() => openAdjustmentDialog("component", component)}
+                                title="Корректировка остатка"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
                       </tbody>
                       <tfoot className="bg-muted/50 border-t">
                         <tr>
                           <td
-                            colSpan={4}
+                            colSpan={5}
                             className="py-2 px-3 text-right font-medium"
                           >
                             Итого:
@@ -943,7 +1063,7 @@ export default function WarehousePage() {
                             {formatCurrency(
                               componentStock
                                 .filter((c) => c.stock.quantity > 0)
-                                .reduce((sum, c) => sum + c.stock.totalValue, 0)
+                                .reduce((sum, c) => sum + c.stock.quantity * c.stock.lastPrice, 0)
                             )}
                           </td>
                         </tr>
@@ -952,6 +1072,53 @@ export default function WarehousePage() {
                   </div>
                 )}
               </div>
+
+              {/* Adjustments History */}
+              {adjustments.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-medium mb-2 flex items-center gap-2 text-muted-foreground">
+                    <History className="h-4 w-4" />
+                    История корректировок ({adjustments.length})
+                  </h3>
+                  <div className="border rounded-md overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/50">
+                        <tr className="border-b">
+                          <th className="text-left py-2 px-3 font-medium">Дата</th>
+                          <th className="text-left py-2 px-3 font-medium">Позиция</th>
+                          <th className="text-right py-2 px-3 font-medium w-28">Изменение</th>
+                          <th className="text-left py-2 px-3 font-medium">Комментарий</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {adjustments.map((adj) => (
+                          <tr key={adj.id} className="hover:bg-muted/30 transition-colors">
+                            <td className="py-1.5 px-3 text-muted-foreground">
+                              {format(new Date(adj.date), "dd.MM.yyyy")}
+                            </td>
+                            <td className="py-1.5 px-3">
+                              <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="text-xs py-0">
+                                  {adj.itemType === "fabric" ? "Ткань" : "Компл."}
+                                </Badge>
+                                {adj.itemName}
+                              </div>
+                            </td>
+                            <td className={`py-1.5 px-3 text-right font-mono ${
+                              adj.type === "increase" ? "text-green-600" : "text-red-600"
+                            }`}>
+                              {adj.type === "increase" ? "+" : "-"}{parseFloat(adj.quantity).toFixed(2)}
+                            </td>
+                            <td className="py-1.5 px-3 text-muted-foreground">
+                              {adj.comment || "-"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </TabsContent>
@@ -1058,6 +1225,105 @@ export default function WarehousePage() {
               Удалить
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Inventory Adjustment Dialog */}
+      <Dialog
+        open={isAdjustmentDialogOpen}
+        onOpenChange={(open) => {
+          setIsAdjustmentDialogOpen(open);
+          if (!open) {
+            setAdjustmentItem(null);
+            adjustmentForm.reset();
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Корректировка остатка</DialogTitle>
+          </DialogHeader>
+          {adjustmentItem && (
+            <Form {...adjustmentForm}>
+              <form
+                onSubmit={adjustmentForm.handleSubmit(onAdjustmentSubmit)}
+                className="space-y-4"
+              >
+                <div className="p-3 bg-muted rounded-md">
+                  <p className="font-medium">{adjustmentItem.name}</p>
+                  <p className="text-sm text-muted-foreground">
+                    Текущий остаток: {adjustmentItem.currentQuantity.toFixed(2)} {adjustmentItem.unit}
+                  </p>
+                </div>
+                
+                <FormField
+                  control={adjustmentForm.control}
+                  name="newQuantity"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Фактический остаток ({adjustmentItem.unit})</FormLabel>
+                      <FormControl>
+                        <Input 
+                          type="number" 
+                          step="0.01" 
+                          {...field} 
+                          placeholder="Введите фактическое количество"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                      {field.value && (
+                        <p className="text-sm text-muted-foreground">
+                          {(() => {
+                            const diff = parseFloat(field.value) - adjustmentItem.currentQuantity;
+                            if (diff === 0) return "Без изменений";
+                            return diff > 0 
+                              ? <span className="text-green-600">Приход: +{diff.toFixed(2)} {adjustmentItem.unit}</span>
+                              : <span className="text-red-600">Списание: {diff.toFixed(2)} {adjustmentItem.unit}</span>;
+                          })()}
+                        </p>
+                      )}
+                    </FormItem>
+                  )}
+                />
+                
+                <FormField
+                  control={adjustmentForm.control}
+                  name="comment"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Комментарий</FormLabel>
+                      <FormControl>
+                        <Textarea 
+                          {...field} 
+                          placeholder="Причина корректировки (инвентаризация, пересчёт...)"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsAdjustmentDialogOpen(false)}
+                  >
+                    Отмена
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={inventoryAdjustmentMutation.isPending}
+                  >
+                    {inventoryAdjustmentMutation.isPending && (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    )}
+                    Сохранить
+                  </Button>
+                </DialogFooter>
+              </form>
+            </Form>
+          )}
         </DialogContent>
       </Dialog>
     </Layout>

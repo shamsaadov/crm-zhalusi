@@ -150,9 +150,7 @@ export function ProductForm({
                           options={componentStock.map((component) => ({
                             value: component.id,
                             label: component.name,
-                            secondaryLabel: `(${
-                              component.unit || "шт"
-                            }) — ост: ${component.stock.quantity.toFixed(1)}`,
+                            secondaryLabel: `(${component.unit || "шт"}) — ост: ${(component.stock?.quantity ?? 0).toFixed(1)}`,
                           }))}
                           value={field.value}
                           onValueChange={field.onChange}
@@ -191,16 +189,16 @@ export function ProductForm({
                     </FormItem>
                   )}
                 />
-                {selectedComponent && (
+                {selectedComponent && selectedComponent.stock && (
                   <div className="flex flex-col text-xs text-muted-foreground pb-2">
                     <span>
                       Ср. цена:{" "}
-                      {formatCurrency(selectedComponent.stock.avgPrice)}
+                      {formatCurrency(selectedComponent.stock.avgPrice ?? 0)}
                     </span>
                     <span className="font-medium text-foreground">
                       Сумма:{" "}
                       {formatCurrency(
-                        selectedComponent.stock.avgPrice *
+                        (selectedComponent.stock.avgPrice ?? 0) *
                           parseFloat(
                             form.watch(`components.${index}.quantity`) || "0"
                           )

@@ -69,7 +69,7 @@ export function calculateCostPrice(
         if (system && system.components) {
           for (const component of system.components) {
             const compStock = componentStock.find((c) => c.id === component.id);
-            if (compStock && compStock.stock.avgPrice > 0) {
+            if (compStock?.stock?.avgPrice && compStock.stock.avgPrice > 0) {
               const quantity = parseFloat(component.quantity || "1");
               const sizeSource = component.sizeSource || null;
               const sizeMultiplier = parseFloat(

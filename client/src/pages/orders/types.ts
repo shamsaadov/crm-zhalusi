@@ -44,11 +44,11 @@ export interface StockItem {
 }
 
 export interface FabricWithStock extends Fabric {
-  stock: StockItem;
+  stock?: StockItem;
 }
 
 export interface ComponentWithStock extends Component {
-  stock: StockItem;
+  stock?: StockItem;
 }
 
 export interface SystemComponentWithDetails extends Component {

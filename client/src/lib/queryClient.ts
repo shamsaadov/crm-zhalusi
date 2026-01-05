@@ -1,16 +1,33 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
+// Custom error class that can carry additional data
+export class ApiError extends Error {
+  errors?: string[];
+  stockError?: boolean;
+  
+  constructor(message: string, errors?: string[], stockError?: boolean) {
+    super(message);
+    this.name = "ApiError";
+    this.errors = errors;
+    this.stockError = stockError;
+  }
+}
+
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
     let message = text;
+    let errors: string[] | undefined;
+    let stockError: boolean | undefined;
     try {
       const json = JSON.parse(text);
       message = json.message || text;
+      errors = json.errors;
+      stockError = json.stockError;
     } catch {
       // Not JSON, use as-is
     }
-    throw new Error(message);
+    throw new ApiError(message, errors, stockError);
   }
 }
 

@@ -17,7 +17,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, ApiError } from "@/lib/queryClient";
 import {
   ORDER_STATUSES,
   type Dealer,
@@ -190,12 +190,22 @@ export default function OrdersPage() {
       form.reset();
       toast({ title: "Успешно", description: "Заказ создан" });
     },
-    onError: (error: Error) => {
-      toast({
-        title: "Ошибка",
-        description: error.message,
-        variant: "destructive",
-      });
+    onError: (error: Error | ApiError) => {
+      if (error instanceof ApiError && error.stockError && error.errors) {
+        // Show detailed stock errors
+        toast({
+          title: "Недостаточно материалов на складе",
+          description: error.errors.join("\n"),
+          variant: "destructive",
+          duration: 10000,
+        });
+      } else {
+        toast({
+          title: "Ошибка",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
     },
   });
 
@@ -209,12 +219,21 @@ export default function OrdersPage() {
       form.reset();
       toast({ title: "Успешно", description: "Заказ обновлен" });
     },
-    onError: (error: Error) => {
-      toast({
-        title: "Ошибка",
-        description: error.message,
-        variant: "destructive",
-      });
+    onError: (error: Error | ApiError) => {
+      if (error instanceof ApiError && error.stockError && error.errors) {
+        toast({
+          title: "Недостаточно материалов на складе",
+          description: error.errors.join("\n"),
+          variant: "destructive",
+          duration: 10000,
+        });
+      } else {
+        toast({
+          title: "Ошибка",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
     },
   });
 
@@ -261,12 +280,22 @@ export default function OrdersPage() {
       setActiveTab("order");
       toast({ title: "Успешно", description: "Заказ товара создан" });
     },
-    onError: (error: Error) => {
-      toast({
-        title: "Ошибка",
-        description: error.message,
-        variant: "destructive",
-      });
+    onError: (error: Error | ApiError) => {
+      if (error instanceof ApiError && error.stockError && error.errors) {
+        // Show detailed stock errors
+        toast({
+          title: "Недостаточно товара на складе",
+          description: error.errors.join("\n"),
+          variant: "destructive",
+          duration: 10000,
+        });
+      } else {
+        toast({
+          title: "Ошибка",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
     },
   });
 
@@ -431,7 +460,7 @@ export default function OrdersPage() {
             const compStock = componentStock.find(
               (c) => c.id === comp.componentId
             );
-            if (compStock && compStock.stock.avgPrice > 0) {
+            if (compStock?.stock?.avgPrice && compStock.stock.avgPrice > 0) {
               const qty = parseFloat(comp.quantity || "0");
               totalCost += compStock.stock.avgPrice * qty;
             }

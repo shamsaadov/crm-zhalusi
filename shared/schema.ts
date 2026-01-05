@@ -532,7 +532,6 @@ export const warehouseWriteoffs = pgTable("warehouse_writeoffs", {
     .primaryKey()
     .default(sql`gen_random_uuid()`),
   orderId: varchar("order_id")
-    .notNull()
     .references(() => orders.id, { onDelete: "cascade" }),
   itemType: text("item_type").notNull(), // "component" or "fabric"
   componentId: varchar("component_id").references(() => components.id),
@@ -544,6 +543,7 @@ export const warehouseWriteoffs = pgTable("warehouse_writeoffs", {
   userId: varchar("user_id")
     .notNull()
     .references(() => users.id),
+  comment: text("comment"),
 });
 
 export const warehouseWriteoffsRelations = relations(

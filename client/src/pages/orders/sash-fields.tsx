@@ -225,7 +225,7 @@ export function SashFields({
           <FormItem className="flex-1 min-w-[120px]">
             <FormLabel className="text-xs flex items-center gap-1">
               Ткань
-              {field.value && selectedFabricInfo && (
+              {field.value && selectedFabricInfo?.stock && (
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
@@ -250,13 +250,13 @@ export function SashFields({
                         <div>
                           <p className="text-muted-foreground">Остаток</p>
                           <p className="font-medium">
-                            {selectedFabricInfo.stock.quantity.toFixed(2)}
+                            {(selectedFabricInfo.stock.quantity ?? 0).toFixed(2)}
                           </p>
                         </div>
                         <div>
                           <p className="text-muted-foreground">Ср. цена</p>
                           <p className="font-medium">
-                            {formatCurrency(selectedFabricInfo.stock.avgPrice)}
+                            {formatCurrency(selectedFabricInfo.stock.avgPrice ?? 0)}
                           </p>
                         </div>
                       </div>

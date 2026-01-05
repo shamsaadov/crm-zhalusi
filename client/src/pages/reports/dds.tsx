@@ -6,9 +6,16 @@ import { formatCurrency } from "@/components/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable } from "@/components/data-table";
 import { Badge } from "@/components/ui/badge";
-import { ArrowUpCircle, ArrowDownCircle, ArrowRightLeft, Wallet } from "lucide-react";
+import { ArrowUpCircle, ArrowDownCircle, ArrowRightLeft, Wallet, Tag } from "lucide-react";
 import type { FinanceOperation, Cashbox } from "@shared/schema";
 import { format } from "date-fns";
+
+interface ExpenseGroup {
+  expenseTypeId: string;
+  expenseTypeName: string;
+  total: number;
+  count: number;
+}
 
 interface DDSReport {
   totalIncome: number;
@@ -17,6 +24,7 @@ interface DDSReport {
   totalTransfers: number;
   netFlow: number;
   operations: FinanceOperation[];
+  expenseGroups: ExpenseGroup[];
 }
 
 const typeLabels: Record<string, string> = {
@@ -39,11 +47,14 @@ export default function DDSReportPage() {
   if (dateRange.to) queryParams.append("to", dateRange.to.toISOString());
   if (cashboxFilter !== "all") queryParams.append("cashboxId", cashboxFilter);
 
+  const queryString = queryParams.toString();
+  const apiUrl = `/api/reports/dds${queryString ? `?${queryString}` : ""}`;
+
   const { data: report, isLoading } = useQuery<DDSReport>({
-    queryKey: ["/api/reports/dds", queryParams.toString()],
+    queryKey: [apiUrl],
   });
 
-  const columns = [
+  const operationColumns = [
     {
       key: "date",
       header: "Дата",
@@ -63,6 +74,37 @@ export default function DDSReportPage() {
         <span className={`font-mono ${op.type === "income" ? "text-green-600" : op.type === "expense" || op.type === "supplier_payment" ? "text-red-600" : ""}`}>
           {op.type === "income" ? "+" : op.type === "expense" || op.type === "supplier_payment" ? "-" : ""}
           {formatCurrency(op.amount)}
+        </span>
+      ),
+      className: "text-right",
+    },
+  ];
+
+  const expenseGroupColumns = [
+    {
+      key: "expenseTypeName",
+      header: "Статья расходов",
+      cell: (group: ExpenseGroup) => (
+        <div className="flex items-center gap-2">
+          <Tag className="h-4 w-4 text-muted-foreground" />
+          <span className="font-medium">{group.expenseTypeName}</span>
+        </div>
+      ),
+    },
+    {
+      key: "count",
+      header: "Кол-во",
+      cell: (group: ExpenseGroup) => (
+        <Badge variant="secondary">{group.count}</Badge>
+      ),
+      className: "text-center",
+    },
+    {
+      key: "total",
+      header: "Сумма",
+      cell: (group: ExpenseGroup) => (
+        <span className="font-mono text-red-600 dark:text-red-400">
+          -{formatCurrency(group.total)}
         </span>
       ),
       className: "text-right",
@@ -143,13 +185,34 @@ export default function DDSReportPage() {
         </Card>
       </div>
 
-      <DataTable
-        columns={columns}
-        data={report?.operations || []}
-        isLoading={isLoading}
-        emptyMessage="Операции не найдены"
-        getRowKey={(op) => op.id}
-      />
+      {/* Expenses grouped by type */}
+      {report?.expenseGroups && report.expenseGroups.length > 0 && (
+        <div className="mb-6">
+          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <ArrowDownCircle className="h-5 w-5 text-red-600" />
+            Расходы по статьям
+          </h3>
+          <DataTable
+            columns={expenseGroupColumns}
+            data={report.expenseGroups}
+            isLoading={isLoading}
+            emptyMessage="Расходы не найдены"
+            getRowKey={(group) => group.expenseTypeId}
+          />
+        </div>
+      )}
+
+      {/* All operations */}
+      <div>
+        <h3 className="text-lg font-semibold mb-4">Все операции</h3>
+        <DataTable
+          columns={operationColumns}
+          data={report?.operations || []}
+          isLoading={isLoading}
+          emptyMessage="Операции не найдены"
+          getRowKey={(op) => op.id}
+        />
+      </div>
     </Layout>
   );
 }

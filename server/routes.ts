@@ -956,12 +956,182 @@ export async function registerRoutes(
     sashCost: sash.sashCost || "0",
   });
 
+  // Helper function to calculate current stock levels
+  async function getStockLevels(userId: string) {
+    const [receipts, writeoffs] = await Promise.all([
+      storage.getWarehouseReceipts(userId),
+      storage.getWarehouseWriteoffs(userId),
+    ]);
+
+    const fabricStock: Record<string, number> = {};
+    const componentStock: Record<string, number> = {};
+
+    // Add receipts
+    for (const receipt of receipts) {
+      const items = await storage.getWarehouseReceiptItems(receipt.id);
+      for (const item of items) {
+        const qty = parseFloat(item.quantity?.toString() || "0");
+        if (item.fabricId) {
+          fabricStock[item.fabricId] = (fabricStock[item.fabricId] || 0) + qty;
+        }
+        if (item.componentId) {
+          componentStock[item.componentId] = (componentStock[item.componentId] || 0) + qty;
+        }
+      }
+    }
+
+    // Subtract writeoffs
+    for (const wo of writeoffs) {
+      const qty = parseFloat(wo.quantity?.toString() || "0");
+      if (wo.fabricId) {
+        fabricStock[wo.fabricId] = (fabricStock[wo.fabricId] || 0) - qty;
+      }
+      if (wo.componentId) {
+        componentStock[wo.componentId] = (componentStock[wo.componentId] || 0) - qty;
+      }
+    }
+
+    return { fabricStock, componentStock };
+  }
+
+  // Helper function to validate stock for sash order
+  async function validateSashOrderStock(
+    userId: string,
+    sashes: any[]
+  ): Promise<{ valid: boolean; errors: string[] }> {
+    const errors: string[] = [];
+    const { fabricStock, componentStock } = await getStockLevels(userId);
+    
+    const allFabrics = await storage.getFabrics(userId);
+    const allSystems = await storage.getSystems(userId);
+
+    // Calculate required materials
+    const requiredFabrics: Record<string, { qty: number; name: string }> = {};
+    const requiredComponents: Record<string, { qty: number; name: string }> = {};
+
+    for (const sash of sashes) {
+      const width = parseFloat(sash.width || "0");
+      const height = parseFloat(sash.height || "0");
+      const widthM = width / 1000;
+      const heightM = height / 1000;
+      const areaM2 = widthM * heightM;
+      const quantity = parseInt(sash.quantity || "1");
+
+      // Check fabric
+      if (sash.fabricId) {
+        const fabric = allFabrics.find(f => f.id === sash.fabricId);
+        if (fabric) {
+          const fabricMultiplier = fabric.fabricType === "zebra" ? 2 : 1;
+          const fabricQty = areaM2 * fabricMultiplier * quantity;
+          
+          if (!requiredFabrics[sash.fabricId]) {
+            requiredFabrics[sash.fabricId] = { qty: 0, name: fabric.name };
+          }
+          requiredFabrics[sash.fabricId].qty += fabricQty;
+        }
+      }
+
+      // Check system components
+      if (sash.systemId) {
+        const system = allSystems.find(s => s.id === sash.systemId);
+        if (system) {
+          const systemComps = await storage.getSystemComponents(system.id);
+          const allComponents = await storage.getComponents(userId);
+          
+          for (const sc of systemComps) {
+            const component = allComponents.find(c => c.id === sc.componentId);
+            if (component) {
+              const compQuantity = parseFloat(sc.quantity?.toString() || "1");
+              const sizeSource = sc.sizeSource || null;
+              const sizeMultiplier = parseFloat(sc.sizeMultiplier?.toString() || "1");
+              const unit = component.unit || "шт";
+
+              let componentQty = compQuantity;
+              const isMetric = ["м", "пм", "п.м.", "м.п."].includes(unit.toLowerCase());
+
+              if (isMetric) {
+                if (sizeSource === "width") {
+                  componentQty = widthM * sizeMultiplier * compQuantity;
+                } else if (sizeSource === "height") {
+                  componentQty = heightM * sizeMultiplier * compQuantity;
+                } else {
+                  componentQty = widthM * sizeMultiplier * compQuantity;
+                }
+              }
+
+              componentQty *= quantity;
+
+              if (!requiredComponents[sc.componentId]) {
+                requiredComponents[sc.componentId] = { qty: 0, name: component.name };
+              }
+              requiredComponents[sc.componentId].qty += componentQty;
+            }
+          }
+        }
+      }
+    }
+
+    // Validate fabric stock
+    for (const [fabricId, { qty, name }] of Object.entries(requiredFabrics)) {
+      const available = fabricStock[fabricId] || 0;
+      if (available < qty) {
+        errors.push(`Недостаточно ткани "${name}": требуется ${qty.toFixed(2)} м², доступно ${available.toFixed(2)} м²`);
+      }
+    }
+
+    // Validate component stock
+    for (const [componentId, { qty, name }] of Object.entries(requiredComponents)) {
+      const available = componentStock[componentId] || 0;
+      if (available < qty) {
+        errors.push(`Недостаточно комплектующих "${name}": требуется ${qty.toFixed(2)}, доступно ${available.toFixed(2)}`);
+      }
+    }
+
+    return { valid: errors.length === 0, errors };
+  }
+
+  // Helper function to validate stock for product order
+  async function validateProductOrderStock(
+    userId: string,
+    components: { componentId: string; quantity: string }[]
+  ): Promise<{ valid: boolean; errors: string[] }> {
+    const errors: string[] = [];
+    const { componentStock } = await getStockLevels(userId);
+    const allComponents = await storage.getComponents(userId);
+
+    for (const item of components) {
+      const component = allComponents.find(c => c.id === item.componentId);
+      const requiredQty = parseFloat(item.quantity || "1");
+      const available = componentStock[item.componentId] || 0;
+
+      if (available < requiredQty) {
+        const name = component?.name || "Неизвестная комплектующая";
+        errors.push(`Недостаточно "${name}": требуется ${requiredQty.toFixed(2)}, доступно ${available.toFixed(2)}`);
+      }
+    }
+
+    return { valid: errors.length === 0, errors };
+  }
+
   app.post(
     "/api/orders",
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
-        const { sashes, ...orderData } = req.body;
+        const { sashes, skipStockValidation, ...orderData } = req.body;
+
+        // Validate stock availability for sash orders
+        if (sashes && Array.isArray(sashes) && sashes.length > 0 && !skipStockValidation) {
+          const validation = await validateSashOrderStock(req.userId!, sashes);
+          if (!validation.valid) {
+            return res.status(400).json({
+              message: "Недостаточно материалов на складе",
+              errors: validation.errors,
+              stockError: true,
+            });
+          }
+        }
+
         const orderNumber = await storage.getNextOrderNumber(req.userId!);
 
         const order = await storage.createOrder({
@@ -993,7 +1163,20 @@ export async function registerRoutes(
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
-        const { components, ...orderData } = req.body;
+        const { components, skipStockValidation, ...orderData } = req.body;
+
+        // Validate stock availability for product orders
+        if (components && Array.isArray(components) && components.length > 0 && !skipStockValidation) {
+          const validation = await validateProductOrderStock(req.userId!, components);
+          if (!validation.valid) {
+            return res.status(400).json({
+              message: "Недостаточно товара на складе",
+              errors: validation.errors,
+              stockError: true,
+            });
+          }
+        }
+
         const orderNumber = await storage.getNextOrderNumber(req.userId!);
 
         // Генерируем комментарий с описанием комплектующих
@@ -1047,7 +1230,20 @@ export async function registerRoutes(
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
-        const { sashes, ...orderData } = req.body;
+        const { sashes, skipStockValidation, ...orderData } = req.body;
+
+        // Validate stock availability if sashes are being updated
+        if (sashes && Array.isArray(sashes) && sashes.length > 0 && !skipStockValidation) {
+          const validation = await validateSashOrderStock(req.userId!, sashes);
+          if (!validation.valid) {
+            return res.status(400).json({
+              message: "Недостаточно материалов на складе",
+              errors: validation.errors,
+              stockError: true,
+            });
+          }
+        }
+
         const order = await storage.updateOrder(req.params.id, orderData);
 
         if (sashes && Array.isArray(sashes)) {
@@ -1915,6 +2111,141 @@ export async function registerRoutes(
     }
   );
 
+  // Get inventory adjustments history
+  app.get(
+    "/api/stock/adjustments",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const [writeoffs, receipts, allFabrics, allComponents] = await Promise.all([
+          storage.getWarehouseWriteoffs(req.userId!),
+          storage.getWarehouseReceipts(req.userId!),
+          storage.getFabrics(req.userId!),
+          storage.getComponents(req.userId!),
+        ]);
+
+        const adjustments: {
+          id: string;
+          type: "increase" | "decrease";
+          itemType: string;
+          itemName: string;
+          quantity: string;
+          date: string;
+          comment: string | null;
+        }[] = [];
+
+        // Get writeoffs without orderId (inventory adjustments - decreases)
+        for (const wo of writeoffs.filter(w => !w.orderId)) {
+          const itemName = wo.fabricId 
+            ? allFabrics.find(f => f.id === wo.fabricId)?.name 
+            : allComponents.find(c => c.id === wo.componentId)?.name;
+          
+          adjustments.push({
+            id: wo.id,
+            type: "decrease",
+            itemType: wo.itemType,
+            itemName: itemName || "Неизвестно",
+            quantity: wo.quantity?.toString() || "0",
+            date: wo.date || "",
+            comment: (wo as any).comment || null,
+          });
+        }
+
+        // Get receipts without supplierId (inventory adjustments - increases)
+        for (const receipt of receipts.filter(r => !r.supplierId)) {
+          const items = await storage.getWarehouseReceiptItems(receipt.id);
+          for (const item of items) {
+            const itemName = item.fabricId 
+              ? allFabrics.find(f => f.id === item.fabricId)?.name 
+              : allComponents.find(c => c.id === item.componentId)?.name;
+            
+            adjustments.push({
+              id: item.id,
+              type: "increase",
+              itemType: item.itemType || "unknown",
+              itemName: itemName || "Неизвестно",
+              quantity: item.quantity?.toString() || "0",
+              date: receipt.date || "",
+              comment: receipt.comment || null,
+            });
+          }
+        }
+
+        // Sort by date descending
+        adjustments.sort((a, b) => 
+          new Date(b.date).getTime() - new Date(a.date).getTime()
+        );
+
+        res.json(adjustments);
+      } catch (error) {
+        console.error("Get adjustments error:", error);
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // Stock adjustment (inventory) endpoint
+  app.post(
+    "/api/stock/adjustment",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const { itemType, itemId, newQuantity, currentQuantity, comment } = req.body;
+        
+        const newQty = parseFloat(newQuantity);
+        const currentQty = parseFloat(currentQuantity.toString());
+        const difference = newQty - currentQty;
+        
+        if (difference === 0) {
+          return res.json({ success: true, message: "Без изменений" });
+        }
+        
+        const today = new Date().toISOString().split("T")[0];
+        
+        if (difference > 0) {
+          // Need to add stock - create a receipt without supplier (adjustment)
+          // First get a default supplier or create adjustment receipt
+          const receipt = await storage.createWarehouseReceipt({
+            date: today,
+            supplierId: null,
+            total: "0",
+            comment: comment || `Инвентаризация: корректировка +${difference.toFixed(2)}`,
+            userId: req.userId!,
+          });
+          
+          await storage.createWarehouseReceiptItem({
+            receiptId: receipt.id,
+            itemType,
+            fabricId: itemType === "fabric" ? itemId : null,
+            componentId: itemType === "component" ? itemId : null,
+            quantity: difference.toFixed(4),
+            price: "0",
+            total: "0",
+          });
+        } else {
+          // Need to reduce stock - create a writeoff
+          await storage.createWarehouseWriteoff({
+            orderId: null,
+            itemType,
+            fabricId: itemType === "fabric" ? itemId : null,
+            componentId: itemType === "component" ? itemId : null,
+            quantity: Math.abs(difference).toFixed(4),
+            price: "0",
+            total: "0",
+            date: today,
+            userId: req.userId!,
+            comment: comment || `Инвентаризация: корректировка ${difference.toFixed(2)}`,
+          });
+        }
+        
+        res.json({ success: true });
+      } catch (error) {
+        console.error("Stock adjustment error:", error);
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
   // ===== REPORTS =====
 
   // DDS Report (Cash Flow)
@@ -1923,7 +2254,31 @@ export async function registerRoutes(
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
-        const operations = await storage.getFinanceOperations(req.userId!);
+        const { from, to, cashboxId } = req.query;
+        let operations = await storage.getFinanceOperations(req.userId!);
+        const expenseTypeList = await storage.getExpenseTypes(req.userId!);
+
+        // Filter by date range
+        if (from) {
+          const fromDate = new Date(from as string);
+          operations = operations.filter(
+            (op) => new Date(op.date) >= fromDate
+          );
+        }
+        if (to) {
+          const toDate = new Date(to as string);
+          operations = operations.filter((op) => new Date(op.date) <= toDate);
+        }
+
+        // Filter by cashbox
+        if (cashboxId && cashboxId !== "all") {
+          operations = operations.filter(
+            (op) =>
+              op.cashboxId === cashboxId ||
+              op.fromCashboxId === cashboxId ||
+              op.toCashboxId === cashboxId
+          );
+        }
 
         const totalIncome = operations
           .filter((op) => op.type === "income")
@@ -1955,6 +2310,39 @@ export async function registerRoutes(
 
         const netFlow = totalIncome - totalExpense - totalSupplierPayments;
 
+        // Group expenses by expense type
+        const expensesByType: Record<
+          string,
+          { expenseTypeId: string; expenseTypeName: string; total: number; count: number }
+        > = {};
+
+        operations
+          .filter((op) => op.type === "expense")
+          .forEach((op) => {
+            const typeId = op.expenseTypeId || "no_type";
+            const expenseType = expenseTypeList.find(
+              (e) => e.id === op.expenseTypeId
+            );
+            const typeName = expenseType?.name || "Без категории";
+
+            if (!expensesByType[typeId]) {
+              expensesByType[typeId] = {
+                expenseTypeId: typeId,
+                expenseTypeName: typeName,
+                total: 0,
+                count: 0,
+              };
+            }
+            expensesByType[typeId].total += parseFloat(
+              op.amount?.toString() || "0"
+            );
+            expensesByType[typeId].count += 1;
+          });
+
+        const expenseGroups = Object.values(expensesByType).sort(
+          (a, b) => b.total - a.total
+        );
+
         res.json({
           totalIncome,
           totalExpense,
@@ -1962,6 +2350,7 @@ export async function registerRoutes(
           totalTransfers,
           netFlow,
           operations,
+          expenseGroups,
         });
       } catch (error) {
         res.status(500).json({ message: "Ошибка сервера" });

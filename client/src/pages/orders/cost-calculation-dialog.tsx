@@ -165,8 +165,8 @@ export function CostCalculationDialog({
                               (sash.width / 1000) *
                               (sash.height / 1000)
                             ).toFixed(4)}{" "}
-                            × {sash.fabricAvgPrice.toFixed(2)} ×{" "}
-                            {sash.fabricMultiplier}
+                            × {(sash.fabricAvgPrice ?? 0).toFixed(2)} ×{" "}
+                            {sash.fabricMultiplier ?? 1}
                           </span>
                         </div>
                         <div className="flex justify-between font-medium text-primary">
@@ -200,7 +200,7 @@ export function CostCalculationDialog({
                                         {comp.unit}
                                       </Badge>
                                       {["м", "пм", "п.м.", "м.п."].includes(
-                                        comp.unit.toLowerCase()
+                                        (comp.unit || "").toLowerCase()
                                       ) &&
                                         comp.sizeValue > 0 && (
                                           <span>
