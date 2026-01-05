@@ -58,7 +58,7 @@ export function AppSidebar() {
             <LayoutDashboard className="h-5 w-5" />
           </div>
           <div className="flex flex-col">
-            <span className="text-base font-semibold">Жалюзи Учет</span>
+            <span className="text-base font-semibold">Хусейн лучший программист</span>
             <span className="text-xs text-muted-foreground">Система управления</span>
           </div>
         </div>
