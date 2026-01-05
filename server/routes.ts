@@ -64,6 +64,7 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   // Session configuration with PostgreSQL store
+  const isProduction = process.env.NODE_ENV === "production";
   app.use(
     session({
       store: new PgSession({
@@ -75,8 +76,9 @@ export async function registerRoutes(
       resave: false,
       saveUninitialized: false,
       cookie: {
-        secure: false,
+        secure: isProduction, // true in production (HTTPS)
         httpOnly: true,
+        sameSite: "lax", // "lax" works for same-origin (frontend + API on same domain)
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       },
     })
@@ -975,7 +977,8 @@ export async function registerRoutes(
           fabricStock[item.fabricId] = (fabricStock[item.fabricId] || 0) + qty;
         }
         if (item.componentId) {
-          componentStock[item.componentId] = (componentStock[item.componentId] || 0) + qty;
+          componentStock[item.componentId] =
+            (componentStock[item.componentId] || 0) + qty;
         }
       }
     }
@@ -987,7 +990,8 @@ export async function registerRoutes(
         fabricStock[wo.fabricId] = (fabricStock[wo.fabricId] || 0) - qty;
       }
       if (wo.componentId) {
-        componentStock[wo.componentId] = (componentStock[wo.componentId] || 0) - qty;
+        componentStock[wo.componentId] =
+          (componentStock[wo.componentId] || 0) - qty;
       }
     }
 
@@ -1001,13 +1005,14 @@ export async function registerRoutes(
   ): Promise<{ valid: boolean; errors: string[] }> {
     const errors: string[] = [];
     const { fabricStock, componentStock } = await getStockLevels(userId);
-    
+
     const allFabrics = await storage.getFabrics(userId);
     const allSystems = await storage.getSystems(userId);
 
     // Calculate required materials
     const requiredFabrics: Record<string, { qty: number; name: string }> = {};
-    const requiredComponents: Record<string, { qty: number; name: string }> = {};
+    const requiredComponents: Record<string, { qty: number; name: string }> =
+      {};
 
     for (const sash of sashes) {
       const width = parseFloat(sash.width || "0");
@@ -1019,11 +1024,11 @@ export async function registerRoutes(
 
       // Check fabric
       if (sash.fabricId) {
-        const fabric = allFabrics.find(f => f.id === sash.fabricId);
+        const fabric = allFabrics.find((f) => f.id === sash.fabricId);
         if (fabric) {
           const fabricMultiplier = fabric.fabricType === "zebra" ? 2 : 1;
           const fabricQty = areaM2 * fabricMultiplier * quantity;
-          
+
           if (!requiredFabrics[sash.fabricId]) {
             requiredFabrics[sash.fabricId] = { qty: 0, name: fabric.name };
           }
@@ -1033,21 +1038,27 @@ export async function registerRoutes(
 
       // Check system components
       if (sash.systemId) {
-        const system = allSystems.find(s => s.id === sash.systemId);
+        const system = allSystems.find((s) => s.id === sash.systemId);
         if (system) {
           const systemComps = await storage.getSystemComponents(system.id);
           const allComponents = await storage.getComponents(userId);
-          
+
           for (const sc of systemComps) {
-            const component = allComponents.find(c => c.id === sc.componentId);
+            const component = allComponents.find(
+              (c) => c.id === sc.componentId
+            );
             if (component) {
               const compQuantity = parseFloat(sc.quantity?.toString() || "1");
               const sizeSource = sc.sizeSource || null;
-              const sizeMultiplier = parseFloat(sc.sizeMultiplier?.toString() || "1");
+              const sizeMultiplier = parseFloat(
+                sc.sizeMultiplier?.toString() || "1"
+              );
               const unit = component.unit || "шт";
 
               let componentQty = compQuantity;
-              const isMetric = ["м", "пм", "п.м.", "м.п."].includes(unit.toLowerCase());
+              const isMetric = ["м", "пм", "п.м.", "м.п."].includes(
+                unit.toLowerCase()
+              );
 
               if (isMetric) {
                 if (sizeSource === "width") {
@@ -1062,7 +1073,10 @@ export async function registerRoutes(
               componentQty *= quantity;
 
               if (!requiredComponents[sc.componentId]) {
-                requiredComponents[sc.componentId] = { qty: 0, name: component.name };
+                requiredComponents[sc.componentId] = {
+                  qty: 0,
+                  name: component.name,
+                };
               }
               requiredComponents[sc.componentId].qty += componentQty;
             }
@@ -1075,15 +1089,25 @@ export async function registerRoutes(
     for (const [fabricId, { qty, name }] of Object.entries(requiredFabrics)) {
       const available = fabricStock[fabricId] || 0;
       if (available < qty) {
-        errors.push(`Недостаточно ткани "${name}": требуется ${qty.toFixed(2)} м², доступно ${available.toFixed(2)} м²`);
+        errors.push(
+          `Недостаточно ткани "${name}": требуется ${qty.toFixed(
+            2
+          )} м², доступно ${available.toFixed(2)} м²`
+        );
       }
     }
 
     // Validate component stock
-    for (const [componentId, { qty, name }] of Object.entries(requiredComponents)) {
+    for (const [componentId, { qty, name }] of Object.entries(
+      requiredComponents
+    )) {
       const available = componentStock[componentId] || 0;
       if (available < qty) {
-        errors.push(`Недостаточно комплектующих "${name}": требуется ${qty.toFixed(2)}, доступно ${available.toFixed(2)}`);
+        errors.push(
+          `Недостаточно комплектующих "${name}": требуется ${qty.toFixed(
+            2
+          )}, доступно ${available.toFixed(2)}`
+        );
       }
     }
 
@@ -1100,13 +1124,17 @@ export async function registerRoutes(
     const allComponents = await storage.getComponents(userId);
 
     for (const item of components) {
-      const component = allComponents.find(c => c.id === item.componentId);
+      const component = allComponents.find((c) => c.id === item.componentId);
       const requiredQty = parseFloat(item.quantity || "1");
       const available = componentStock[item.componentId] || 0;
 
       if (available < requiredQty) {
         const name = component?.name || "Неизвестная комплектующая";
-        errors.push(`Недостаточно "${name}": требуется ${requiredQty.toFixed(2)}, доступно ${available.toFixed(2)}`);
+        errors.push(
+          `Недостаточно "${name}": требуется ${requiredQty.toFixed(
+            2
+          )}, доступно ${available.toFixed(2)}`
+        );
       }
     }
 
@@ -1121,7 +1149,12 @@ export async function registerRoutes(
         const { sashes, skipStockValidation, ...orderData } = req.body;
 
         // Validate stock availability for sash orders
-        if (sashes && Array.isArray(sashes) && sashes.length > 0 && !skipStockValidation) {
+        if (
+          sashes &&
+          Array.isArray(sashes) &&
+          sashes.length > 0 &&
+          !skipStockValidation
+        ) {
           const validation = await validateSashOrderStock(req.userId!, sashes);
           if (!validation.valid) {
             return res.status(400).json({
@@ -1166,8 +1199,16 @@ export async function registerRoutes(
         const { components, skipStockValidation, ...orderData } = req.body;
 
         // Validate stock availability for product orders
-        if (components && Array.isArray(components) && components.length > 0 && !skipStockValidation) {
-          const validation = await validateProductOrderStock(req.userId!, components);
+        if (
+          components &&
+          Array.isArray(components) &&
+          components.length > 0 &&
+          !skipStockValidation
+        ) {
+          const validation = await validateProductOrderStock(
+            req.userId!,
+            components
+          );
           if (!validation.valid) {
             return res.status(400).json({
               message: "Недостаточно товара на складе",
@@ -1233,7 +1274,12 @@ export async function registerRoutes(
         const { sashes, skipStockValidation, ...orderData } = req.body;
 
         // Validate stock availability if sashes are being updated
-        if (sashes && Array.isArray(sashes) && sashes.length > 0 && !skipStockValidation) {
+        if (
+          sashes &&
+          Array.isArray(sashes) &&
+          sashes.length > 0 &&
+          !skipStockValidation
+        ) {
           const validation = await validateSashOrderStock(req.userId!, sashes);
           if (!validation.valid) {
             return res.status(400).json({
@@ -2117,12 +2163,13 @@ export async function registerRoutes(
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
-        const [writeoffs, receipts, allFabrics, allComponents] = await Promise.all([
-          storage.getWarehouseWriteoffs(req.userId!),
-          storage.getWarehouseReceipts(req.userId!),
-          storage.getFabrics(req.userId!),
-          storage.getComponents(req.userId!),
-        ]);
+        const [writeoffs, receipts, allFabrics, allComponents] =
+          await Promise.all([
+            storage.getWarehouseWriteoffs(req.userId!),
+            storage.getWarehouseReceipts(req.userId!),
+            storage.getFabrics(req.userId!),
+            storage.getComponents(req.userId!),
+          ]);
 
         const adjustments: {
           id: string;
@@ -2135,11 +2182,11 @@ export async function registerRoutes(
         }[] = [];
 
         // Get writeoffs without orderId (inventory adjustments - decreases)
-        for (const wo of writeoffs.filter(w => !w.orderId)) {
-          const itemName = wo.fabricId 
-            ? allFabrics.find(f => f.id === wo.fabricId)?.name 
-            : allComponents.find(c => c.id === wo.componentId)?.name;
-          
+        for (const wo of writeoffs.filter((w) => !w.orderId)) {
+          const itemName = wo.fabricId
+            ? allFabrics.find((f) => f.id === wo.fabricId)?.name
+            : allComponents.find((c) => c.id === wo.componentId)?.name;
+
           adjustments.push({
             id: wo.id,
             type: "decrease",
@@ -2152,13 +2199,13 @@ export async function registerRoutes(
         }
 
         // Get receipts without supplierId (inventory adjustments - increases)
-        for (const receipt of receipts.filter(r => !r.supplierId)) {
+        for (const receipt of receipts.filter((r) => !r.supplierId)) {
           const items = await storage.getWarehouseReceiptItems(receipt.id);
           for (const item of items) {
-            const itemName = item.fabricId 
-              ? allFabrics.find(f => f.id === item.fabricId)?.name 
-              : allComponents.find(c => c.id === item.componentId)?.name;
-            
+            const itemName = item.fabricId
+              ? allFabrics.find((f) => f.id === item.fabricId)?.name
+              : allComponents.find((c) => c.id === item.componentId)?.name;
+
             adjustments.push({
               id: item.id,
               type: "increase",
@@ -2172,8 +2219,8 @@ export async function registerRoutes(
         }
 
         // Sort by date descending
-        adjustments.sort((a, b) => 
-          new Date(b.date).getTime() - new Date(a.date).getTime()
+        adjustments.sort(
+          (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
         );
 
         res.json(adjustments);
@@ -2190,18 +2237,19 @@ export async function registerRoutes(
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
-        const { itemType, itemId, newQuantity, currentQuantity, comment } = req.body;
-        
+        const { itemType, itemId, newQuantity, currentQuantity, comment } =
+          req.body;
+
         const newQty = parseFloat(newQuantity);
         const currentQty = parseFloat(currentQuantity.toString());
         const difference = newQty - currentQty;
-        
+
         if (difference === 0) {
           return res.json({ success: true, message: "Без изменений" });
         }
-        
+
         const today = new Date().toISOString().split("T")[0];
-        
+
         if (difference > 0) {
           // Need to add stock - create a receipt without supplier (adjustment)
           // First get a default supplier or create adjustment receipt
@@ -2209,10 +2257,12 @@ export async function registerRoutes(
             date: today,
             supplierId: null,
             total: "0",
-            comment: comment || `Инвентаризация: корректировка +${difference.toFixed(2)}`,
+            comment:
+              comment ||
+              `Инвентаризация: корректировка +${difference.toFixed(2)}`,
             userId: req.userId!,
           });
-          
+
           await storage.createWarehouseReceiptItem({
             receiptId: receipt.id,
             itemType,
@@ -2234,10 +2284,12 @@ export async function registerRoutes(
             total: "0",
             date: today,
             userId: req.userId!,
-            comment: comment || `Инвентаризация: корректировка ${difference.toFixed(2)}`,
+            comment:
+              comment ||
+              `Инвентаризация: корректировка ${difference.toFixed(2)}`,
           });
         }
-        
+
         res.json({ success: true });
       } catch (error) {
         console.error("Stock adjustment error:", error);
@@ -2261,9 +2313,7 @@ export async function registerRoutes(
         // Filter by date range
         if (from) {
           const fromDate = new Date(from as string);
-          operations = operations.filter(
-            (op) => new Date(op.date) >= fromDate
-          );
+          operations = operations.filter((op) => new Date(op.date) >= fromDate);
         }
         if (to) {
           const toDate = new Date(to as string);
@@ -2313,7 +2363,12 @@ export async function registerRoutes(
         // Group expenses by expense type
         const expensesByType: Record<
           string,
-          { expenseTypeId: string; expenseTypeName: string; total: number; count: number }
+          {
+            expenseTypeId: string;
+            expenseTypeName: string;
+            total: number;
+            count: number;
+          }
         > = {};
 
         operations
