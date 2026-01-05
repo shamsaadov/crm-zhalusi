@@ -39,7 +39,6 @@ jobs:
             npm run build
 
             # Применяем миграции БД и запускаем приложение
-            npm run db:push
             nohup npm run start &
 
             # Ждем немного чтобы приложение запустилось
