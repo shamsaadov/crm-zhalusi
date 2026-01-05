@@ -39,7 +39,7 @@ jobs:
             npm run build
 
             # Применяем миграции БД и запускаем приложение
-            nohup npm run start &
+            nohup npm run start > /dev/null 2>&1 &
 
             # Ждем немного чтобы приложение запустилось
             sleep 3
