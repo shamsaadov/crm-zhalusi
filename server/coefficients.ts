@@ -1,9 +1,5 @@
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Импортируем JSON напрямую - esbuild заинлайнит его в бандл
+import coefficientsJsonData from "./data/coefficients.json";
 
 interface CoefficientData {
   products: {
@@ -19,34 +15,15 @@ interface CoefficientData {
   };
 }
 
-let coefficientsData: CoefficientData | null = null;
+// Данные уже загружены при импорте
+const coefficientsData: CoefficientData =
+  coefficientsJsonData as CoefficientData;
 
 /**
- * Загружает данные коэффициентов из JSON файла
+ * Возвращает данные коэффициентов (уже загружены при старте)
  */
 function loadCoefficients(): CoefficientData {
-  if (coefficientsData) {
-    return coefficientsData;
-  }
-
-  const dataPath = path.join(__dirname, "data", "coefficients.json");
-
-  if (!fs.existsSync(dataPath)) {
-    console.warn(
-      "Файл coefficients.json не найден, используются пустые данные"
-    );
-    return { products: {} };
-  }
-
-  try {
-    const fileContent = fs.readFileSync(dataPath, "utf-8");
-    coefficientsData = JSON.parse(fileContent);
-    console.log("Данные коэффициентов успешно загружены");
-    return coefficientsData!;
-  } catch (error) {
-    console.error("Ошибка при загрузке coefficients.json:", error);
-    return { products: {} };
-  }
+  return coefficientsData;
 }
 
 /**
@@ -235,5 +212,3 @@ export default {
   getSystemCategories,
   getCoefficientRanges,
 };
-
-
