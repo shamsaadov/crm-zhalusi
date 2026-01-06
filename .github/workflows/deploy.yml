@@ -29,9 +29,8 @@ jobs:
             # Закрываем приложение на порте 5000
             npx kill-port 5000 || true
 
-            # Сбрасываем локальные изменения и подтягиваем новый код
-            git fetch origin
-            git reset --hard origin/main
+            # Подтягиваем изменения
+            git pull
 
             # Устанавливаем зависимости
             npm install
