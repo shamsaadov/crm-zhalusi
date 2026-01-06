@@ -323,6 +323,25 @@ export function SashFields({
           </FormItem>
         )}
       />
+      <FormField
+        control={form.control}
+        name={`sashes.${index}.coefficient`}
+        render={({ field }) => (
+          <FormItem className="flex-1 min-w-[80px] max-w-[100px]">
+            <FormLabel className="text-xs">Коэфф.</FormLabel>
+            <FormControl>
+              <Input
+                type="text"
+                {...field}
+                className="h-9 bg-blue-50 dark:bg-blue-950/20 font-semibold text-blue-700 dark:text-blue-400"
+                readOnly
+                placeholder="—"
+                title="Коэффициент из файла coefficients.json"
+              />
+            </FormControl>
+          </FormItem>
+        )}
+      />
       {fieldsLength > 1 && (
         <Button
           type="button"

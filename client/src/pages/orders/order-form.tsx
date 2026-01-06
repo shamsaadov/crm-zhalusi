@@ -244,17 +244,13 @@ export function OrderForm({
             control={form.control}
             name="salePrice"
             render={({ field }) => {
-              // Рассчитываем средний коэффициент из файла по всем створкам
+              // Рассчитываем сумму коэффициентов из файла по всем створкам (с учетом количества)
               const sashes = form.watch("sashes") || [];
-              const coefficients = sashes
-                .map((sash) => parseFloat(sash.coefficient || "0"))
-                .filter((c) => c > 0);
-
-              const avgCoefficient =
-                coefficients.length > 0
-                  ? coefficients.reduce((sum, c) => sum + c, 0) /
-                    coefficients.length
-                  : 0;
+              const totalCoefficient = sashes.reduce((sum, sash) => {
+                const coefficient = parseFloat(sash.coefficient || "0");
+                const quantity = parseFloat(sash.quantity || "1");
+                return sum + coefficient * quantity;
+              }, 0);
 
               return (
                 <FormItem>
@@ -306,15 +302,15 @@ export function OrderForm({
                     <p className="text-xs text-muted-foreground">
                       {isSalePriceEditable
                         ? "Введите свою цену (скидка/наценка)"
-                        : "Коэффициент × множитель системы"}
+                        : "Сумма коэффициентов × множитель"}
                     </p>
-                    {avgCoefficient > 0 && (
+                    {totalCoefficient > 0 && (
                       <Badge
                         variant="default"
-                        className="text-xs"
-                        title="Средний коэффициент из файла coefficients.json"
+                        className="text-xs font-semibold"
+                        title="Сумма всех коэффициентов из файла coefficients.json (с учетом количества створок)"
                       >
-                        Ср. К: {avgCoefficient.toFixed(2)}
+                        Σ К: {totalCoefficient.toFixed(2)}
                       </Badge>
                     )}
                   </div>

@@ -621,10 +621,10 @@ export default function OrdersPage() {
                         : 1;
                       const sashPrice = coefficient * multiplierValue;
 
-                      // Сохраняем коэффициент из файла для отображения
+                      // Сохраняем коэффициент из файла для отображения (2 знака после запятой)
                       form.setValue(
                         `sashes.${index}.coefficient`,
-                        coefficient.toFixed(4),
+                        coefficient.toFixed(2),
                         {
                           shouldValidate: false,
                         }
