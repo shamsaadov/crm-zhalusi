@@ -228,6 +228,7 @@ export function OrderForm({
                 fabricId: firstSash?.fabricId || "",
                 sashPrice: "",
                 sashCost: "",
+                coefficient: "",
               });
             }}
           >
@@ -243,9 +244,17 @@ export function OrderForm({
             control={form.control}
             name="salePrice"
             render={({ field }) => {
-              const salePrice = parseFloat(field.value || "0");
-              const costPrice = parseFloat(form.watch("costPrice") || "0");
-              const coefficient = costPrice > 0 ? salePrice / costPrice : 0;
+              // Рассчитываем средний коэффициент из файла по всем створкам
+              const sashes = form.watch("sashes") || [];
+              const coefficients = sashes
+                .map((sash) => parseFloat(sash.coefficient || "0"))
+                .filter((c) => c > 0);
+
+              const avgCoefficient =
+                coefficients.length > 0
+                  ? coefficients.reduce((sum, c) => sum + c, 0) /
+                    coefficients.length
+                  : 0;
 
               return (
                 <FormItem>
@@ -299,18 +308,13 @@ export function OrderForm({
                         ? "Введите свою цену (скидка/наценка)"
                         : "Коэффициент × множитель системы"}
                     </p>
-                    {coefficient > 0 && (
+                    {avgCoefficient > 0 && (
                       <Badge
-                        variant={
-                          coefficient < 1
-                            ? "destructive"
-                            : coefficient < 1.5
-                            ? "secondary"
-                            : "default"
-                        }
+                        variant="default"
                         className="text-xs"
+                        title="Средний коэффициент из файла coefficients.json"
                       >
-                        К: {coefficient.toFixed(2)}×
+                        Ср. К: {avgCoefficient.toFixed(2)}
                       </Badge>
                     )}
                   </div>

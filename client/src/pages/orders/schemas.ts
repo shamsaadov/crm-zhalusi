@@ -9,6 +9,7 @@ export const sashSchema = z.object({
   fabricId: z.string().optional(),
   sashPrice: z.string().optional(),
   sashCost: z.string().optional(),
+  coefficient: z.string().optional(), // Коэффициент из файла coefficients.json
 });
 
 export const orderFormSchema = z.object({

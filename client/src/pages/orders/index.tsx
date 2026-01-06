@@ -148,6 +148,7 @@ export default function OrdersPage() {
           fabricId: "",
           sashPrice: "",
           sashCost: "",
+          coefficient: "",
         },
       ],
     },
@@ -332,7 +333,7 @@ export default function OrdersPage() {
     // Размножаем створки с quantity > 1
     const expandedSashes = data.sashes.flatMap((sash) => {
       const quantity = parseInt(sash.quantity || "1");
-      // Создаем массив створок без поля quantity
+      // Создаем массив створок без поля quantity и coefficient (не нужны в БД)
       return Array(quantity).fill(null).map(() => ({
         width: sash.width,
         height: sash.height,
@@ -341,6 +342,7 @@ export default function OrdersPage() {
         fabricId: sash.fabricId,
         sashPrice: sash.sashPrice,
         sashCost: sash.sashCost,
+        // coefficient не отправляем - он нужен только для UI
       }));
     });
 
@@ -399,10 +401,11 @@ export default function OrdersPage() {
             fabricId: s.fabricId || "",
             sashPrice: s.sashPrice?.toString() || "",
             sashCost: s.sashCost?.toString() || "",
+            coefficient: "", // Будет пересчитан автоматически
           });
         }
         return acc;
-      }, [] as Array<{key: string; quantity: number; width: string; height: string; systemId: string; controlSide: string; fabricId: string; sashPrice: string; sashCost: string}>);
+      }, [] as Array<{key: string; quantity: number; width: string; height: string; systemId: string; controlSide: string; fabricId: string; sashPrice: string; sashCost: string; coefficient: string}>);
 
       form.reset({
         date: fullOrder.date,
@@ -424,6 +427,7 @@ export default function OrdersPage() {
             fabricId: "",
             sashPrice: "",
             sashCost: "",
+            coefficient: "",
           },
         ],
       });
@@ -453,11 +457,13 @@ export default function OrdersPage() {
         {
           width: "",
           height: "",
+          quantity: "1",
           systemId: "",
           controlSide: "",
           fabricId: "",
           sashPrice: "",
           sashCost: "",
+          coefficient: "",
         },
       ],
     });
@@ -614,6 +620,15 @@ export default function OrdersPage() {
                         ? parseFloat(multiplier.value?.toString() || "1")
                         : 1;
                       const sashPrice = coefficient * multiplierValue;
+
+                      // Сохраняем коэффициент из файла для отображения
+                      form.setValue(
+                        `sashes.${index}.coefficient`,
+                        coefficient.toFixed(4),
+                        {
+                          shouldValidate: false,
+                        }
+                      );
 
                       form.setValue(
                         `sashes.${index}.sashPrice`,

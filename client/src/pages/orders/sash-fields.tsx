@@ -57,14 +57,14 @@ export function SashFields({
   const currentFabricId = form.watch(`sashes.${index}.fabricId`);
   const currentSashPrice = form.watch(`sashes.${index}.sashPrice`);
   const currentSashCost = form.watch(`sashes.${index}.sashCost`);
+  const currentCoefficient = form.watch(`sashes.${index}.coefficient`); // Коэффициент из файла
   const currentFabric = fabrics.find((f) => f.id === currentFabricId);
   const selectedFabricInfo = fabricStock.find((f) => f.id === currentFabricId);
 
   const widthM = parseFloat(currentWidth || "0") / 1000;
   const heightM = parseFloat(currentHeight || "0") / 1000;
   const sashPriceNum = parseFloat(currentSashPrice || "0");
-  const sashCostNum = parseFloat(currentSashCost || "0");
-  const sashCoefficient = sashCostNum > 0 ? sashPriceNum / sashCostNum : 0;
+  const coefficientNum = parseFloat(currentCoefficient || "0"); // Коэффициент из coefficients.json
   
   // Проверяем, есть ли все данные для расчета, но цена равна 0 (система не найдена)
   const hasAllData = currentWidth && currentHeight && currentFabricId && selectedSystem?.systemKey;
@@ -83,12 +83,13 @@ export function SashFields({
           <Badge variant="outline" className="text-[10px] px-1 py-0 h-5 border-orange-400 text-orange-600" title="Система не найдена в файле коэффициентов">
             <AlertTriangle className="h-3 w-3" />
           </Badge>
-        ) : sashCoefficient > 0 ? (
+        ) : coefficientNum > 0 ? (
           <Badge 
-            variant={sashCoefficient < 1 ? "destructive" : sashCoefficient < 1.5 ? "secondary" : "default"}
+            variant="default"
             className="text-[10px] px-1 py-0 h-5"
+            title="Коэффициент из файла coefficients.json"
           >
-            К: {sashCoefficient.toFixed(2)}×
+            К: {coefficientNum.toFixed(2)}
           </Badge>
         ) : null}
       </div>
