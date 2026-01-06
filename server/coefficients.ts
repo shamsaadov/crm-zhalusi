@@ -92,6 +92,84 @@ function bilinearInterpolation(
 }
 
 /**
+ * Нормализует строку для сравнения (убирает пробелы, приводит к нижнему регистру)
+ */
+function normalizeString(str: string): string {
+  return str.trim().toLowerCase().replace(/\s+/g, '');
+}
+
+/**
+ * Ищет ключ системы с учетом различных вариантов написания
+ */
+function findSystemKey(data: CoefficientData, systemKey: string): string | null {
+  // 1. Точное совпадение
+  if (data.products[systemKey]) {
+    return systemKey;
+  }
+
+  // 2. Поиск без учета регистра и пробелов
+  const normalizedSearch = normalizeString(systemKey);
+  const foundKey = Object.keys(data.products).find(
+    key => normalizeString(key) === normalizedSearch
+  );
+
+  if (foundKey) {
+    console.log(`[Coefficients] Найдена система "${foundKey}" вместо "${systemKey}"`);
+    return foundKey;
+  }
+
+  return null;
+}
+
+/**
+ * Ищет категорию с учетом различных вариантов написания
+ */
+function findCategory(
+  categories: Record<string, any>,
+  category: string
+): string | null {
+  // 1. Точное совпадение
+  if (categories[category]) {
+    return category;
+  }
+
+  // 2. Поиск без учета регистра
+  const lowerCategory = category.toLowerCase();
+  let foundKey = Object.keys(categories).find(
+    key => key.toLowerCase() === lowerCategory
+  );
+  
+  if (foundKey) {
+    console.log(`[Coefficients] Найдена категория "${foundKey}" вместо "${category}" (без учета регистра)`);
+    return foundKey;
+  }
+
+  // 3. Поиск без пробелов
+  const normalizedSearch = normalizeString(category);
+  foundKey = Object.keys(categories).find(
+    key => normalizeString(key) === normalizedSearch
+  );
+
+  if (foundKey) {
+    console.log(`[Coefficients] Найдена категория "${foundKey}" вместо "${category}" (нормализация)`);
+    return foundKey;
+  }
+
+  // 4. Fallback: берем первую доступную категорию
+  const availableCategories = Object.keys(categories);
+  if (availableCategories.length > 0) {
+    const fallbackCategory = availableCategories[0];
+    console.warn(
+      `[Coefficients] Категория "${category}" не найдена. Используется fallback: "${fallbackCategory}". ` +
+      `Доступные категории: ${availableCategories.join(', ')}`
+    );
+    return fallbackCategory;
+  }
+
+  return null;
+}
+
+/**
  * Получает коэффициент для заданных параметров
  * @param systemKey - Ключ системы (например, "uni1_zebra")
  * @param category - Категория (например, "E", "1", "2", и т.д.)
@@ -104,23 +182,60 @@ export function getCoefficient(
   category: string,
   width: number,
   height: number
-): number | null {
+): number | null;
+
+/**
+ * Получает коэффициент для заданных параметров с детальной информацией
+ * @param systemKey - Ключ системы (например, "uni1_zebra")
+ * @param category - Категория (например, "E", "1", "2", и т.д.)
+ * @param width - Ширина в метрах
+ * @param height - Высота в метрах
+ * @returns Объект с коэффициентом и информацией о поиске
+ */
+export function getCoefficientDetailed(
+  systemKey: string,
+  category: string,
+  width: number,
+  height: number
+): {
+  coefficient: number | null;
+  usedSystemKey: string | null;
+  usedCategory: string | null;
+  isFallbackCategory: boolean;
+} {
   const data = loadCoefficients();
 
-  const product = data.products[systemKey];
-  if (!product) {
-    console.warn(`Система "${systemKey}" не найдена в данных коэффициентов`);
-    return null;
-  }
-
-  const categoryData = product.categories[category];
-  if (!categoryData) {
+  // Ищем систему с учетом различных вариантов написания
+  const foundSystemKey = findSystemKey(data, systemKey);
+  if (!foundSystemKey) {
     console.warn(
-      `Категория "${category}" не найдена для системы "${systemKey}"`
+      `[Coefficients] Система "${systemKey}" не найдена. Доступные системы: ${Object.keys(data.products).join(', ')}`
     );
-    return null;
+    return {
+      coefficient: null,
+      usedSystemKey: null,
+      usedCategory: null,
+      isFallbackCategory: false,
+    };
   }
 
+  const product = data.products[foundSystemKey];
+
+  // Ищем категорию с учетом различных вариантов написания
+  const foundCategory = findCategory(product.categories, category);
+  if (!foundCategory) {
+    console.warn(
+      `[Coefficients] Категория "${category}" не найдена для системы "${foundSystemKey}" и fallback недоступен`
+    );
+    return {
+      coefficient: null,
+      usedSystemKey: foundSystemKey,
+      usedCategory: null,
+      isFallbackCategory: false,
+    };
+  }
+
+  const categoryData = product.categories[foundCategory];
   const { widths, heights, values } = categoryData;
 
   // Проверяем, что данные корректны
@@ -132,7 +247,93 @@ export function getCoefficient(
     heights.length === 0
   ) {
     console.warn(
-      `Некорректные данные для системы "${systemKey}", категории "${category}"`
+      `[Coefficients] Некорректные данные для системы "${foundSystemKey}", категории "${foundCategory}"`
+    );
+    return {
+      coefficient: null,
+      usedSystemKey: foundSystemKey,
+      usedCategory: foundCategory,
+      isFallbackCategory: foundCategory !== category,
+    };
+  }
+
+  try {
+    const coefficient = bilinearInterpolation(
+      width,
+      height,
+      widths,
+      heights,
+      values
+    );
+    
+    const isFallbackCategory = foundCategory !== category;
+    
+    // Логируем если использовали fallback
+    if (isFallbackCategory) {
+      console.log(
+        `[Coefficients] Рассчитан коэффициент ${coefficient.toFixed(4)} для системы "${foundSystemKey}", ` +
+        `категория "${foundCategory}" (запрошена: "${category}"), размер ${width}×${height}м`
+      );
+    }
+    
+    return {
+      coefficient,
+      usedSystemKey: foundSystemKey,
+      usedCategory: foundCategory,
+      isFallbackCategory,
+    };
+  } catch (error) {
+    console.error("[Coefficients] Ошибка при вычислении коэффициента:", error);
+    return {
+      coefficient: null,
+      usedSystemKey: foundSystemKey,
+      usedCategory: foundCategory,
+      isFallbackCategory: foundCategory !== category,
+    };
+  }
+}
+
+export function getCoefficient(
+  systemKey: string,
+  category: string,
+  width: number,
+  height: number
+): number | null {
+  const data = loadCoefficients();
+
+  // Ищем систему с учетом различных вариантов написания
+  const foundSystemKey = findSystemKey(data, systemKey);
+  if (!foundSystemKey) {
+    console.warn(
+      `[Coefficients] Система "${systemKey}" не найдена. Доступные системы: ${Object.keys(data.products).join(', ')}`
+    );
+    return null;
+  }
+
+  const product = data.products[foundSystemKey];
+
+  // Ищем категорию с учетом различных вариантов написания
+  const foundCategory = findCategory(product.categories, category);
+  if (!foundCategory) {
+    console.warn(
+      `[Coefficients] Категория "${category}" не найдена для системы "${foundSystemKey}" и fallback недоступен`
+    );
+    return null;
+  }
+
+  const categoryData = product.categories[foundCategory];
+  const { widths, heights, values } = categoryData;
+
+  // Проверяем, что данные корректны
+  if (
+    !widths ||
+    !heights ||
+    !values ||
+    widths.length === 0 ||
+    heights.length === 0
+  ) {
+    console.warn(
+      `[Coefficients] Некорректные данные для системы "${foundSystemKey}", категории "${foundCategory}"`
     );
     return null;
   }
@@ -145,9 +346,18 @@ export function getCoefficient(
       heights,
       values
     );
+    
+    // Логируем если использовали fallback
+    if (foundCategory !== category) {
+      console.log(
+        `[Coefficients] Рассчитан коэффициент ${coefficient.toFixed(4)} для системы "${foundSystemKey}", ` +
+        `категория "${foundCategory}" (запрошена: "${category}"), размер ${width}×${height}м`
+      );
+    }
+    
     return coefficient;
   } catch (error) {
-    console.error("Ошибка при вычислении коэффициента:", error);
+    console.error("[Coefficients] Ошибка при вычислении коэффициента:", error);
     return null;
   }
 }
@@ -208,6 +418,7 @@ export function getCoefficientRanges(
 // Экспорт для использования в других модулях
 export default {
   getCoefficient,
+  getCoefficientDetailed,
   getAvailableSystems,
   getSystemCategories,
   getCoefficientRanges,

@@ -560,6 +560,33 @@ export async function registerRoutes(
     }
   );
 
+  app.get(
+    "/api/coefficients/available-categories",
+    async (req: Request, res: Response) => {
+      try {
+        const { systemKey } = req.query;
+        
+        if (!systemKey) {
+          return res.status(400).json({
+            message: "Необходим параметр: systemKey",
+          });
+        }
+
+        const { getSystemCategories } = await import("./coefficients.js");
+        const categories = getSystemCategories(systemKey as string);
+        
+        res.json({ 
+          systemKey, 
+          categories,
+          count: categories.length 
+        });
+      } catch (error) {
+        console.error("Ошибка при получении категорий:", error);
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
   app.post(
     "/api/coefficients/calculate",
     async (req: Request, res: Response) => {
@@ -572,21 +599,33 @@ export async function registerRoutes(
           });
         }
 
-        const { getCoefficient } = await import("./coefficients.js");
-        const coefficient = getCoefficient(systemKey, category, width, height);
+        const { getCoefficientDetailed } = await import("./coefficients.js");
+        const result = getCoefficientDetailed(systemKey, category, width, height);
 
-        if (coefficient === null) {
+        if (result.coefficient === null) {
           return res.status(404).json({
-            message: `Коэффициент не найден для системы "${systemKey}", категории "${category}"`,
+            message: result.usedSystemKey 
+              ? `Категория "${category}" не найдена для системы "${result.usedSystemKey}"`
+              : `Система "${systemKey}" не найдена в файле коэффициентов`,
+            systemKey,
+            category,
+            usedSystemKey: result.usedSystemKey,
+            usedCategory: result.usedCategory,
           });
         }
 
         res.json({
-          coefficient,
+          coefficient: result.coefficient,
           systemKey,
           category,
+          usedSystemKey: result.usedSystemKey,
+          usedCategory: result.usedCategory,
+          isFallbackCategory: result.isFallbackCategory,
           width,
           height,
+          warning: result.isFallbackCategory
+            ? `Категория "${category}" не найдена, использована "${result.usedCategory}"`
+            : null,
         });
       } catch (error) {
         console.error("Ошибка при расчете коэффициента:", error);

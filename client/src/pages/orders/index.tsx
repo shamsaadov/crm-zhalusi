@@ -310,6 +310,25 @@ export default function OrdersPage() {
 
   // Handlers
   const onSubmit = (data: OrderFormValues) => {
+    // Проверка на отсутствующие коэффициенты (только если система вообще не найдена)
+    const invalidSashes = data.sashes.filter((sash) => {
+      const width = parseFloat(sash.width || "0");
+      const height = parseFloat(sash.height || "0");
+      const sashPrice = parseFloat(sash.sashPrice || "0");
+      const hasAllData = width > 0 && height > 0 && sash.systemId && sash.fabricId;
+      return hasAllData && sashPrice === 0;
+    });
+
+    if (invalidSashes.length > 0) {
+      toast({
+        title: "Невозможно создать заказ",
+        description: `Обнаружены створки с отсутствующим коэффициентом (${invalidSashes.length} шт.). Система не найдена в файле коэффициентов. Проверьте настройку system_key в справочнике систем.`,
+        variant: "destructive",
+        duration: 8000,
+      });
+      return;
+    }
+
     // Размножаем створки с quantity > 1
     const expandedSashes = data.sashes.flatMap((sash) => {
       const quantity = parseInt(sash.quantity || "1");
@@ -604,11 +623,48 @@ export default function OrdersPage() {
                         }
                       );
 
+                      // Показываем предупреждение, если использовалась fallback категория
+                      if (data.isFallbackCategory && data.warning) {
+                        console.warn(`[Заказ] ${data.warning}`);
+                        toast({
+                          title: "Использована ближайшая категория",
+                          description: `${data.warning}. Коэффициент рассчитан корректно.`,
+                          variant: "default",
+                          duration: 5000,
+                        });
+                      }
+
                       return sashPrice;
                     }
+                  } else {
+                    // Коэффициент не найден даже с fallback
+                    const errorData = await response.json().catch(() => null);
+                    console.warn(
+                      `Коэффициент не найден для системы "${system.systemKey}" и категории "${fabric.category}"`
+                    );
+                    toast({
+                      title: "Система не найдена",
+                      description: `Система "${system.name}" (${system.systemKey}) не найдена в файле коэффициентов. Проверьте настройку system_key в справочнике систем.`,
+                      variant: "destructive",
+                      duration: 8000,
+                    });
+                    
+                    // Сбрасываем цену створки
+                    form.setValue(
+                      `sashes.${index}.sashPrice`,
+                      "0",
+                      {
+                        shouldValidate: false,
+                      }
+                    );
                   }
                 } catch (error) {
                   console.error("Ошибка при расчете коэффициента:", error);
+                  toast({
+                    title: "Ошибка расчета коэффициента",
+                    description: "Произошла ошибка при попытке рассчитать коэффициент. Попробуйте еще раз.",
+                    variant: "destructive",
+                  });
                 }
               }
             }

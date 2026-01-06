@@ -22,7 +22,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { X, Info } from "lucide-react";
+import { X, Info, AlertTriangle } from "lucide-react";
 import { formatCurrency } from "@/components/status-badge";
 import { CONTROL_SIDES, type Fabric } from "@shared/schema";
 import type { OrderFormValues } from "./schemas";
@@ -65,24 +65,32 @@ export function SashFields({
   const sashPriceNum = parseFloat(currentSashPrice || "0");
   const sashCostNum = parseFloat(currentSashCost || "0");
   const sashCoefficient = sashCostNum > 0 ? sashPriceNum / sashCostNum : 0;
+  
+  // Проверяем, есть ли все данные для расчета, но цена равна 0 (система не найдена)
+  const hasAllData = currentWidth && currentHeight && currentFabricId && selectedSystem?.systemKey;
+  const isSystemMissing = hasAllData && widthM > 0 && heightM > 0 && sashPriceNum === 0;
 
   return (
     <div
       key={fieldId}
-      className="flex items-end gap-2 p-3 border rounded-lg bg-muted/30"
+      className={`flex items-end gap-2 p-3 border rounded-lg ${isSystemMissing ? "border-orange-400 bg-orange-50 dark:bg-orange-950/20" : "bg-muted/30"}`}
     >
       <div className="flex flex-col items-center gap-1 pb-2 min-w-[50px]">
         <span className="text-sm font-medium text-muted-foreground">
           {index + 1}.
         </span>
-        {sashCoefficient > 0 && (
+        {isSystemMissing ? (
+          <Badge variant="outline" className="text-[10px] px-1 py-0 h-5 border-orange-400 text-orange-600" title="Система не найдена в файле коэффициентов">
+            <AlertTriangle className="h-3 w-3" />
+          </Badge>
+        ) : sashCoefficient > 0 ? (
           <Badge 
             variant={sashCoefficient < 1 ? "destructive" : sashCoefficient < 1.5 ? "secondary" : "default"}
             className="text-[10px] px-1 py-0 h-5"
           >
             К: {sashCoefficient.toFixed(2)}×
           </Badge>
-        )}
+        ) : null}
       </div>
       <FormField
         control={form.control}
