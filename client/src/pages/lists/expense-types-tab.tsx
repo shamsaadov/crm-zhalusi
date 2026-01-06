@@ -264,3 +264,4 @@ export function ExpenseTypesTab({ search }: { search: string }) {
   );
 }
 
+

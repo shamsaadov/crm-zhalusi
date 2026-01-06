@@ -7,3 +7,4 @@ ALTER TABLE order_sashes ADD COLUMN IF NOT EXISTS component_id VARCHAR REFERENCE
 CREATE INDEX IF NOT EXISTS idx_order_sashes_component_id ON order_sashes(component_id);
 
 
+

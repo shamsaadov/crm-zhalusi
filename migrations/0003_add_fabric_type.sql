@@ -6,3 +6,4 @@ ALTER TABLE "fabrics" ADD COLUMN IF NOT EXISTS "fabric_type" text DEFAULT 'roll'
 
 
 
+

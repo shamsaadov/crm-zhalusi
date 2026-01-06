@@ -48,6 +48,7 @@ interface OrderFormProps {
   onSubmit: (data: OrderFormValues) => void;
   onCancel: () => void;
   onShowCostCalculation: (details: CostCalculationDetails) => void;
+  onSashRemove?: (index: number) => void;
 }
 
 export function OrderForm({
@@ -63,10 +64,18 @@ export function OrderForm({
   onSubmit,
   onCancel,
   onShowCostCalculation,
+  onSashRemove,
 }: OrderFormProps) {
   const { fields, append, remove } = fieldArray;
   const [isSalePriceEditable, setIsSalePriceEditable] = useState(false);
   const [autoSalePrice, setAutoSalePrice] = useState<string | null>(null);
+
+  const handleSashRemove = (index: number) => {
+    // Вызываем callback для очистки состояния калькулятора
+    onSashRemove?.(index);
+    // Удаляем створку из массива
+    remove(index);
+  };
 
   const handleTestCalculation = () => {
     const sashes = form.getValues("sashes");
@@ -209,7 +218,7 @@ export function OrderForm({
               fabricStock={fabricStock}
               fieldsLength={fields.length}
               fieldId={field.id}
-              onRemove={remove}
+              onRemove={handleSashRemove}
             />
           ))}
 

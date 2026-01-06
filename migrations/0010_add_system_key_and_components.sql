@@ -11,3 +11,4 @@ CREATE TABLE IF NOT EXISTS "system_components" (
   "size_multiplier" decimal(10, 4) DEFAULT '1'
 );
 
+

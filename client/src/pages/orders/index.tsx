@@ -312,6 +312,15 @@ export default function OrdersPage() {
   });
 
   // Handlers
+  const handleSashRemove = useCallback((index: number) => {
+    // Очищаем состояние калькулятора для удалённой створки и всех последующих
+    // (т.к. индексы сдвигаются после удаления)
+    const sashes = form.getValues("sashes");
+    for (let i = index; i < sashes.length; i++) {
+      coefficientCalculator.cleanupSash(`sash-${i}`);
+    }
+  }, [form, coefficientCalculator]);
+
   const onSubmit = (data: OrderFormValues) => {
     // Проверка на отсутствующие коэффициенты (только если система вообще не найдена)
     const invalidSashes = data.sashes.filter((sash) => {
@@ -556,130 +565,147 @@ export default function OrdersPage() {
   }, [productForm, componentStock]);
 
   // Auto-calculate sale price from coefficients effect (optimized)
+  // Рассчитывать только для конкретной изменённой створки, а не для всех
   useEffect(() => {
     const subscription = form.watch((value, { name }) => {
-      if (
-        name &&
-        name.includes("sashes") &&
-        (name.includes("width") ||
-          name.includes("height") ||
-          name.includes("systemId") ||
-          name.includes("fabricId"))
-      ) {
-        const sashes = value.sashes || [];
+      if (!name || !name.includes("sashes")) return;
+      
+      // Проверяем, что изменилось одно из полей, влияющих на расчёт
+      const isRelevantField = 
+        name.includes("width") ||
+        name.includes("height") ||
+        name.includes("systemId") ||
+        name.includes("fabricId");
+      
+      if (!isRelevantField) return;
 
-        sashes.forEach((sash, index) => {
-          if (!sash) return;
+      // Извлекаем индекс створки из имени поля (формат: "sashes.0.width")
+      const match = name.match(/^sashes\.(\d+)\./);
+      if (!match) return;
+      
+      const index = parseInt(match[1], 10);
+      const sashes = value.sashes || [];
+      const sash = sashes[index];
+      
+      if (!sash) return;
 
-          const width = parseFloat(sash.width || "0");
-          const height = parseFloat(sash.height || "0");
-          const systemId = sash.systemId;
-          const fabricId = sash.fabricId;
+      const width = parseFloat(sash.width || "0");
+      const height = parseFloat(sash.height || "0");
+      const systemId = sash.systemId;
+      const fabricId = sash.fabricId;
 
-          // Рассчитываем себестоимость створки (синхронно)
-          if (width > 0 && height > 0) {
-            const sashCostData = calculateCostPrice(
-              [sash],
-              () => sash,
-              fabricStock,
-              componentStock,
-              systems
-            );
-            const sashCost = sashCostData.totalCost;
+      // Рассчитываем себестоимость створки (синхронно)
+      if (width > 0 && height > 0) {
+        const sashCostData = calculateCostPrice(
+          [sash],
+          () => sash,
+          fabricStock,
+          componentStock,
+          systems
+        );
+        const sashCost = sashCostData.totalCost;
 
-            if (sashCost > 0) {
+        if (sashCost > 0) {
+          form.setValue(
+            `sashes.${index}.sashCost`,
+            sashCost.toFixed(2),
+            { shouldValidate: false }
+          );
+        }
+      }
+
+      // Рассчитываем коэффициент (асинхронно с debounce)
+      if (width > 0 && height > 0 && systemId && fabricId) {
+        const system = systems.find((s) => s.id === systemId);
+        const fabric = fabrics.find((f) => f.id === fabricId);
+
+        if (system && system.systemKey && fabric && fabric.category) {
+          // Используем уникальный sashId для отдельного debounce каждой створки
+          const sashId = `sash-${index}`;
+
+          // Устанавливаем состояние загрузки
+          form.setValue(`sashes.${index}.isCalculating`, true, {
+            shouldValidate: false,
+          });
+
+          coefficientCalculator.calculate(
+            {
+              systemKey: system.systemKey,
+              category: fabric.category,
+              width: width / 1000,
+              height: height / 1000,
+            },
+            (data) => {
+              // Проверяем, что створка ещё существует
+              const currentSashes = form.getValues("sashes");
+              if (!currentSashes[index]) return;
+
+              // Успешно получен коэффициент
+              const multiplier = system.multiplier;
+              const multiplierValue = multiplier
+                ? parseFloat(multiplier.value?.toString() || "1")
+                : 1;
+              const sashPrice = data.coefficient * multiplierValue;
+
+              // Сохраняем коэффициент
               form.setValue(
-                `sashes.${index}.sashCost`,
-                sashCost.toFixed(2),
-                {
-                  shouldValidate: false,
-                }
+                `sashes.${index}.coefficient`,
+                data.coefficient.toFixed(2),
+                { shouldValidate: false }
               );
-            }
-          }
 
-          // Рассчитываем коэффициент (асинхронно с debounce)
-          if (width > 0 && height > 0 && systemId && fabricId) {
-            const system = systems.find((s) => s.id === systemId);
-            const fabric = fabrics.find((f) => f.id === fabricId);
+              // Сохраняем цену
+              form.setValue(
+                `sashes.${index}.sashPrice`,
+                sashPrice.toFixed(2),
+                { shouldValidate: false }
+              );
 
-            if (system && system.systemKey && fabric && fabric.category) {
-              // Устанавливаем состояние загрузки
-              form.setValue(`sashes.${index}.isCalculating`, true, {
+              // Убираем состояние загрузки
+              form.setValue(`sashes.${index}.isCalculating`, false, {
                 shouldValidate: false,
               });
 
-              coefficientCalculator.calculate(
-                {
-                  systemKey: system.systemKey,
-                  category: fabric.category,
-                  width: width / 1000,
-                  height: height / 1000,
-                },
-                (data) => {
-                  // Успешно получен коэффициент
-                  const multiplier = system.multiplier;
-                  const multiplierValue = multiplier
-                    ? parseFloat(multiplier.value?.toString() || "1")
-                    : 1;
-                  const sashPrice = data.coefficient * multiplierValue;
+              // Показываем предупреждение только один раз при fallback
+              if (data.isFallbackCategory && data.warning) {
+                console.warn(`[Заказ] ${data.warning}`);
+              }
 
-                  // Сохраняем коэффициент
-                  form.setValue(
-                    `sashes.${index}.coefficient`,
-                    data.coefficient.toFixed(2),
-                    { shouldValidate: false }
-                  );
+              // Пересчитываем общую цену
+              const allSashes = form.getValues("sashes");
+              const totalPrice = allSashes.reduce((sum, s) => {
+                const price = parseFloat(s.sashPrice || "0");
+                const qty = parseFloat(s.quantity || "1");
+                return sum + price * qty;
+              }, 0);
 
-                  // Сохраняем цену
-                  form.setValue(
-                    `sashes.${index}.sashPrice`,
-                    sashPrice.toFixed(2),
-                    { shouldValidate: false }
-                  );
+              if (totalPrice > 0) {
+                form.setValue("salePrice", totalPrice.toFixed(2), {
+                  shouldValidate: false,
+                });
+              }
+            },
+            (error) => {
+              // Проверяем, что створка ещё существует
+              const currentSashes = form.getValues("sashes");
+              if (!currentSashes[index]) return;
 
-                  // Убираем состояние загрузки
-                  form.setValue(`sashes.${index}.isCalculating`, false, {
-                    shouldValidate: false,
-                  });
-
-                  // Показываем предупреждение только один раз при fallback
-                  if (data.isFallbackCategory && data.warning) {
-                    console.warn(`[Заказ] ${data.warning}`);
-                  }
-
-                  // Пересчитываем общую цену
-                  const allSashes = form.getValues("sashes");
-                  const totalPrice = allSashes.reduce((sum, s, i) => {
-                    const price = parseFloat(s.sashPrice || "0");
-                    const qty = parseFloat(s.quantity || "1");
-                    return sum + price * qty;
-                  }, 0);
-
-                  if (totalPrice > 0) {
-                    form.setValue("salePrice", totalPrice.toFixed(2), {
-                      shouldValidate: false,
-                    });
-                  }
-                },
-                (error) => {
-                  // Ошибка при расчете
-                  console.error("Ошибка при расчете коэффициента:", error);
-                  form.setValue(`sashes.${index}.isCalculating`, false, {
-                    shouldValidate: false,
-                  });
-                  form.setValue(`sashes.${index}.sashPrice`, "0", {
-                    shouldValidate: false,
-                  });
-                  form.setValue(`sashes.${index}.coefficient`, "", {
-                    shouldValidate: false,
-                  });
-                },
-                800 // Debounce 800ms
-              );
-            }
-          }
-        });
+              // Ошибка при расчете
+              console.error("Ошибка при расчете коэффициента:", error);
+              form.setValue(`sashes.${index}.isCalculating`, false, {
+                shouldValidate: false,
+              });
+              form.setValue(`sashes.${index}.sashPrice`, "0", {
+                shouldValidate: false,
+              });
+              form.setValue(`sashes.${index}.coefficient`, "", {
+                shouldValidate: false,
+              });
+            },
+            800, // Debounce 800ms
+            sashId // Уникальный ID для отдельного debounce
+          );
+        }
       }
     });
 
@@ -687,7 +713,7 @@ export default function OrdersPage() {
       subscription.unsubscribe();
       coefficientCalculator.cleanup();
     };
-  }, [form, systems, fabrics, fabricStock, componentStock, coefficientCalculator, toast]);
+  }, [form, systems, fabrics, fabricStock, componentStock, coefficientCalculator]);
 
   // Filtering
   const filteredOrders = orders.filter((order) => {
@@ -762,6 +788,7 @@ export default function OrdersPage() {
                       setCostCalculationDetails(details);
                       setShowCostCalculation(true);
                     }}
+                    onSashRemove={handleSashRemove}
                   />
                 </TabsContent>
 
@@ -796,6 +823,7 @@ export default function OrdersPage() {
                   setCostCalculationDetails(details);
                   setShowCostCalculation(true);
                 }}
+                onSashRemove={handleSashRemove}
               />
             )}
           </DialogContent>

@@ -251,3 +251,4 @@ export function MultipliersTab({ search }: { search: string }) {
   );
 }
 
+

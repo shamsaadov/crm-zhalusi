@@ -32,3 +32,4 @@ ORDER BY o.order_number DESC;
 -- Для просмотра: SELECT * FROM v_product_orders_without_component;
 
 
+

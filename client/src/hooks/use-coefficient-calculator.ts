@@ -15,13 +15,25 @@ interface CalculateParams {
   height: number;
 }
 
+// Храним отдельные таймауты и контроллеры для каждой створки (по индексу)
+interface SashState {
+  timeout: NodeJS.Timeout | null;
+  abortController: AbortController | null;
+}
+
 export function useCoefficientCalculator() {
   const cacheRef = useRef<CoefficientCache>({});
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const sashStatesRef = useRef<Map<string, SashState>>(new Map());
 
   const getCacheKey = (params: CalculateParams) => {
     return `${params.systemKey}_${params.category}_${params.width.toFixed(3)}_${params.height.toFixed(3)}`;
+  };
+
+  const getSashState = (sashId: string): SashState => {
+    if (!sashStatesRef.current.has(sashId)) {
+      sashStatesRef.current.set(sashId, { timeout: null, abortController: null });
+    }
+    return sashStatesRef.current.get(sashId)!;
   };
 
   const calculate = useCallback(
@@ -33,7 +45,8 @@ export function useCoefficientCalculator() {
         warning?: string;
       }) => void,
       onError?: (error: Error) => void,
-      debounceMs: number = 500
+      debounceMs: number = 500,
+      sashId: string = "default" // Идентификатор створки для отдельного debounce
     ) => {
       // Проверяем кэш
       const cacheKey = getCacheKey(params);
@@ -42,22 +55,24 @@ export function useCoefficientCalculator() {
         return;
       }
 
-      // Отменяем предыдущий запрос
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
+      const sashState = getSashState(sashId);
+
+      // Отменяем предыдущий запрос для этой створки
+      if (sashState.abortController) {
+        sashState.abortController.abort();
       }
 
-      // Очищаем предыдущий таймаут
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
+      // Очищаем предыдущий таймаут для этой створки
+      if (sashState.timeout) {
+        clearTimeout(sashState.timeout);
       }
 
-      // Создаем новый AbortController
-      abortControllerRef.current = new AbortController();
-      const signal = abortControllerRef.current.signal;
+      // Создаем новый AbortController для этой створки
+      sashState.abortController = new AbortController();
+      const signal = sashState.abortController.signal;
 
       // Устанавливаем debounce
-      timeoutRef.current = setTimeout(async () => {
+      sashState.timeout = setTimeout(async () => {
         try {
           const response = await fetch("/api/coefficients/calculate", {
             method: "POST",
@@ -105,11 +120,28 @@ export function useCoefficientCalculator() {
   }, []);
 
   const cleanup = useCallback(() => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
+    // Очищаем все состояния створок
+    sashStatesRef.current.forEach((state) => {
+      if (state.timeout) {
+        clearTimeout(state.timeout);
+      }
+      if (state.abortController) {
+        state.abortController.abort();
+      }
+    });
+    sashStatesRef.current.clear();
+  }, []);
+
+  const cleanupSash = useCallback((sashId: string) => {
+    const state = sashStatesRef.current.get(sashId);
+    if (state) {
+      if (state.timeout) {
+        clearTimeout(state.timeout);
+      }
+      if (state.abortController) {
+        state.abortController.abort();
+      }
+      sashStatesRef.current.delete(sashId);
     }
   }, []);
 
@@ -117,6 +149,7 @@ export function useCoefficientCalculator() {
     calculate,
     clearCache,
     cleanup,
+    cleanupSash,
   };
 }
 
