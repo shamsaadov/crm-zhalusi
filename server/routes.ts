@@ -879,6 +879,32 @@ export async function registerRoutes(
         const limit = parseInt(req.query.limit as string) || 20;
         const cursor = req.query.cursor as string | undefined;
         const paginated = req.query.paginated === "true";
+        const status =
+          typeof req.query.status === "string" && req.query.status !== "all"
+            ? req.query.status
+            : undefined;
+        const dealerId =
+          typeof req.query.dealerId === "string" &&
+          req.query.dealerId !== "all"
+            ? req.query.dealerId
+            : undefined;
+        const from =
+          typeof req.query.from === "string" && req.query.from.length > 0
+            ? req.query.from
+            : undefined;
+        const to =
+          typeof req.query.to === "string" && req.query.to.length > 0
+            ? req.query.to
+            : undefined;
+        const search =
+          typeof req.query.search === "string" && req.query.search.length > 0
+            ? req.query.search
+            : undefined;
+        const orderTypeFilter =
+          typeof req.query.orderType === "string" &&
+          ["sash", "product"].includes(req.query.orderType as string)
+            ? (req.query.orderType as "sash" | "product")
+            : undefined;
 
         const dealerList = await storage.getDealers(req.userId!);
 
@@ -892,14 +918,9 @@ export async function registerRoutes(
           return hasProductSash ? "product" : "sash";
         };
 
-        if (paginated) {
-          const result = await storage.getOrdersPaginated(req.userId!, {
-            limit,
-            cursor,
-          });
-
-          const enriched = await Promise.all(
-            result.data.map(async (order) => {
+        const enrichOrders = async (ordersToEnrich: any[]) => {
+          return Promise.all(
+            ordersToEnrich.map(async (order) => {
               const sashes = await storage.getOrderSashes(order.id);
               return {
                 ...order,
@@ -911,29 +932,58 @@ export async function registerRoutes(
               };
             })
           );
+        };
+
+        const filters = { status, dealerId, from, to, search };
+
+        if (paginated) {
+          let result = await storage.getOrdersPaginated(req.userId!, {
+            limit,
+            cursor,
+          }, filters);
+
+          let enriched = await enrichOrders(result.data);
+          if (orderTypeFilter) {
+            enriched = enriched.filter((o) => o.orderType === orderTypeFilter);
+          }
+
+          // Fetch more pages if filtered results are fewer than limit but there are more pages
+          while (
+            orderTypeFilter &&
+            enriched.length < limit &&
+            result.hasMore &&
+            result.nextCursor
+          ) {
+            result = await storage.getOrdersPaginated(
+              req.userId!,
+              { limit, cursor: result.nextCursor },
+              filters
+            );
+            let more = await enrichOrders(result.data);
+            more = more.filter((o) => o.orderType === orderTypeFilter);
+            enriched = enriched.concat(more);
+          }
+
+          const trimmed = enriched.slice(0, limit);
+          const hasMore = enriched.length > limit || result.hasMore;
+          const nextCursor =
+            enriched.length > limit && enriched[limit]
+              ? `${enriched[limit].date}_${enriched[limit].id}`
+              : result.nextCursor;
 
           res.json({
-            data: enriched,
-            nextCursor: result.nextCursor,
-            hasMore: result.hasMore,
+            data: trimmed,
+            nextCursor,
+            hasMore,
           });
         } else {
           // Legacy non-paginated response for backward compatibility
-          const orderList = await storage.getOrders(req.userId!);
+          const orderList = await storage.getOrders(req.userId!, filters);
 
-          const enriched = await Promise.all(
-            orderList.map(async (order) => {
-              const sashes = await storage.getOrderSashes(order.id);
-              return {
-                ...order,
-                dealer: dealerList.find((d) => d.id === order.dealerId),
-                dealerBalance: dealerList.find((d) => d.id === order.dealerId)
-                  ?.balance,
-                sashesCount: sashes.length,
-                orderType: getOrderType(sashes),
-              };
-            })
-          );
+          let enriched = await enrichOrders(orderList);
+          if (orderTypeFilter) {
+            enriched = enriched.filter((o) => o.orderType === orderTypeFilter);
+          }
 
           res.json(enriched);
         }
@@ -1742,9 +1792,31 @@ export async function registerRoutes(
     async (req: AuthRequest, res: Response) => {
       try {
         const includeDrafts = req.query.includeDrafts === "true";
+        const draftsOnly = req.query.draftsOnly === "true";
         const limit = parseInt(req.query.limit as string) || 20;
         const cursor = req.query.cursor as string | undefined;
         const paginated = req.query.paginated === "true";
+        const type =
+          typeof req.query.type === "string" && req.query.type !== "all"
+            ? req.query.type
+            : undefined;
+        const cashboxId =
+          typeof req.query.cashboxId === "string" &&
+          req.query.cashboxId !== "all"
+            ? req.query.cashboxId
+            : undefined;
+        const from =
+          typeof req.query.from === "string" && req.query.from.length > 0
+            ? req.query.from
+            : undefined;
+        const to =
+          typeof req.query.to === "string" && req.query.to.length > 0
+            ? req.query.to
+            : undefined;
+        const search =
+          typeof req.query.search === "string" && req.query.search.length > 0
+            ? req.query.search
+            : undefined;
 
         const dealerList = await storage.getDealers(req.userId!);
         const supplierList = await storage.getSuppliers(req.userId!);
@@ -1764,8 +1836,9 @@ export async function registerRoutes(
         if (paginated) {
           const result = await storage.getFinanceOperationsPaginated(
             req.userId!,
-            includeDrafts,
-            { limit, cursor }
+            includeDrafts || draftsOnly,
+            { limit, cursor },
+            { type, cashboxId, from, to, search, draftsOnly }
           );
 
           const enriched = result.data.map(enrichOperation);
@@ -1779,7 +1852,8 @@ export async function registerRoutes(
           // Legacy non-paginated response for backward compatibility
           const operations = await storage.getFinanceOperations(
             req.userId!,
-            includeDrafts
+            includeDrafts || draftsOnly,
+            { type, cashboxId, from, to, search, draftsOnly }
           );
           const enriched = operations.map(enrichOperation);
           res.json(enriched);
@@ -1906,6 +1980,23 @@ export async function registerRoutes(
         const limit = parseInt(req.query.limit as string) || 20;
         const cursor = req.query.cursor as string | undefined;
         const paginated = req.query.paginated === "true";
+        const supplierId =
+          typeof req.query.supplierId === "string" &&
+          req.query.supplierId !== "all"
+            ? req.query.supplierId
+            : undefined;
+        const from =
+          typeof req.query.from === "string" && req.query.from.length > 0
+            ? req.query.from
+            : undefined;
+        const to =
+          typeof req.query.to === "string" && req.query.to.length > 0
+            ? req.query.to
+            : undefined;
+        const search =
+          typeof req.query.search === "string" && req.query.search.length > 0
+            ? req.query.search
+            : undefined;
 
         const supplierList = await storage.getSuppliers(req.userId!);
 
@@ -1923,7 +2014,8 @@ export async function registerRoutes(
         if (paginated) {
           const result = await storage.getWarehouseReceiptsPaginated(
             req.userId!,
-            { limit, cursor }
+            { limit, cursor },
+            { supplierId, from, to, search }
           );
 
           const enriched = await Promise.all(result.data.map(enrichReceipt));
@@ -1935,11 +2027,17 @@ export async function registerRoutes(
           });
         } else {
           // Legacy non-paginated response for backward compatibility
-          const receipts = await storage.getWarehouseReceipts(req.userId!);
+          const receipts = await storage.getWarehouseReceipts(req.userId!, {
+            supplierId,
+            from,
+            to,
+            search,
+          });
           const enriched = await Promise.all(receipts.map(enrichReceipt));
           res.json(enriched);
         }
       } catch (error) {
+        console.error("Warehouse list error:", error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }

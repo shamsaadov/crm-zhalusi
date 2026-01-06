@@ -1,4 +1,16 @@
-import { eq, and, sql, gte, lte, desc, sum, isNull, ne, or } from "drizzle-orm";
+import {
+  eq,
+  and,
+  sql,
+  gte,
+  lte,
+  desc,
+  sum,
+  isNull,
+  ne,
+  or,
+  ilike,
+} from "drizzle-orm";
 import { db } from "./db";
 import {
   users,
@@ -78,6 +90,16 @@ export interface FinanceOperationFilters {
   from?: string;
   to?: string;
   cashboxId?: string;
+  type?: string;
+  search?: string;
+  draftsOnly?: boolean;
+}
+
+export interface WarehouseFilters {
+  supplierId?: string;
+  from?: string;
+  to?: string;
+  search?: string;
 }
 
 export interface IStorage {
@@ -229,7 +251,8 @@ export interface IStorage {
   getWarehouseReceipts(userId: string): Promise<WarehouseReceipt[]>;
   getWarehouseReceiptsPaginated(
     userId: string,
-    params: PaginationParams
+    params: PaginationParams,
+    filters?: WarehouseFilters
   ): Promise<PaginatedResult<WarehouseReceipt>>;
   getWarehouseReceipt(id: string): Promise<WarehouseReceipt | undefined>;
   createWarehouseReceipt(
@@ -259,6 +282,25 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  private buildWarehouseConditions(userId: string, filters?: WarehouseFilters) {
+    const conditions = [eq(warehouseReceipts.userId, userId)];
+
+    if (filters?.supplierId && filters.supplierId !== "all") {
+      conditions.push(eq(warehouseReceipts.supplierId, filters.supplierId));
+    }
+    if (filters?.from) {
+      conditions.push(gte(warehouseReceipts.date, filters.from));
+    }
+    if (filters?.to) {
+      conditions.push(lte(warehouseReceipts.date, filters.to));
+    }
+    if (filters?.search) {
+      conditions.push(ilike(warehouseReceipts.comment, `%${filters.search}%`));
+    }
+
+    return conditions;
+  }
+
   // Users
   async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
@@ -849,7 +891,9 @@ export class DatabaseStorage implements IStorage {
   ): Promise<FinanceOperation[]> {
     const conditions = [eq(financeOperations.userId, userId)];
 
-    if (!includeDrafts) {
+    if (filters?.draftsOnly) {
+      conditions.push(eq(financeOperations.isDraft, true));
+    } else if (!includeDrafts) {
       conditions.push(eq(financeOperations.isDraft, false));
     }
     if (filters?.from) {
@@ -858,6 +902,9 @@ export class DatabaseStorage implements IStorage {
     if (filters?.to) {
       conditions.push(lte(financeOperations.date, filters.to));
     }
+    if (filters?.type) {
+      conditions.push(eq(financeOperations.type, filters.type));
+    }
     if (filters?.cashboxId && filters.cashboxId !== "all") {
       conditions.push(
         or(
@@ -865,6 +912,11 @@ export class DatabaseStorage implements IStorage {
           eq(financeOperations.fromCashboxId, filters.cashboxId),
           eq(financeOperations.toCashboxId, filters.cashboxId)
         )
+      );
+    }
+    if (filters?.search) {
+      conditions.push(
+        ilike(financeOperations.comment, `%${filters.search}%`)
       );
     }
 
@@ -888,7 +940,9 @@ export class DatabaseStorage implements IStorage {
     const cursor = params.cursor;
 
     const conditions = [eq(financeOperations.userId, userId)];
-    if (!includeDrafts) {
+    if (filters?.draftsOnly) {
+      conditions.push(eq(financeOperations.isDraft, true));
+    } else if (!includeDrafts) {
       conditions.push(eq(financeOperations.isDraft, false));
     }
     if (filters?.from) {
@@ -897,6 +951,9 @@ export class DatabaseStorage implements IStorage {
     if (filters?.to) {
       conditions.push(lte(financeOperations.date, filters.to));
     }
+    if (filters?.type) {
+      conditions.push(eq(financeOperations.type, filters.type));
+    }
     if (filters?.cashboxId && filters.cashboxId !== "all") {
       conditions.push(
         or(
@@ -904,6 +961,11 @@ export class DatabaseStorage implements IStorage {
           eq(financeOperations.fromCashboxId, filters.cashboxId),
           eq(financeOperations.toCashboxId, filters.cashboxId)
         )
+      );
+    }
+    if (filters?.search) {
+      conditions.push(
+        ilike(financeOperations.comment, `%${filters.search}%`)
       );
     }
 
@@ -1004,20 +1066,32 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Warehouse
-  async getWarehouseReceipts(userId: string): Promise<WarehouseReceipt[]> {
+  async getWarehouseReceipts(
+    userId: string,
+    filters?: WarehouseFilters
+  ): Promise<WarehouseReceipt[]> {
+    const conditions = this.buildWarehouseConditions(userId, filters);
+    const whereClause =
+      conditions.length > 1 ? and(...conditions) : conditions[0];
+
     return db
       .select()
       .from(warehouseReceipts)
-      .where(eq(warehouseReceipts.userId, userId))
+      .where(whereClause)
       .orderBy(desc(warehouseReceipts.date));
   }
 
   async getWarehouseReceiptsPaginated(
     userId: string,
-    params: PaginationParams
+    params: PaginationParams,
+    filters?: WarehouseFilters
   ): Promise<PaginatedResult<WarehouseReceipt>> {
     const limit = params.limit || 20;
     const cursor = params.cursor;
+
+    const conditions = this.buildWarehouseConditions(userId, filters);
+    const baseWhere =
+      conditions.length > 1 ? and(...conditions) : conditions[0];
 
     let query;
 
@@ -1028,7 +1102,7 @@ export class DatabaseStorage implements IStorage {
         .from(warehouseReceipts)
         .where(
           and(
-            eq(warehouseReceipts.userId, userId),
+            baseWhere,
             or(
               sql`${warehouseReceipts.date} < ${cursorDate}`,
               and(
@@ -1039,10 +1113,7 @@ export class DatabaseStorage implements IStorage {
           )
         );
     } else {
-      query = db
-        .select()
-        .from(warehouseReceipts)
-        .where(eq(warehouseReceipts.userId, userId));
+      query = db.select().from(warehouseReceipts).where(baseWhere);
     }
 
     const data = await query

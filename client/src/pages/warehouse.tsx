@@ -137,6 +137,7 @@ export default function WarehousePage() {
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({});
   const [supplierFilter, setSupplierFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [globalItemType, setGlobalItemType] = useState<"fabric" | "component">(
     "fabric"
   );
@@ -163,9 +164,23 @@ export default function WarehousePage() {
     nextCursor: string | null;
     hasMore: boolean;
   }>({
-    queryKey: ["/api/warehouse", { paginated: true }],
+    queryKey: [
+      "/api/warehouse",
+      {
+        paginated: true,
+        supplierId: supplierFilter,
+        from: dateRange.from ? format(dateRange.from, "yyyy-MM-dd") : "",
+        to: dateRange.to ? format(dateRange.to, "yyyy-MM-dd") : "",
+        search: debouncedSearch,
+      },
+    ],
     queryFn: async ({ pageParam }) => {
       const params = new URLSearchParams({ paginated: "true", limit: "20" });
+      if (supplierFilter !== "all") params.set("supplierId", supplierFilter);
+      if (dateRange.from)
+        params.set("from", format(dateRange.from, "yyyy-MM-dd"));
+      if (dateRange.to) params.set("to", format(dateRange.to, "yyyy-MM-dd"));
+      if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
       if (pageParam) params.set("cursor", pageParam as string);
       const res = await fetch(`/api/warehouse?${params}`, {
         credentials: "include",
@@ -176,6 +191,11 @@ export default function WarehousePage() {
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor,
   });
+
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearch(search), 250);
+    return () => clearTimeout(id);
+  }, [search]);
 
   const receipts = useMemo(() => {
     return receiptsData?.pages.flatMap((page) => page.data) ?? [];
@@ -540,10 +560,6 @@ export default function WarehousePage() {
   };
 
   const filteredReceipts = receipts.filter((r) => {
-    if (supplierFilter !== "all" && r.supplierId !== supplierFilter)
-      return false;
-    if (dateRange.from && new Date(r.date) < dateRange.from) return false;
-    if (dateRange.to && new Date(r.date) > dateRange.to) return false;
     return true;
   });
 
@@ -1006,7 +1022,7 @@ export default function WarehousePage() {
           <FilterBar
             search={search}
             onSearchChange={setSearch}
-            searchPlaceholder="Поиск..."
+            searchPlaceholder="Поиск по комментарию"
             showDateFilter
             dateRange={dateRange}
             onDateRangeChange={setDateRange}
@@ -1019,6 +1035,11 @@ export default function WarehousePage() {
                 onChange: setSupplierFilter,
               },
             ]}
+            onReset={() => {
+              setSearch("");
+              setDateRange({});
+              setSupplierFilter("all");
+            }}
           />
 
           <DataTable

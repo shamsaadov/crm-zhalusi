@@ -65,6 +65,7 @@ export default function OrdersPage() {
     null
   );
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({});
   const [statusFilter, setStatusFilter] = useState("all");
   const [dealerFilter, setDealerFilter] = useState("all");
@@ -90,9 +91,27 @@ export default function OrdersPage() {
     nextCursor: string | null;
     hasMore: boolean;
   }>({
-    queryKey: ["/api/orders", { paginated: true }],
+    queryKey: [
+      "/api/orders",
+      {
+        paginated: true,
+        status: statusFilter,
+        dealerId: dealerFilter,
+        from: dateRange.from ? format(dateRange.from, "yyyy-MM-dd") : "",
+        to: dateRange.to ? format(dateRange.to, "yyyy-MM-dd") : "",
+        search: debouncedSearch,
+        orderType: orderTypeFilter,
+      },
+    ],
     queryFn: async ({ pageParam }) => {
       const params = new URLSearchParams({ paginated: "true", limit: "20" });
+      if (statusFilter !== "all") params.set("status", statusFilter);
+      if (dealerFilter !== "all") params.set("dealerId", dealerFilter);
+      if (dateRange.from)
+        params.set("from", format(dateRange.from, "yyyy-MM-dd"));
+      if (dateRange.to) params.set("to", format(dateRange.to, "yyyy-MM-dd"));
+      if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
+      if (orderTypeFilter !== "all") params.set("orderType", orderTypeFilter);
       if (pageParam) params.set("cursor", pageParam as string);
       const res = await fetch(`/api/orders?${params}`, {
         credentials: "include",
@@ -871,16 +890,10 @@ export default function OrdersPage() {
   ]);
 
   // Filtering
-  const filteredOrders = orders.filter((order) => {
-    if (search && !order.orderNumber?.toString().includes(search)) return false;
-    if (statusFilter !== "all" && order.status !== statusFilter) return false;
-    if (dealerFilter !== "all" && order.dealerId !== dealerFilter) return false;
-    if (dateRange.from && new Date(order.date) < dateRange.from) return false;
-    if (dateRange.to && new Date(order.date) > dateRange.to) return false;
-    if (orderTypeFilter !== "all" && order.orderType !== orderTypeFilter)
-      return false;
-    return true;
-  });
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearch(search), 250);
+    return () => clearTimeout(id);
+  }, [search]);
 
   const columns = getOrderColumns({
     onView: openViewDialog,
@@ -1026,16 +1039,23 @@ export default function OrdersPage() {
               onChange: setDealerFilter,
             },
           ]}
+          onReset={() => {
+            setSearch("");
+            setDateRange({});
+            setStatusFilter("all");
+            setDealerFilter("all");
+            setOrderTypeFilter("all");
+          }}
         />
 
-        <DataTable
-          columns={columns}
-          data={filteredOrders}
-          isLoading={ordersLoading}
-          emptyMessage="Заказы не найдены"
-          getRowKey={(order) => order.id}
-          hasNextPage={hasNextPage}
-          isFetchingNextPage={isFetchingNextPage}
+          <DataTable
+            columns={columns}
+            data={orders}
+            isLoading={ordersLoading}
+            emptyMessage="Заказы не найдены"
+            getRowKey={(order) => order.id}
+            hasNextPage={hasNextPage}
+            isFetchingNextPage={isFetchingNextPage}
           loadMoreRef={loadMoreRef}
         />
       </Tabs>

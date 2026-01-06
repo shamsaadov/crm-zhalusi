@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useInfiniteQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import { DataTable } from "@/components/data-table";
@@ -124,6 +124,7 @@ export default function FinancePage() {
   const [editingOperation, setEditingOperation] =
     useState<FinanceOperationWithRelations | null>(null);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({});
   const [typeFilter, setTypeFilter] = useState("all");
   const [cashboxFilter, setCashboxFilter] = useState("all");
@@ -146,13 +147,31 @@ export default function FinancePage() {
     nextCursor: string | null;
     hasMore: boolean;
   }>({
-    queryKey: ["/api/finance", { includeDrafts: showDrafts, paginated: true }],
+    queryKey: [
+      "/api/finance",
+      {
+        paginated: true,
+        includeDrafts: showDrafts,
+        type: typeFilter,
+        cashboxId: cashboxFilter,
+        from: dateRange.from ? format(dateRange.from, "yyyy-MM-dd") : "",
+        to: dateRange.to ? format(dateRange.to, "yyyy-MM-dd") : "",
+        search: debouncedSearch,
+      },
+    ],
     queryFn: async ({ pageParam }) => {
       const params = new URLSearchParams({
         paginated: "true",
         limit: "20",
         includeDrafts: String(showDrafts),
+        draftsOnly: String(showDrafts),
       });
+      if (typeFilter !== "all") params.set("type", typeFilter);
+      if (cashboxFilter !== "all") params.set("cashboxId", cashboxFilter);
+      if (dateRange.from)
+        params.set("from", format(dateRange.from, "yyyy-MM-dd"));
+      if (dateRange.to) params.set("to", format(dateRange.to, "yyyy-MM-dd"));
+      if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
       if (pageParam) params.set("cursor", pageParam as string);
       const res = await fetch(`/api/finance?${params}`, {
         credentials: "include",
@@ -485,21 +504,10 @@ export default function FinancePage() {
     });
   };
 
-  const filteredOperations = operations.filter((op) => {
-    if (!showDrafts && op.isDraft) return false;
-    if (showDrafts && !op.isDraft) return false;
-    if (typeFilter !== "all" && op.type !== typeFilter) return false;
-    if (
-      cashboxFilter !== "all" &&
-      op.cashboxId !== cashboxFilter &&
-      op.fromCashboxId !== cashboxFilter &&
-      op.toCashboxId !== cashboxFilter
-    )
-      return false;
-    if (dateRange.from && new Date(op.date) < dateRange.from) return false;
-    if (dateRange.to && new Date(op.date) > dateRange.to) return false;
-    return true;
-  });
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearch(search), 250);
+    return () => clearTimeout(id);
+  }, [search]);
 
   const columns = [
     {
@@ -1249,7 +1257,7 @@ export default function FinancePage() {
       <FilterBar
         search={search}
         onSearchChange={setSearch}
-        searchPlaceholder="Поиск..."
+        searchPlaceholder="Поиск по комментарию"
         showDateFilter
         dateRange={dateRange}
         onDateRangeChange={setDateRange}
@@ -1274,11 +1282,17 @@ export default function FinancePage() {
             onChange: setCashboxFilter,
           },
         ]}
+        onReset={() => {
+          setSearch("");
+          setDateRange({});
+          setTypeFilter("all");
+          setCashboxFilter("all");
+        }}
       />
 
       <DataTable
         columns={columns}
-        data={filteredOperations}
+        data={operations}
         isLoading={isLoading}
         emptyMessage={
           showDrafts ? "Черновики не найдены" : "Операции не найдены"
