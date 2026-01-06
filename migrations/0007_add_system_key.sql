@@ -2,3 +2,4 @@
 ALTER TABLE "systems" ADD COLUMN IF NOT EXISTS "system_key" text;
 
 
+

@@ -5,3 +5,4 @@ ALTER TABLE "warehouse_writeoffs" ALTER COLUMN "order_id" DROP NOT NULL;
 ALTER TABLE "warehouse_writeoffs" ADD COLUMN "comment" text;
 
 
+

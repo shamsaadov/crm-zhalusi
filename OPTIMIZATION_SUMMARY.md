@@ -167,3 +167,4 @@ coefficientCalculator.clearCache();
 - Логировать количество запросов
 - Отслеживать hit rate кэша
 
+

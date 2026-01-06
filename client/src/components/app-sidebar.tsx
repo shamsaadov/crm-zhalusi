@@ -1,10 +1,10 @@
 import { Link, useLocation } from "wouter";
-import { 
-  LayoutDashboard, 
-  ListTodo, 
-  ShoppingCart, 
-  Wallet, 
-  Warehouse, 
+import {
+  LayoutDashboard,
+  ListTodo,
+  ShoppingCart,
+  Wallet,
+  Warehouse,
   BarChart3,
   TrendingUp,
   Users,
@@ -12,7 +12,7 @@ import {
   LogOut,
   Moon,
   Sun,
-  User
+  User,
 } from "lucide-react";
 import {
   Sidebar,
@@ -58,8 +58,10 @@ export function AppSidebar() {
             <LayoutDashboard className="h-5 w-5" />
           </div>
           <div className="flex flex-col">
-            <span className="text-base font-semibold">Хусейн лучший программист</span>
-            <span className="text-xs text-muted-foreground">Система управления</span>
+            <span className="text-base font-semibold">Хусейн лучший</span>
+            <span className="text-xs text-muted-foreground">
+              Система управления
+            </span>
           </div>
         </div>
       </SidebarHeader>
@@ -71,11 +73,17 @@ export function AppSidebar() {
             <SidebarMenu>
               {mainNavItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton 
-                    asChild 
-                    isActive={location === item.url || location.startsWith(item.url + "/")}
+                  <SidebarMenuButton
+                    asChild
+                    isActive={
+                      location === item.url ||
+                      location.startsWith(item.url + "/")
+                    }
                   >
-                    <Link href={item.url} data-testid={`nav-${item.url.slice(1)}`}>
+                    <Link
+                      href={item.url}
+                      data-testid={`nav-${item.url.slice(1)}`}
+                    >
                       <item.icon className="h-4 w-4" />
                       <span>{item.title}</span>
                     </Link>
@@ -94,11 +102,14 @@ export function AppSidebar() {
             <SidebarMenu>
               {reportNavItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton 
-                    asChild 
-                    isActive={location === item.url}
-                  >
-                    <Link href={item.url} data-testid={`nav-${item.url.replace("/reports/", "report-")}`}>
+                  <SidebarMenuButton asChild isActive={location === item.url}>
+                    <Link
+                      href={item.url}
+                      data-testid={`nav-${item.url.replace(
+                        "/reports/",
+                        "report-"
+                      )}`}
+                    >
                       <item.icon className="h-4 w-4" />
                       <span>{item.title}</span>
                     </Link>
@@ -113,7 +124,11 @@ export function AppSidebar() {
       <SidebarFooter className="p-4">
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
-            <Link href="/profile" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors truncate max-w-[140px]" data-testid="nav-profile">
+            <Link
+              href="/profile"
+              className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors truncate max-w-[140px]"
+              data-testid="nav-profile"
+            >
               <User className="h-4 w-4 flex-shrink-0" />
               <span className="truncate">{user?.email}</span>
             </Link>
@@ -130,8 +145,8 @@ export function AppSidebar() {
               )}
             </Button>
           </div>
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             className="w-full justify-start gap-2"
             onClick={logout}
             data-testid="button-logout"

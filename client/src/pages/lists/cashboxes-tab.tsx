@@ -257,3 +257,4 @@ export function CashboxesTab({ search }: { search: string }) {
 }
 
 
+

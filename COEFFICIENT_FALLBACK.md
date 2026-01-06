@@ -133,3 +133,4 @@ npx tsx server/test-coefficients.ts
 
 Все операции логируются для диагностики и отладки.
 
+

@@ -24,3 +24,4 @@ ALTER TABLE "warehouse_receipt_items" ADD CONSTRAINT "warehouse_receipt_items_fa
   FOREIGN KEY ("fabric_id") REFERENCES "fabrics"("id") ON DELETE SET NULL;
 
 
+
