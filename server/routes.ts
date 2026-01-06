@@ -249,12 +249,10 @@ export async function registerRoutes(
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
-        console.log("Create fabric body:", req.body);
         const fabric = await storage.createFabric({
           ...req.body,
           userId: req.userId,
         });
-        console.log("Created fabric:", fabric);
         res.json(fabric);
       } catch (error) {
         console.error("Create fabric error:", error);
@@ -979,11 +977,6 @@ export async function registerRoutes(
             !op.deletedAt
         );
 
-        console.log(`[Order ${order.id}] Looking for payment with orderNumber: ${order.orderNumber}`);
-        console.log(`[Order ${order.id}] Found ${financeOps.length} finance operations`);
-        console.log(`[Order ${order.id}] Income operations:`, financeOps.filter(op => op.type === 'income').map(op => ({ comment: op.comment, cashboxId: op.cashboxId })));
-        console.log(`[Order ${order.id}] Payment found: ${!!paymentOp}, cashboxId: ${paymentOp?.cashboxId || 'none'}`);
-
         res.json({
           ...order,
           dealer: dealerList.find((d) => d.id === order.dealerId),
@@ -1426,31 +1419,18 @@ export async function registerRoutes(
         const oldStatus = order.status || "Новый";
         let dealerDebt = parseFloat(order.dealerDebt?.toString() || "0");
 
-        console.log(
-          `[Order Status Change] Order ${req.params.id}: ${oldStatus} → ${status}`
-        );
-
         // 1. Новый → просто черновик, ничего не делаем
 
         // 2. В производстве → добавляем долг дилеру (если долг ещё не установлен)
         if (status === "В производстве" && oldStatus === "Новый") {
           dealerDebt = parseFloat(order.salePrice?.toString() || "0");
-          console.log(`[Order Status] Setting dealer debt: ${dealerDebt}`);
         }
 
         // 3. Готов → списываем материалы со склада
         if (status === "Готов" && oldStatus !== "Готов") {
-          console.log(
-            `[Order Status] Processing writeoffs for order ${req.params.id}`
-          );
-
           // Проверяем, не было ли уже списания для этого заказа
           const existingWriteoffs =
             await storage.getWarehouseWriteoffsByOrderId(req.params.id);
-
-          console.log(
-            `[Order Status] Existing writeoffs: ${existingWriteoffs.length}`
-          );
 
           if (existingWriteoffs.length === 0) {
             // Получаем створки заказа
@@ -1469,7 +1449,6 @@ export async function registerRoutes(
                 stockError: true,
               });
             }
-            console.log(`[Order Status] Found ${sashes.length} sashes`);
 
             const allFabrics = await storage.getFabrics(req.userId!);
             const allSystems = await storage.getSystems(req.userId!);
@@ -1579,10 +1558,6 @@ export async function registerRoutes(
               const areaM2 = widthM * heightM;
               const quantity = parseInt(sash.quantity?.toString() || "1");
 
-              console.log(
-                `[Order Status] Processing sash: ${width}x${height}mm, qty: ${quantity}, fabricId: ${sash.fabricId}, systemId: ${sash.systemId}`
-              );
-
               // Списываем ткань
               if (sash.fabricId) {
                 const fabric = allFabrics.find((f) => f.id === sash.fabricId);
@@ -1594,12 +1569,6 @@ export async function registerRoutes(
                     fabric.fabricType === "zebra" ? 2 : 1;
                   const fabricQty = areaM2 * fabricMultiplier * quantity;
                   const price = stock?.lastPrice || stock?.avgPrice || 0;
-
-                  console.log(
-                    `[Order Status] Writing off fabric: ${
-                      fabric.name
-                    }, qty: ${fabricQty.toFixed(4)}, price: ${price}`
-                  );
 
                   await storage.createWarehouseWriteoff({
                     orderId: req.params.id,
@@ -1622,10 +1591,6 @@ export async function registerRoutes(
                   // Получаем компоненты системы
                   const systemComps = await storage.getSystemComponents(
                     system.id
-                  );
-
-                  console.log(
-                    `[Order Status] System ${system.name} has ${systemComps.length} components`
                   );
 
                   for (const sc of systemComps) {
@@ -1666,12 +1631,6 @@ export async function registerRoutes(
 
                       const price = stock?.lastPrice || stock?.avgPrice || 0;
 
-                      console.log(
-                        `[Order Status] Writing off component: ${
-                          component.name
-                        }, qty: ${componentQty.toFixed(4)}, price: ${price}`
-                      );
-
                       await storage.createWarehouseWriteoff({
                         orderId: req.params.id,
                         itemType: "component",
@@ -1699,10 +1658,6 @@ export async function registerRoutes(
                   const componentQty = quantity; // quantity уже парсится из sash.quantity
                   const price = stock?.lastPrice || stock?.avgPrice || 0;
 
-                  console.log(
-                    `[Order Status] Writing off direct component: ${component.name}, qty: ${componentQty}, price: ${price}`
-                  );
-
                   await storage.createWarehouseWriteoff({
                     orderId: req.params.id,
                     itemType: "component",
@@ -1717,22 +1672,12 @@ export async function registerRoutes(
                 }
               }
             }
-
-            console.log(
-              `[Order Status] Created ${writeoffsCreated} writeoffs for order ${req.params.id}`
-            );
           }
         }
 
         // 4. Отгружен → валовая прибыль учитывается автоматически в отчётах
         // (salePrice - costPrice уже хранятся в заказе)
         if (status === "Отгружен") {
-          console.log(
-            `[Order Status] Order shipped. Gross profit: ${
-              parseFloat(order.salePrice?.toString() || "0") -
-              parseFloat(order.costPrice?.toString() || "0")
-            }`
-          );
         }
 
         const updated = await storage.updateOrder(req.params.id, {

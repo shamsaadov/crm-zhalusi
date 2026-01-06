@@ -58,7 +58,9 @@ export function AppSidebar() {
             <LayoutDashboard className="h-5 w-5" />
           </div>
           <div className="flex flex-col">
-            <span className="text-base font-semibold">Хусейн лучший</span>
+            <span className="text-base font-semibold">
+              {user?.name || user?.email || "Пользователь"}
+            </span>
             <span className="text-xs text-muted-foreground">
               Система управления
             </span>
