@@ -2532,25 +2532,48 @@ export async function registerRoutes(
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
-        const orderList = await storage.getOrders(req.userId!);
+        const status =
+          typeof req.query.status === "string" && req.query.status !== "all"
+            ? req.query.status
+            : undefined;
+        const dealerId =
+          typeof req.query.dealerId === "string" &&
+          req.query.dealerId !== "all"
+            ? req.query.dealerId
+            : undefined;
+        const from =
+          typeof req.query.from === "string" && req.query.from.length > 0
+            ? req.query.from
+            : undefined;
+        const to =
+          typeof req.query.to === "string" && req.query.to.length > 0
+            ? req.query.to
+            : undefined;
+        const search =
+          typeof req.query.search === "string" && req.query.search.length > 0
+            ? req.query.search
+            : undefined;
+
+        const orderList = await storage.getOrders(req.userId!, {
+          status: status || "Отгружен", // по умолчанию считаем только отгруженные
+          dealerId,
+          from,
+          to,
+          search,
+        });
         const dealerList = await storage.getDealers(req.userId!);
 
-        // Только отгруженные заказы учитываются в прибыли
-        const shippedOrders = orderList.filter(
-          (order) => order.status === "Отгружен"
-        );
-
-        const enrichedOrders = shippedOrders.map((order) => ({
+        const enrichedOrders = orderList.map((order) => ({
           ...order,
           dealer: dealerList.find((d) => d.id === order.dealerId),
         }));
 
-        const totalSales = shippedOrders.reduce(
+        const totalSales = orderList.reduce(
           (sum, order) => sum + parseFloat(order.salePrice?.toString() || "0"),
           0
         );
 
-        const totalCost = shippedOrders.reduce(
+        const totalCost = orderList.reduce(
           (sum, order) => sum + parseFloat(order.costPrice?.toString() || "0"),
           0
         );

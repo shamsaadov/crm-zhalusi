@@ -66,6 +66,14 @@ export interface PaginatedResult<T> {
   hasMore: boolean;
 }
 
+export interface OrderFilters {
+  status?: string;
+  dealerId?: string;
+  from?: string;
+  to?: string;
+  search?: string;
+}
+
 export interface IStorage {
   // Users
   getUser(id: string): Promise<User | undefined>;
@@ -162,10 +170,11 @@ export interface IStorage {
   deleteSupplier(id: string): Promise<void>;
 
   // Orders
-  getOrders(userId: string): Promise<Order[]>;
+  getOrders(userId: string, filters?: OrderFilters): Promise<Order[]>;
   getOrdersPaginated(
     userId: string,
-    params: PaginationParams
+    params: PaginationParams,
+    filters?: OrderFilters
   ): Promise<PaginatedResult<Order>>;
   getOrder(id: string): Promise<Order | undefined>;
   getNextOrderNumber(userId: string): Promise<number>;
@@ -675,22 +684,53 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Orders
-  async getOrders(userId: string): Promise<Order[]> {
+  private buildOrderConditions(userId: string, filters?: OrderFilters) {
+    const conditions = [eq(orders.userId, userId)];
+
+    if (filters?.status && filters.status !== "all") {
+      conditions.push(eq(orders.status, filters.status));
+    }
+    if (filters?.dealerId && filters.dealerId !== "all") {
+      conditions.push(eq(orders.dealerId, filters.dealerId));
+    }
+    if (filters?.from) {
+      conditions.push(gte(orders.date, filters.from));
+    }
+    if (filters?.to) {
+      conditions.push(lte(orders.date, filters.to));
+    }
+    if (filters?.search) {
+      conditions.push(
+        sql`${orders.orderNumber}::text LIKE ${"%" + filters.search + "%"}`
+      );
+    }
+
+    return conditions;
+  }
+
+  async getOrders(userId: string, filters?: OrderFilters): Promise<Order[]> {
+    const conditions = this.buildOrderConditions(userId, filters);
+    const whereClause =
+      conditions.length > 1 ? and(...conditions) : conditions[0];
+
     return db
       .select()
       .from(orders)
-      .where(eq(orders.userId, userId))
+      .where(whereClause)
       .orderBy(desc(orders.date));
   }
 
   async getOrdersPaginated(
     userId: string,
-    params: PaginationParams
+    params: PaginationParams,
+    filters?: OrderFilters
   ): Promise<PaginatedResult<Order>> {
     const limit = params.limit || 20;
     const cursor = params.cursor;
 
-    let query = db.select().from(orders).where(eq(orders.userId, userId));
+    const conditions = this.buildOrderConditions(userId, filters);
+    const baseWhere = conditions.length > 1 ? and(...conditions) : conditions[0];
+    let query = db.select().from(orders).where(baseWhere);
 
     if (cursor) {
       // Cursor is the date-id combination for stable pagination
@@ -700,7 +740,7 @@ export class DatabaseStorage implements IStorage {
         .from(orders)
         .where(
           and(
-            eq(orders.userId, userId),
+            baseWhere,
             or(
               sql`${orders.date} < ${cursorDate}`,
               and(

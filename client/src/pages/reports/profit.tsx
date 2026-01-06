@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import { FilterBar } from "@/components/filter-bar";
@@ -19,21 +19,35 @@ interface ProfitReport {
 
 export default function ProfitReportPage() {
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({});
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("Отгружен");
   const [dealerFilter, setDealerFilter] = useState("all");
+  const [search, setSearch] = useState("");
 
   const { data: dealers = [] } = useQuery<Dealer[]>({
     queryKey: ["/api/dealers"],
   });
 
-  const queryParams = new URLSearchParams();
-  if (dateRange.from) queryParams.append("from", dateRange.from.toISOString());
-  if (dateRange.to) queryParams.append("to", dateRange.to.toISOString());
-  if (statusFilter !== "all") queryParams.append("status", statusFilter);
-  if (dealerFilter !== "all") queryParams.append("dealerId", dealerFilter);
+  const queryString = useMemo(() => {
+    const params = new URLSearchParams();
+    if (dateRange.from) params.append("from", format(dateRange.from, "yyyy-MM-dd"));
+    if (dateRange.to) params.append("to", format(dateRange.to, "yyyy-MM-dd"));
+    if (statusFilter !== "all") params.append("status", statusFilter);
+    if (dealerFilter !== "all") params.append("dealerId", dealerFilter);
+    if (search.trim()) params.append("search", search.trim());
+    return params.toString();
+  }, [dateRange.from, dateRange.to, statusFilter, dealerFilter, search]);
 
   const { data: report, isLoading } = useQuery<ProfitReport>({
-    queryKey: ["/api/reports/profit", queryParams.toString()],
+    queryKey: ["/api/reports/profit", queryString],
+    queryFn: async () => {
+      const url = queryString ? `/api/reports/profit?${queryString}` : "/api/reports/profit";
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.message || "Ошибка загрузки");
+      }
+      return res.json();
+    },
   });
 
   const columns = [
@@ -86,6 +100,9 @@ export default function ProfitReportPage() {
       breadcrumbs={[{ label: "Отчеты", href: "/reports/profit" }, { label: "Прибыль" }]}
     >
       <FilterBar
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Поиск по номеру"
         dateRange={dateRange}
         onDateRangeChange={setDateRange}
         showDateFilter
@@ -107,8 +124,9 @@ export default function ProfitReportPage() {
         ]}
         onReset={() => {
           setDateRange({});
-          setStatusFilter("all");
+          setStatusFilter("Отгружен");
           setDealerFilter("all");
+          setSearch("");
         }}
       />
 
