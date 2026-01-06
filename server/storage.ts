@@ -74,6 +74,12 @@ export interface OrderFilters {
   search?: string;
 }
 
+export interface FinanceOperationFilters {
+  from?: string;
+  to?: string;
+  cashboxId?: string;
+}
+
 export interface IStorage {
   // Users
   getUser(id: string): Promise<User | undefined>;
@@ -198,12 +204,14 @@ export interface IStorage {
   // Finance Operations
   getFinanceOperations(
     userId: string,
-    includeDrafts?: boolean
+    includeDrafts?: boolean,
+    filters?: FinanceOperationFilters
   ): Promise<FinanceOperation[]>;
   getFinanceOperationsPaginated(
     userId: string,
     includeDrafts: boolean,
-    params: PaginationParams
+    params: PaginationParams,
+    filters?: FinanceOperationFilters
   ): Promise<PaginatedResult<FinanceOperation>>;
   getFinanceOperation(id: string): Promise<FinanceOperation | undefined>;
   createFinanceOperation(
@@ -836,41 +844,71 @@ export class DatabaseStorage implements IStorage {
   // Finance Operations
   async getFinanceOperations(
     userId: string,
-    includeDrafts: boolean = false
+    includeDrafts: boolean = false,
+    filters?: FinanceOperationFilters
   ): Promise<FinanceOperation[]> {
-    if (includeDrafts) {
-      return db
-        .select()
-        .from(financeOperations)
-        .where(eq(financeOperations.userId, userId))
-        .orderBy(desc(financeOperations.date));
+    const conditions = [eq(financeOperations.userId, userId)];
+
+    if (!includeDrafts) {
+      conditions.push(eq(financeOperations.isDraft, false));
     }
+    if (filters?.from) {
+      conditions.push(gte(financeOperations.date, filters.from));
+    }
+    if (filters?.to) {
+      conditions.push(lte(financeOperations.date, filters.to));
+    }
+    if (filters?.cashboxId && filters.cashboxId !== "all") {
+      conditions.push(
+        or(
+          eq(financeOperations.cashboxId, filters.cashboxId),
+          eq(financeOperations.fromCashboxId, filters.cashboxId),
+          eq(financeOperations.toCashboxId, filters.cashboxId)
+        )
+      );
+    }
+
+    const whereClause =
+      conditions.length > 1 ? and(...conditions) : conditions[0];
+
     return db
       .select()
       .from(financeOperations)
-      .where(
-        and(
-          eq(financeOperations.userId, userId),
-          eq(financeOperations.isDraft, false)
-        )
-      )
+      .where(whereClause)
       .orderBy(desc(financeOperations.date));
   }
 
   async getFinanceOperationsPaginated(
     userId: string,
     includeDrafts: boolean,
-    params: PaginationParams
+    params: PaginationParams,
+    filters?: FinanceOperationFilters
   ): Promise<PaginatedResult<FinanceOperation>> {
     const limit = params.limit || 20;
     const cursor = params.cursor;
 
-    const baseCondition = includeDrafts
-      ? eq(financeOperations.userId, userId)
-      : and(
-          eq(financeOperations.userId, userId),
-          eq(financeOperations.isDraft, false)
-        );
+    const conditions = [eq(financeOperations.userId, userId)];
+    if (!includeDrafts) {
+      conditions.push(eq(financeOperations.isDraft, false));
+    }
+    if (filters?.from) {
+      conditions.push(gte(financeOperations.date, filters.from));
+    }
+    if (filters?.to) {
+      conditions.push(lte(financeOperations.date, filters.to));
+    }
+    if (filters?.cashboxId && filters.cashboxId !== "all") {
+      conditions.push(
+        or(
+          eq(financeOperations.cashboxId, filters.cashboxId),
+          eq(financeOperations.fromCashboxId, filters.cashboxId),
+          eq(financeOperations.toCashboxId, filters.cashboxId)
+        )
+      );
+    }
+
+    const baseCondition =
+      conditions.length > 1 ? and(...conditions) : conditions[0];
 
     let query;
 

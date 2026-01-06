@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import { FilterBar } from "@/components/filter-bar";
@@ -42,16 +42,25 @@ export default function DDSReportPage() {
     queryKey: ["/api/cashboxes"],
   });
 
-  const queryParams = new URLSearchParams();
-  if (dateRange.from) queryParams.append("from", dateRange.from.toISOString());
-  if (dateRange.to) queryParams.append("to", dateRange.to.toISOString());
-  if (cashboxFilter !== "all") queryParams.append("cashboxId", cashboxFilter);
-
-  const queryString = queryParams.toString();
-  const apiUrl = `/api/reports/dds${queryString ? `?${queryString}` : ""}`;
+  const queryString = useMemo(() => {
+    const params = new URLSearchParams();
+    if (dateRange.from) params.append("from", format(dateRange.from, "yyyy-MM-dd"));
+    if (dateRange.to) params.append("to", format(dateRange.to, "yyyy-MM-dd"));
+    if (cashboxFilter !== "all") params.append("cashboxId", cashboxFilter);
+    return params.toString();
+  }, [dateRange.from, dateRange.to, cashboxFilter]);
 
   const { data: report, isLoading } = useQuery<DDSReport>({
-    queryKey: [apiUrl],
+    queryKey: ["/api/reports/dds", queryString],
+    queryFn: async () => {
+      const url = queryString ? `/api/reports/dds?${queryString}` : "/api/reports/dds";
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.message || "Ошибка загрузки");
+      }
+      return res.json();
+    },
   });
 
   const operationColumns = [

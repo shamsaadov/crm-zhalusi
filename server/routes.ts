@@ -2419,29 +2419,26 @@ export async function registerRoutes(
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
-        const { from, to, cashboxId } = req.query;
-        let operations = await storage.getFinanceOperations(req.userId!);
+        const from =
+          typeof req.query.from === "string" && req.query.from.length > 0
+            ? req.query.from
+            : undefined;
+        const to =
+          typeof req.query.to === "string" && req.query.to.length > 0
+            ? req.query.to
+            : undefined;
+        const cashboxId =
+          typeof req.query.cashboxId === "string" &&
+          req.query.cashboxId !== "all"
+            ? req.query.cashboxId
+            : undefined;
+
+        const operations = await storage.getFinanceOperations(
+          req.userId!,
+          false,
+          { from, to, cashboxId }
+        );
         const expenseTypeList = await storage.getExpenseTypes(req.userId!);
-
-        // Filter by date range
-        if (from) {
-          const fromDate = new Date(from as string);
-          operations = operations.filter((op) => new Date(op.date) >= fromDate);
-        }
-        if (to) {
-          const toDate = new Date(to as string);
-          operations = operations.filter((op) => new Date(op.date) <= toDate);
-        }
-
-        // Filter by cashbox
-        if (cashboxId && cashboxId !== "all") {
-          operations = operations.filter(
-            (op) =>
-              op.cashboxId === cashboxId ||
-              op.fromCashboxId === cashboxId ||
-              op.toCashboxId === cashboxId
-          );
-        }
 
         const totalIncome = operations
           .filter((op) => op.type === "income")
