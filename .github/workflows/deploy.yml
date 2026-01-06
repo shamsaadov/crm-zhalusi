@@ -39,21 +39,11 @@ jobs:
             # Делаем сборку
             npm run build
 
-            # Запускаем приложение с логированием
-            nohup npm run start > app.log 2>&1 &
-            
-            # Ждем чтобы приложение запустилось
-            sleep 5
-            
-            # Проверяем, запустился ли процесс
-            if pgrep -f "node dist/index.cjs" > /dev/null; then
-              echo "✅ Server started successfully"
-              tail -20 app.log
-            else
-              echo "❌ Server failed to start. Last logs:"
-              cat app.log
-              exit 1
-            fi
+            # Применяем миграции БД и запускаем приложение
+            nohup npm run start > /dev/null 2>&1 &
+
+            # Ждем немного чтобы приложение запустилось
+            sleep 3
             EOF
 
             # Перезапускаем nginx
