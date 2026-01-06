@@ -43,6 +43,7 @@ const reportNavItems = [
   { title: "Прибыль", url: "/reports/profit", icon: TrendingUp },
   { title: "Дебиторка/Кредиторка", url: "/reports/ar-ap", icon: Users },
   { title: "Остатки касс", url: "/reports/cash-total", icon: Building2 },
+  { title: "Сводка", url: "/dashboard", icon: LayoutDashboard },
 ];
 
 export function AppSidebar() {
@@ -102,22 +103,22 @@ export function AppSidebar() {
           <SidebarGroupLabel>Отчеты</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {reportNavItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild isActive={location === item.url}>
-                    <Link
-                      href={item.url}
-                      data-testid={`nav-${item.url.replace(
-                        "/reports/",
-                        "report-"
-                      )}`}
-                    >
-                      <item.icon className="h-4 w-4" />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+              {reportNavItems.map((item) => {
+                const testId = item.url.startsWith("/reports/")
+                  ? item.url.replace("/reports/", "report-")
+                  : item.url.slice(1);
+
+                return (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild isActive={location === item.url}>
+                      <Link href={item.url} data-testid={`nav-${testId}`}>
+                        <item.icon className="h-4 w-4" />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

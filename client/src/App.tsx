@@ -17,6 +17,7 @@ import ProfitReportPage from "@/pages/reports/profit";
 import ARAPReportPage from "@/pages/reports/ar-ap";
 import CashTotalReportPage from "@/pages/reports/cash-total";
 import ProfilePage from "@/pages/profile";
+import DashboardPage from "@/pages/dashboard";
 import { Loader2 } from "lucide-react";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -64,6 +65,9 @@ function Router() {
       <Route path="/register">
         <PublicRoute component={RegisterPage} />
       </Route>
+      <Route path="/dashboard">
+        <ProtectedRoute component={DashboardPage} />
+      </Route>
       <Route path="/orders">
         <ProtectedRoute component={OrdersPage} />
       </Route>
@@ -92,7 +96,7 @@ function Router() {
         <ProtectedRoute component={ProfilePage} />
       </Route>
       <Route path="/">
-        <Redirect to="/orders" />
+        <Redirect to="/dashboard" />
       </Route>
       <Route component={NotFound} />
     </Switch>
