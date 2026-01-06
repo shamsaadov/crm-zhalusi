@@ -29,8 +29,21 @@ jobs:
             # Закрываем приложение на порте 5000
             npx kill-port 5000 || true
 
-            # Подтягиваем изменения
-            git pull
+            # Сохраняем .env если есть
+            if [ -f .env ]; then
+              cp .env /tmp/.env.backup
+              echo "✅ .env saved"
+            fi
+
+            # Сбрасываем локальные изменения и подтягиваем код
+            git fetch origin
+            git reset --hard origin/main
+
+            # Восстанавливаем .env
+            if [ -f /tmp/.env.backup ]; then
+              cp /tmp/.env.backup .env
+              echo "✅ .env restored"
+            fi
 
             # Устанавливаем зависимости
             npm install
@@ -38,11 +51,20 @@ jobs:
             # Делаем сборку
             npm run build
 
-            # Применяем миграции БД и запускаем приложение
-            nohup npm run start > /dev/null 2>&1 &
+            # Запускаем приложение с логированием
+            nohup npm run start > app.log 2>&1 &
 
-            # Ждем немного чтобы приложение запустилось
-            sleep 3
+            # Ждем чтобы приложение запустилось
+            sleep 5
+
+            # Проверяем статус
+            echo "=== Checking server status ==="
+            if curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/api/user 2>/dev/null | grep -q "200\|401"; then
+              echo "✅ Server is responding"
+            else
+              echo "⚠️ Server may have issues, showing logs:"
+              tail -50 app.log
+            fi
             EOF
 
             # Перезапускаем nginx
