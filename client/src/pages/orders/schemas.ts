@@ -21,6 +21,7 @@ export const orderFormSchema = z.object({
   costPrice: z.string().optional(),
   comment: z.string().optional(),
   isPaid: z.boolean().optional().default(false),
+  cashboxId: z.string().optional(),
   sashes: z.array(sashSchema).min(1, "Добавьте минимум одну створку"),
 });
 
@@ -37,6 +38,7 @@ export const productFormSchema = z.object({
   costPrice: z.string().optional(),
   comment: z.string().optional(),
   isPaid: z.boolean().optional().default(false),
+  cashboxId: z.string().optional(),
   components: z
     .array(productComponentSchema)
     .min(1, "Добавьте минимум одну комплектующую"),

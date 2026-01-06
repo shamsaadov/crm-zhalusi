@@ -34,6 +34,8 @@ export interface OrderWithRelations extends Order {
   sashesCount?: number;
   sashes?: OrderSash[];
   orderType?: OrderType;
+  isPaid?: boolean;
+  cashboxId?: string | null;
 }
 
 export interface StockItem {
@@ -90,4 +92,3 @@ export interface CostCalculationDetails {
     totalSashCost: number;
   }>;
 }
-

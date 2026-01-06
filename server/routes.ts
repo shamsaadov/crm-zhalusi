@@ -565,7 +565,7 @@ export async function registerRoutes(
     async (req: Request, res: Response) => {
       try {
         const { systemKey } = req.query;
-        
+
         if (!systemKey) {
           return res.status(400).json({
             message: "Необходим параметр: systemKey",
@@ -574,11 +574,11 @@ export async function registerRoutes(
 
         const { getSystemCategories } = await import("./coefficients.js");
         const categories = getSystemCategories(systemKey as string);
-        
-        res.json({ 
-          systemKey, 
+
+        res.json({
+          systemKey,
           categories,
-          count: categories.length 
+          count: categories.length,
         });
       } catch (error) {
         console.error("Ошибка при получении категорий:", error);
@@ -600,11 +600,16 @@ export async function registerRoutes(
         }
 
         const { getCoefficientDetailed } = await import("./coefficients.js");
-        const result = getCoefficientDetailed(systemKey, category, width, height);
+        const result = getCoefficientDetailed(
+          systemKey,
+          category,
+          width,
+          height
+        );
 
         if (result.coefficient === null) {
           return res.status(404).json({
-            message: result.usedSystemKey 
+            message: result.usedSystemKey
               ? `Категория "${category}" не найдена для системы "${result.usedSystemKey}"`
               : `Система "${systemKey}" не найдена в файле коэффициентов`,
             systemKey,
@@ -963,10 +968,28 @@ export async function registerRoutes(
           fabricColor: colorList.find((c) => c.id === sash.fabricColorId),
         }));
 
+        // Ищем финансовую операцию оплаты для этого заказа
+        const financeOps = await storage.getFinanceOperations(req.userId!);
+        const paymentComment = `Оплата заказа №${order.orderNumber}`;
+        // Ищем операцию по точному совпадению или по содержанию номера заказа
+        const paymentOp = financeOps.find(
+          (op) =>
+            op.type === "income" &&
+            op.comment?.includes(`заказа №${order.orderNumber}`) &&
+            !op.deletedAt
+        );
+
+        console.log(`[Order ${order.id}] Looking for payment with orderNumber: ${order.orderNumber}`);
+        console.log(`[Order ${order.id}] Found ${financeOps.length} finance operations`);
+        console.log(`[Order ${order.id}] Income operations:`, financeOps.filter(op => op.type === 'income').map(op => ({ comment: op.comment, cashboxId: op.cashboxId })));
+        console.log(`[Order ${order.id}] Payment found: ${!!paymentOp}, cashboxId: ${paymentOp?.cashboxId || 'none'}`);
+
         res.json({
           ...order,
           dealer: dealerList.find((d) => d.id === order.dealerId),
           sashes: enrichedSashes,
+          isPaid: !!paymentOp,
+          cashboxId: paymentOp?.cashboxId || null,
         });
       } catch (error) {
         res.status(500).json({ message: "Ошибка сервера" });
@@ -1129,7 +1152,7 @@ export async function registerRoutes(
         const component = allComponents.find((c) => c.id === sash.componentId);
         if (component) {
           const componentQty = quantity;
-          
+
           if (!requiredComponents[sash.componentId]) {
             requiredComponents[sash.componentId] = {
               qty: 0,
@@ -1202,7 +1225,8 @@ export async function registerRoutes(
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
-        const { sashes, skipStockValidation, isPaid, ...orderData } = req.body;
+        const { sashes, skipStockValidation, isPaid, cashboxId, ...orderData } =
+          req.body;
 
         // Проверка остатков убрана - теперь можно создавать заказ без материалов
         // Проверка будет только при смене статуса на "Готов"
@@ -1225,16 +1249,30 @@ export async function registerRoutes(
         }
 
         // Create finance income operation if order is paid
-        if (isPaid && orderData.salePrice && parseFloat(orderData.salePrice) > 0) {
-          // Get default cashbox (first one)
-          const cashboxes = await storage.getCashboxes(req.userId!);
-          if (cashboxes.length > 0) {
+        if (
+          isPaid &&
+          orderData.salePrice &&
+          parseFloat(orderData.salePrice) > 0
+        ) {
+          // Используем указанную кассу или первую по умолчанию
+          let targetCashboxId = cashboxId;
+          if (!targetCashboxId) {
+            const allCashboxes = await storage.getCashboxes(req.userId!);
+            if (allCashboxes.length > 0) {
+              targetCashboxId = allCashboxes[0].id;
+            }
+          }
+
+          if (targetCashboxId) {
             await storage.createFinanceOperation({
               type: "income",
               amount: orderData.salePrice,
               date: orderData.date,
-              cashboxId: cashboxes[0].id,
-              dealerId: orderData.dealerId && orderData.dealerId.trim() !== "" ? orderData.dealerId : null,
+              cashboxId: targetCashboxId,
+              dealerId:
+                orderData.dealerId && orderData.dealerId.trim() !== ""
+                  ? orderData.dealerId
+                  : null,
               comment: `Оплата заказа №${orderNumber}`,
               userId: req.userId!,
             });
@@ -1255,7 +1293,13 @@ export async function registerRoutes(
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
-        const { components, skipStockValidation, isPaid, ...orderData } = req.body;
+        const {
+          components,
+          skipStockValidation,
+          isPaid,
+          cashboxId,
+          ...orderData
+        } = req.body;
 
         // Проверка остатков убрана - теперь можно создавать заказ товара без материалов
         // Проверка будет только при смене статуса на "Готов"
@@ -1301,16 +1345,30 @@ export async function registerRoutes(
         }
 
         // Create finance income operation if order is paid
-        if (isPaid && orderData.salePrice && parseFloat(orderData.salePrice) > 0) {
-          // Get default cashbox (first one)
-          const cashboxes = await storage.getCashboxes(req.userId!);
-          if (cashboxes.length > 0) {
+        if (
+          isPaid &&
+          orderData.salePrice &&
+          parseFloat(orderData.salePrice) > 0
+        ) {
+          // Используем указанную кассу или первую по умолчанию
+          let targetCashboxId = cashboxId;
+          if (!targetCashboxId) {
+            const allCashboxes = await storage.getCashboxes(req.userId!);
+            if (allCashboxes.length > 0) {
+              targetCashboxId = allCashboxes[0].id;
+            }
+          }
+
+          if (targetCashboxId) {
             await storage.createFinanceOperation({
               type: "income",
               amount: orderData.salePrice,
               date: orderData.date,
-              cashboxId: cashboxes[0].id,
-              dealerId: orderData.dealerId && orderData.dealerId.trim() !== "" ? orderData.dealerId : null,
+              cashboxId: targetCashboxId,
+              dealerId:
+                orderData.dealerId && orderData.dealerId.trim() !== ""
+                  ? orderData.dealerId
+                  : null,
               comment: `Оплата заказа №${orderNumber}`,
               userId: req.userId!,
             });
@@ -1397,12 +1455,16 @@ export async function registerRoutes(
           if (existingWriteoffs.length === 0) {
             // Получаем створки заказа
             const sashes = await storage.getOrderSashes(req.params.id);
-            
+
             // ПРОВЕРКА ОСТАТКОВ перед изменением статуса на "Готов"
-            const validation = await validateSashOrderStock(req.userId!, sashes);
+            const validation = await validateSashOrderStock(
+              req.userId!,
+              sashes
+            );
             if (!validation.valid) {
               return res.status(400).json({
-                message: "Невозможно изменить статус на 'Готов'. Недостаточно материалов на складе",
+                message:
+                  "Невозможно изменить статус на 'Готов'. Недостаточно материалов на складе",
                 errors: validation.errors,
                 stockError: true,
               });
@@ -2335,8 +2397,14 @@ export async function registerRoutes(
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
-        const { itemType, itemId, newQuantity, currentQuantity, price, comment } =
-          req.body;
+        const {
+          itemType,
+          itemId,
+          newQuantity,
+          currentQuantity,
+          price,
+          comment,
+        } = req.body;
 
         const newQty = parseFloat(newQuantity);
         const currentQty = parseFloat(currentQuantity.toString());

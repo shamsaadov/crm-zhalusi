@@ -19,7 +19,12 @@ import { Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
 import { apiRequest, queryClient, ApiError } from "@/lib/queryClient";
-import { ORDER_STATUSES, type Dealer, type Fabric } from "@shared/schema";
+import {
+  ORDER_STATUSES,
+  type Dealer,
+  type Fabric,
+  type Cashbox,
+} from "@shared/schema";
 import { format } from "date-fns";
 
 import type {
@@ -124,6 +129,9 @@ export default function OrdersPage() {
   }>({
     queryKey: ["/api/stock"],
   });
+  const { data: cashboxes = [] } = useQuery<Cashbox[]>({
+    queryKey: ["/api/cashboxes"],
+  });
 
   const fabricStock = stockData?.fabrics || [];
   const componentStock = stockData?.components || [];
@@ -139,6 +147,7 @@ export default function OrdersPage() {
       costPrice: "",
       comment: "",
       isPaid: false,
+      cashboxId: "",
       sashes: [
         {
           width: "",
@@ -170,6 +179,7 @@ export default function OrdersPage() {
       costPrice: "",
       comment: "",
       isPaid: false,
+      cashboxId: "",
       components: [{ componentId: "", quantity: "1" }],
     },
   });
@@ -398,6 +408,13 @@ export default function OrdersPage() {
         credentials: "include",
       });
       const fullOrder: OrderWithRelations = await response.json();
+
+      console.log("[Edit Order] Loaded order data:", {
+        isPaid: fullOrder.isPaid,
+        cashboxId: fullOrder.cashboxId,
+        orderNumber: fullOrder.orderNumber,
+      });
+
       setEditingOrder(fullOrder);
 
       // Группируем одинаковые створки и подсчитываем quantity
@@ -418,12 +435,18 @@ export default function OrdersPage() {
             fabricId: s.fabricId || "",
             sashPrice: s.sashPrice?.toString() || "",
             sashCost: s.sashCost?.toString() || "",
-            coefficient: "", // Будет пересчитан автоматически
+            coefficient: "", // Будет пересчитан ниже
             isCalculating: false,
           });
         }
         return acc;
       }, [] as Array<{ key: string; quantity: number; width: string; height: string; systemId: string; controlSide: string; fabricId: string; sashPrice: string; sashCost: string; coefficient: string; isCalculating: boolean }>);
+
+      const sashesData = groupedSashes.map(({ key, ...sash }) => ({
+        ...sash,
+        quantity: sash.quantity.toString(),
+        isCalculating: false,
+      }));
 
       form.reset({
         date: fullOrder.date,
@@ -432,25 +455,106 @@ export default function OrdersPage() {
         salePrice: fullOrder.salePrice?.toString() || "",
         costPrice: fullOrder.costPrice?.toString() || "",
         comment: fullOrder.comment || "",
-        sashes: groupedSashes.map(({ key, ...sash }) => ({
-          ...sash,
-          quantity: sash.quantity.toString(),
-          isCalculating: false,
-        })) || [
-          {
-            width: "",
-            height: "",
-            quantity: "1",
-            systemId: "",
-            controlSide: "",
-            fabricId: "",
-            sashPrice: "",
-            sashCost: "",
-            coefficient: "",
-            isCalculating: false,
-          },
-        ],
+        isPaid: fullOrder.isPaid || false,
+        cashboxId: fullOrder.cashboxId || "",
+        sashes:
+          sashesData.length > 0
+            ? sashesData
+            : [
+                {
+                  width: "",
+                  height: "",
+                  quantity: "1",
+                  systemId: "",
+                  controlSide: "",
+                  fabricId: "",
+                  sashPrice: "",
+                  sashCost: "",
+                  coefficient: "",
+                  isCalculating: false,
+                },
+              ],
       });
+
+      // Пересчитываем коэффициенты для каждой створки после загрузки
+      setTimeout(() => {
+        sashesData.forEach((sash, index) => {
+          const width = parseFloat(sash.width || "0");
+          const height = parseFloat(sash.height || "0");
+          const systemId = sash.systemId;
+          const fabricId = sash.fabricId;
+
+          if (width > 0 && height > 0 && systemId && fabricId) {
+            const system = systems.find((s) => s.id === systemId);
+            const fabric = fabrics.find((f) => f.id === fabricId);
+
+            if (system && system.systemKey && fabric && fabric.category) {
+              const sashId = `sash-${index}`;
+              setCalculatingSashes((prev) => new Set(prev).add(index));
+
+              coefficientCalculator.calculate(
+                {
+                  systemKey: system.systemKey,
+                  category: fabric.category,
+                  width: width / 1000,
+                  height: height / 1000,
+                },
+                (data) => {
+                  const multiplier = system.multiplier;
+                  const multiplierValue = multiplier
+                    ? parseFloat(multiplier.value?.toString() || "1")
+                    : 1;
+                  const sashPrice = data.coefficient * multiplierValue;
+
+                  form.setValue(
+                    `sashes.${index}.coefficient`,
+                    data.coefficient.toFixed(2),
+                    { shouldValidate: false }
+                  );
+                  form.setValue(
+                    `sashes.${index}.sashPrice`,
+                    sashPrice.toFixed(2),
+                    {
+                      shouldValidate: false,
+                    }
+                  );
+
+                  setCalculatingSashes((prev) => {
+                    const next = new Set(prev);
+                    next.delete(index);
+                    return next;
+                  });
+
+                  // Пересчитываем общую цену после всех коэффициентов
+                  const allSashes = form.getValues("sashes");
+                  const totalPrice = allSashes.reduce((sum, s) => {
+                    const price = parseFloat(s.sashPrice || "0");
+                    const qty = parseFloat(s.quantity || "1");
+                    return sum + price * qty;
+                  }, 0);
+
+                  if (totalPrice > 0) {
+                    form.setValue("salePrice", totalPrice.toFixed(2), {
+                      shouldValidate: false,
+                    });
+                  }
+                },
+                (error) => {
+                  console.error("Ошибка при расчете коэффициента:", error);
+                  setCalculatingSashes((prev) => {
+                    const next = new Set(prev);
+                    next.delete(index);
+                    return next;
+                  });
+                },
+                100, // Минимальный debounce при загрузке
+                sashId
+              );
+            }
+          }
+        });
+      }, 100);
+
       setIsDialogOpen(true);
     } catch {
       toast({ title: "Ошибка загрузки заказа", variant: "destructive" });
@@ -473,6 +577,7 @@ export default function OrdersPage() {
       costPrice: "",
       comment: "",
       isPaid: false,
+      cashboxId: "",
       sashes: [
         {
           width: "",
@@ -495,6 +600,7 @@ export default function OrdersPage() {
       costPrice: "",
       comment: "",
       isPaid: false,
+      cashboxId: "",
       components: [{ componentId: "", quantity: "1" }],
     });
   };
@@ -829,6 +935,7 @@ export default function OrdersPage() {
                     fabrics={fabrics}
                     fabricStock={fabricStock}
                     componentStock={componentStock}
+                    cashboxes={cashboxes}
                     isEditing={false}
                     isPending={createMutation.isPending}
                     onSubmit={onSubmit}
@@ -848,6 +955,7 @@ export default function OrdersPage() {
                     fieldArray={productFieldArray}
                     dealers={dealers}
                     componentStock={componentStock}
+                    cashboxes={cashboxes}
                     isPending={createProductMutation.isPending}
                     onSubmit={onProductSubmit}
                     onCancel={() => setIsDialogOpen(false)}
@@ -865,6 +973,7 @@ export default function OrdersPage() {
                 fabrics={fabrics}
                 fabricStock={fabricStock}
                 componentStock={componentStock}
+                cashboxes={cashboxes}
                 isEditing={true}
                 isPending={updateMutation.isPending}
                 onSubmit={onSubmit}

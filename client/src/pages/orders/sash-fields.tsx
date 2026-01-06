@@ -68,39 +68,35 @@ export function SashFields({
   const heightM = parseFloat(currentHeight || "0") / 1000;
   const sashPriceNum = parseFloat(currentSashPrice || "0");
   const coefficientNum = parseFloat(currentCoefficient || "0"); // Коэффициент из coefficients.json
-  
+
   // Проверяем, есть ли все данные для расчета, но цена равна 0 (система не найдена)
-  const hasAllData = currentWidth && currentHeight && currentFabricId && selectedSystem?.systemKey;
-  const isSystemMissing = hasAllData && widthM > 0 && heightM > 0 && sashPriceNum === 0;
+  const hasAllData =
+    currentWidth &&
+    currentHeight &&
+    currentFabricId &&
+    selectedSystem?.systemKey;
+  const isSystemMissing =
+    hasAllData && widthM > 0 && heightM > 0 && sashPriceNum === 0;
 
   return (
     <div
       key={fieldId}
-      className={`flex items-end gap-2 p-3 border rounded-lg ${isSystemMissing ? "border-orange-400 bg-orange-50 dark:bg-orange-950/20" : "bg-muted/30"}`}
+      className={`flex items-end gap-2 p-3 border rounded-lg ${
+        isSystemMissing
+          ? "border-orange-400 bg-orange-50 dark:bg-orange-950/20"
+          : "bg-muted/30"
+      }`}
     >
       <div className="flex flex-col items-center gap-1 pb-2 min-w-[50px]">
         <span className="text-sm font-medium text-muted-foreground">
           {index + 1}.
         </span>
-        {isSystemMissing ? (
-          <Badge variant="outline" className="text-[10px] px-1 py-0 h-5 border-orange-400 text-orange-600" title="Система не найдена в файле коэффициентов">
-            <AlertTriangle className="h-3 w-3" />
-          </Badge>
-        ) : coefficientNum > 0 ? (
-          <Badge 
-            variant="default"
-            className="text-[10px] px-1 py-0 h-5"
-            title="Коэффициент из файла coefficients.json"
-          >
-            К: {coefficientNum.toFixed(2)}
-          </Badge>
-        ) : null}
       </div>
       <FormField
         control={form.control}
         name={`sashes.${index}.width`}
         render={({ field }) => (
-          <FormItem className="flex-1 min-w-[70px]">
+          <FormItem className="min-w-[60px] max-w-[80px]">
             <FormLabel className="text-xs">Ширина</FormLabel>
             <FormControl>
               <Input
@@ -119,7 +115,7 @@ export function SashFields({
         control={form.control}
         name={`sashes.${index}.height`}
         render={({ field }) => (
-          <FormItem className="flex-1 min-w-[70px]">
+          <FormItem className="min-w-[60px] max-w-[80px]">
             <FormLabel className="text-xs">Высота</FormLabel>
             <FormControl>
               <Input
@@ -273,13 +269,17 @@ export function SashFields({
                         <div>
                           <p className="text-muted-foreground">Остаток</p>
                           <p className="font-medium">
-                            {(selectedFabricInfo.stock.quantity ?? 0).toFixed(2)}
+                            {(selectedFabricInfo.stock.quantity ?? 0).toFixed(
+                              2
+                            )}
                           </p>
                         </div>
                         <div>
                           <p className="text-muted-foreground">Ср. цена</p>
                           <p className="font-medium">
-                            {formatCurrency(selectedFabricInfo.stock.avgPrice ?? 0)}
+                            {formatCurrency(
+                              selectedFabricInfo.stock.avgPrice ?? 0
+                            )}
                           </p>
                         </div>
                       </div>
@@ -307,12 +307,12 @@ export function SashFields({
         control={form.control}
         name={`sashes.${index}.controlSide`}
         render={({ field }) => (
-          <FormItem className="flex-1 min-w-[90px]">
-            <FormLabel className="text-xs">Управление</FormLabel>
+          <FormItem className="min-w-[55px] max-w-[70px]">
+            <FormLabel className="text-xs">Упр.</FormLabel>
             <Select onValueChange={field.onChange} value={field.value}>
               <FormControl>
                 <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Сторона" />
+                  <SelectValue placeholder="—" />
                 </SelectTrigger>
               </FormControl>
               <SelectContent>
@@ -366,4 +366,3 @@ export function SashFields({
     </div>
   );
 }
-
