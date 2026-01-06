@@ -10,6 +10,7 @@ export const sashSchema = z.object({
   sashPrice: z.string().optional(),
   sashCost: z.string().optional(),
   coefficient: z.string().optional(), // Коэффициент из файла coefficients.json
+  isCalculating: z.boolean().optional(), // Состояние загрузки коэффициента
 });
 
 export const orderFormSchema = z.object({

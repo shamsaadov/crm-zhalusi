@@ -22,7 +22,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { X, Info, AlertTriangle } from "lucide-react";
+import { X, Info, AlertTriangle, Loader2 } from "lucide-react";
 import { formatCurrency } from "@/components/status-badge";
 import { CONTROL_SIDES, type Fabric } from "@shared/schema";
 import type { OrderFormValues } from "./schemas";
@@ -58,6 +58,7 @@ export function SashFields({
   const currentSashPrice = form.watch(`sashes.${index}.sashPrice`);
   const currentSashCost = form.watch(`sashes.${index}.sashCost`);
   const currentCoefficient = form.watch(`sashes.${index}.coefficient`); // Коэффициент из файла
+  const isCalculating = form.watch(`sashes.${index}.isCalculating`); // Состояние загрузки
   const currentFabric = fabrics.find((f) => f.id === currentFabricId);
   const selectedFabricInfo = fabricStock.find((f) => f.id === currentFabricId);
 
@@ -330,14 +331,21 @@ export function SashFields({
           <FormItem className="flex-1 min-w-[80px] max-w-[100px]">
             <FormLabel className="text-xs">Коэфф.</FormLabel>
             <FormControl>
-              <Input
-                type="text"
-                {...field}
-                className="h-9 bg-blue-50 dark:bg-blue-950/20 font-semibold text-blue-700 dark:text-blue-400"
-                readOnly
-                placeholder="—"
-                title="Коэффициент из файла coefficients.json"
-              />
+              <div className="relative">
+                <Input
+                  type="text"
+                  {...field}
+                  className="h-9 bg-blue-50 dark:bg-blue-950/20 font-semibold text-blue-700 dark:text-blue-400 pr-8"
+                  readOnly
+                  placeholder={isCalculating ? "..." : "—"}
+                  title="Коэффициент из файла coefficients.json"
+                />
+                {isCalculating && (
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                    <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                  </div>
+                )}
+              </div>
             </FormControl>
           </FormItem>
         )}

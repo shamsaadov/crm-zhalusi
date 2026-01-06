@@ -229,6 +229,7 @@ export function OrderForm({
                 sashPrice: "",
                 sashCost: "",
                 coefficient: "",
+                isCalculating: false,
               });
             }}
           >

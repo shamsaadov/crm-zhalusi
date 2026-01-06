@@ -1,9 +1,10 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useQuery, useMutation, useInfiniteQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import { DataTable } from "@/components/data-table";
 import { FilterBar } from "@/components/filter-bar";
 import { Button } from "@/components/ui/button";
+import { useCoefficientCalculator } from "@/hooks/use-coefficient-calculator";
 import {
   Dialog,
   DialogContent,
@@ -48,6 +49,7 @@ import { calculateCostPrice, printInvoice } from "./utils";
 
 export default function OrdersPage() {
   const { toast } = useToast();
+  const coefficientCalculator = useCoefficientCalculator();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"order" | "product">("order");
   const [editingOrder, setEditingOrder] = useState<OrderWithRelations | null>(
@@ -402,6 +404,7 @@ export default function OrdersPage() {
             sashPrice: s.sashPrice?.toString() || "",
             sashCost: s.sashCost?.toString() || "",
             coefficient: "", // Будет пересчитан автоматически
+            isCalculating: false,
           });
         }
         return acc;
@@ -417,6 +420,7 @@ export default function OrdersPage() {
         sashes: groupedSashes.map(({key, ...sash}) => ({
           ...sash,
           quantity: sash.quantity.toString(),
+          isCalculating: false,
         })) || [
           {
             width: "",
@@ -428,6 +432,7 @@ export default function OrdersPage() {
             sashPrice: "",
             sashCost: "",
             coefficient: "",
+            isCalculating: false,
           },
         ],
       });
@@ -550,9 +555,9 @@ export default function OrdersPage() {
     return () => subscription.unsubscribe();
   }, [productForm, componentStock]);
 
-  // Auto-calculate sale price from coefficients effect
+  // Auto-calculate sale price from coefficients effect (optimized)
   useEffect(() => {
-    const subscription = form.watch(async (value, { name }) => {
+    const subscription = form.watch((value, { name }) => {
       if (
         name &&
         name.includes("sashes") &&
@@ -563,146 +568,126 @@ export default function OrdersPage() {
       ) {
         const sashes = value.sashes || [];
 
-        const sashPrices = await Promise.all(
-          sashes.map(async (sash, index) => {
-            if (!sash) return 0;
+        sashes.forEach((sash, index) => {
+          if (!sash) return;
 
-            const width = parseFloat(sash.width || "0");
-            const height = parseFloat(sash.height || "0");
-            const systemId = sash.systemId;
-            const fabricId = sash.fabricId;
+          const width = parseFloat(sash.width || "0");
+          const height = parseFloat(sash.height || "0");
+          const systemId = sash.systemId;
+          const fabricId = sash.fabricId;
 
-            if (width > 0 && height > 0 && systemId && fabricId) {
-              const system = systems.find((s) => s.id === systemId);
-              const fabric = fabrics.find((f) => f.id === fabricId);
+          // Рассчитываем себестоимость створки (синхронно)
+          if (width > 0 && height > 0) {
+            const sashCostData = calculateCostPrice(
+              [sash],
+              () => sash,
+              fabricStock,
+              componentStock,
+              systems
+            );
+            const sashCost = sashCostData.totalCost;
 
-              // Рассчитываем себестоимость створки
-              const sashCostData = calculateCostPrice(
-                [sash],
-                () => sash,
-                fabricStock,
-                componentStock,
-                systems
-              );
-              const sashCost = sashCostData.totalCost;
-
-              if (sashCost > 0) {
-                form.setValue(
-                  `sashes.${index}.sashCost`,
-                  sashCost.toFixed(2),
-                  {
-                    shouldValidate: false,
-                  }
-                );
-              }
-
-              if (system && system.systemKey && fabric && fabric.category) {
-                try {
-                  const response = await fetch("/api/coefficients/calculate", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    credentials: "include",
-                    body: JSON.stringify({
-                      systemKey: system.systemKey,
-                      category: fabric.category,
-                      width: width / 1000,
-                      height: height / 1000,
-                    }),
-                  });
-
-                  if (response.ok) {
-                    const data = await response.json();
-                    const coefficient = data.coefficient;
-                    const multiplier = system.multiplier;
-
-                    if (coefficient) {
-                      const multiplierValue = multiplier
-                        ? parseFloat(multiplier.value?.toString() || "1")
-                        : 1;
-                      const sashPrice = coefficient * multiplierValue;
-
-                      // Сохраняем коэффициент из файла для отображения (2 знака после запятой)
-                      form.setValue(
-                        `sashes.${index}.coefficient`,
-                        coefficient.toFixed(2),
-                        {
-                          shouldValidate: false,
-                        }
-                      );
-
-                      form.setValue(
-                        `sashes.${index}.sashPrice`,
-                        sashPrice.toFixed(2),
-                        {
-                          shouldValidate: false,
-                        }
-                      );
-
-                      // Показываем предупреждение, если использовалась fallback категория
-                      if (data.isFallbackCategory && data.warning) {
-                        console.warn(`[Заказ] ${data.warning}`);
-                        toast({
-                          title: "Использована ближайшая категория",
-                          description: `${data.warning}. Коэффициент рассчитан корректно.`,
-                          variant: "default",
-                          duration: 5000,
-                        });
-                      }
-
-                      return sashPrice;
-                    }
-                  } else {
-                    // Коэффициент не найден даже с fallback
-                    const errorData = await response.json().catch(() => null);
-                    console.warn(
-                      `Коэффициент не найден для системы "${system.systemKey}" и категории "${fabric.category}"`
-                    );
-                    toast({
-                      title: "Система не найдена",
-                      description: `Система "${system.name}" (${system.systemKey}) не найдена в файле коэффициентов. Проверьте настройку system_key в справочнике систем.`,
-                      variant: "destructive",
-                      duration: 8000,
-                    });
-                    
-                    // Сбрасываем цену створки
-                    form.setValue(
-                      `sashes.${index}.sashPrice`,
-                      "0",
-                      {
-                        shouldValidate: false,
-                      }
-                    );
-                  }
-                } catch (error) {
-                  console.error("Ошибка при расчете коэффициента:", error);
-                  toast({
-                    title: "Ошибка расчета коэффициента",
-                    description: "Произошла ошибка при попытке рассчитать коэффициент. Попробуйте еще раз.",
-                    variant: "destructive",
-                  });
+            if (sashCost > 0) {
+              form.setValue(
+                `sashes.${index}.sashCost`,
+                sashCost.toFixed(2),
+                {
+                  shouldValidate: false,
                 }
-              }
+              );
             }
-            return 0;
-          })
-        );
+          }
 
-        // Рассчитываем общую цену с учетом количества
-        const totalPrice = sashPrices.reduce((sum, price, index) => {
-          const quantity = parseFloat(sashes[index]?.quantity || "1");
-          return sum + (price * quantity);
-        }, 0);
+          // Рассчитываем коэффициент (асинхронно с debounce)
+          if (width > 0 && height > 0 && systemId && fabricId) {
+            const system = systems.find((s) => s.id === systemId);
+            const fabric = fabrics.find((f) => f.id === fabricId);
 
-        if (totalPrice > 0) {
-          form.setValue("salePrice", totalPrice.toFixed(2), {
-            shouldValidate: false,
-          });
-        }
+            if (system && system.systemKey && fabric && fabric.category) {
+              // Устанавливаем состояние загрузки
+              form.setValue(`sashes.${index}.isCalculating`, true, {
+                shouldValidate: false,
+              });
+
+              coefficientCalculator.calculate(
+                {
+                  systemKey: system.systemKey,
+                  category: fabric.category,
+                  width: width / 1000,
+                  height: height / 1000,
+                },
+                (data) => {
+                  // Успешно получен коэффициент
+                  const multiplier = system.multiplier;
+                  const multiplierValue = multiplier
+                    ? parseFloat(multiplier.value?.toString() || "1")
+                    : 1;
+                  const sashPrice = data.coefficient * multiplierValue;
+
+                  // Сохраняем коэффициент
+                  form.setValue(
+                    `sashes.${index}.coefficient`,
+                    data.coefficient.toFixed(2),
+                    { shouldValidate: false }
+                  );
+
+                  // Сохраняем цену
+                  form.setValue(
+                    `sashes.${index}.sashPrice`,
+                    sashPrice.toFixed(2),
+                    { shouldValidate: false }
+                  );
+
+                  // Убираем состояние загрузки
+                  form.setValue(`sashes.${index}.isCalculating`, false, {
+                    shouldValidate: false,
+                  });
+
+                  // Показываем предупреждение только один раз при fallback
+                  if (data.isFallbackCategory && data.warning) {
+                    console.warn(`[Заказ] ${data.warning}`);
+                  }
+
+                  // Пересчитываем общую цену
+                  const allSashes = form.getValues("sashes");
+                  const totalPrice = allSashes.reduce((sum, s, i) => {
+                    const price = parseFloat(s.sashPrice || "0");
+                    const qty = parseFloat(s.quantity || "1");
+                    return sum + price * qty;
+                  }, 0);
+
+                  if (totalPrice > 0) {
+                    form.setValue("salePrice", totalPrice.toFixed(2), {
+                      shouldValidate: false,
+                    });
+                  }
+                },
+                (error) => {
+                  // Ошибка при расчете
+                  console.error("Ошибка при расчете коэффициента:", error);
+                  form.setValue(`sashes.${index}.isCalculating`, false, {
+                    shouldValidate: false,
+                  });
+                  form.setValue(`sashes.${index}.sashPrice`, "0", {
+                    shouldValidate: false,
+                  });
+                  form.setValue(`sashes.${index}.coefficient`, "", {
+                    shouldValidate: false,
+                  });
+                },
+                800 // Debounce 800ms
+              );
+            }
+          }
+        });
       }
     });
 
-    return () => subscription.unsubscribe();
-  }, [form, systems, fabrics]);
+    return () => {
+      subscription.unsubscribe();
+      coefficientCalculator.cleanup();
+    };
+  }, [form, systems, fabrics, fabricStock, componentStock, coefficientCalculator, toast]);
 
   // Filtering
   const filteredOrders = orders.filter((order) => {
