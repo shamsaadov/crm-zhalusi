@@ -11,6 +11,7 @@ import type {
 interface SashData {
   width?: string;
   height?: string;
+  quantity?: string;
   fabricId?: string;
   systemId?: string;
 }
@@ -31,6 +32,7 @@ export function calculateCostPrice(
 
     const width = parseFloat(sash.width || "0");
     const height = parseFloat(sash.height || "0");
+    const quantity = parseFloat(sash.quantity || "1");
     const fabricId = sash.fabricId;
     const systemId = sash.systemId;
 
@@ -136,12 +138,14 @@ export function calculateCostPrice(
         }
       }
 
-      totalCost += sashCost;
+      const totalSashCost = sashCost * quantity;
+      totalCost += totalSashCost;
 
       sashDetails.push({
         index: i + 1,
         width,
         height,
+        quantity,
         fabricName,
         fabricType,
         fabricAvgPrice,
@@ -150,6 +154,7 @@ export function calculateCostPrice(
         componentsCost,
         componentsDetails,
         sashCost,
+        totalSashCost,
       });
     }
   }
@@ -190,5 +195,58 @@ export function printInvoice(order: OrderWithRelations): void {
   `);
   win.document.close();
   win.print();
+}
+
+export function printInvoicePreview(data: {
+  date: string;
+  dealerName: string;
+  sashes: Array<{ quantity?: string }>;
+  salePrice: string;
+  comment?: string;
+}): void {
+  const win = window.open("", "_blank");
+  if (!win) return;
+
+  const totalSashes = data.sashes.reduce((sum, sash) => {
+    return sum + parseFloat(sash.quantity || "1");
+  }, 0);
+
+  win.document.write(`
+    <html>
+      <head>
+        <title>Предпросмотр накладной</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 20px; }
+          h1 { margin-bottom: 20px; }
+          .preview-badge { 
+            display: inline-block;
+            background: #fef3c7; 
+            color: #92400e;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 14px;
+            margin-left: 10px;
+          }
+          table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+          th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+          th { background: #f5f5f5; }
+          .total { font-size: 18px; font-weight: bold; margin-top: 20px; }
+          .comment { margin-top: 20px; padding: 10px; background: #f9fafb; border-left: 3px solid #3b82f6; }
+        </style>
+      </head>
+      <body>
+        <h1>Предпросмотр накладной<span class="preview-badge">Черновик</span></h1>
+        <p>Дата: ${format(new Date(data.date), "dd.MM.yyyy")}</p>
+        <p>Дилер: ${data.dealerName || "-"}</p>
+        <table>
+          <tr><th>Позиция</th><th>Створки</th><th>Сумма</th></tr>
+          <tr><td>Новый заказ</td><td>${totalSashes}</td><td>${formatCurrency(parseFloat(data.salePrice || "0"))}</td></tr>
+        </table>
+        <p class="total">Итого к оплате: ${formatCurrency(parseFloat(data.salePrice || "0"))}</p>
+        ${data.comment ? `<div class="comment"><strong>Комментарий:</strong><br>${data.comment}</div>` : ""}
+      </body>
+    </html>
+  `);
+  win.document.close();
 }
 

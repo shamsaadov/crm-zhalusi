@@ -20,6 +20,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Loader2, X } from "lucide-react";
 import { formatCurrency } from "@/components/status-badge";
 import { ORDER_STATUSES, type Dealer } from "@shared/schema";
@@ -29,7 +30,7 @@ import type { ComponentWithStock } from "./types";
 interface ProductFormProps {
   form: UseFormReturn<ProductFormValues>;
   fieldArray: UseFieldArrayReturn<ProductFormValues, "components">;
-  dealers: Dealer[];
+  dealers: (Dealer & { balance: number })[];
   componentStock: ComponentWithStock[];
   isPending: boolean;
   onSubmit: (data: ProductFormValues) => void;
@@ -67,23 +68,44 @@ export function ProductForm({
           <FormField
             control={form.control}
             name="dealerId"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Дилер</FormLabel>
-                <SearchableSelect
-                  options={dealers.map((dealer) => ({
-                    value: dealer.id,
-                    label: dealer.fullName,
-                  }))}
-                  value={field.value}
-                  onValueChange={field.onChange}
-                  placeholder="Выберите дилера"
-                  searchPlaceholder="Поиск дилера..."
-                  emptyText="Дилер не найден"
-                />
-                <FormMessage />
-              </FormItem>
-            )}
+            render={({ field }) => {
+              const selectedDealer = dealers.find((d) => d.id === field.value);
+              return (
+                <FormItem>
+                  <FormLabel>Дилер</FormLabel>
+                  <SearchableSelect
+                    options={dealers.map((dealer) => ({
+                      value: dealer.id,
+                      label: dealer.fullName,
+                    }))}
+                    value={field.value}
+                    onValueChange={field.onChange}
+                    placeholder="Выберите дилера"
+                    searchPlaceholder="Поиск дилера..."
+                    emptyText="Дилер не найден"
+                  />
+                  {selectedDealer && (
+                    <p
+                      className={`text-sm font-medium ${
+                        selectedDealer.balance < 0
+                          ? "text-red-600 dark:text-red-400"
+                          : selectedDealer.balance > 0
+                          ? "text-green-600 dark:text-green-400"
+                          : "text-muted-foreground"
+                      }`}
+                    >
+                      Долг:{" "}
+                      {selectedDealer.balance < 0
+                        ? formatCurrency(Math.abs(selectedDealer.balance))
+                        : selectedDealer.balance > 0
+                        ? `Переплата ${formatCurrency(selectedDealer.balance)}`
+                        : "0"}
+                    </p>
+                  )}
+                  <FormMessage />
+                </FormItem>
+              );
+            }}
           />
           <FormField
             control={form.control}
@@ -287,6 +309,27 @@ export function ProductForm({
                 <Textarea {...field} rows={2} />
               </FormControl>
               <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="isPaid"
+          render={({ field }) => (
+            <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+              <FormControl>
+                <Checkbox
+                  checked={field.value}
+                  onCheckedChange={field.onChange}
+                />
+              </FormControl>
+              <div className="space-y-1 leading-none">
+                <FormLabel className="cursor-pointer">Оплачено</FormLabel>
+                <p className="text-xs text-muted-foreground">
+                  При создании заказа автоматически добавится приход в финансы
+                </p>
+              </div>
             </FormItem>
           )}
         />

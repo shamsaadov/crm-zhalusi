@@ -178,7 +178,7 @@ export default function FinancePage() {
     queryKey: ["/api/cashboxes"],
   });
 
-  const { data: dealers = [] } = useQuery<Dealer[]>({
+  const { data: dealers = [] } = useQuery<(Dealer & { balance: number })[]>({
     queryKey: ["/api/dealers"],
   });
 
@@ -741,29 +741,56 @@ export default function FinancePage() {
                     <FormField
                       control={incomeForm.control}
                       name="dealerId"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Дилер (опционально)</FormLabel>
-                          <Select
-                            onValueChange={field.onChange}
-                            value={field.value}
-                          >
-                            <FormControl>
-                              <SelectTrigger data-testid="select-income-dealer">
-                                <SelectValue placeholder="Выберите дилера" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {dealers.map((d) => (
-                                <SelectItem key={d.id} value={d.id}>
-                                  {d.fullName}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
+                      render={({ field }) => {
+                        const selectedDealer = dealers.find(
+                          (d) => d.id === field.value
+                        );
+                        return (
+                          <FormItem>
+                            <FormLabel>Дилер (опционально)</FormLabel>
+                            <Select
+                              onValueChange={field.onChange}
+                              value={field.value}
+                            >
+                              <FormControl>
+                                <SelectTrigger data-testid="select-income-dealer">
+                                  <SelectValue placeholder="Выберите дилера" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {dealers.map((d) => (
+                                  <SelectItem key={d.id} value={d.id}>
+                                    {d.fullName}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            {selectedDealer && (
+                              <p
+                                className={`text-sm font-medium ${
+                                  selectedDealer.balance < 0
+                                    ? "text-red-600 dark:text-red-400"
+                                    : selectedDealer.balance > 0
+                                    ? "text-green-600 dark:text-green-400"
+                                    : "text-muted-foreground"
+                                }`}
+                              >
+                                Долг:{" "}
+                                {selectedDealer.balance < 0
+                                  ? formatCurrency(
+                                      Math.abs(selectedDealer.balance)
+                                    )
+                                  : selectedDealer.balance > 0
+                                  ? `Переплата ${formatCurrency(
+                                      selectedDealer.balance
+                                    )}`
+                                  : "0"}
+                              </p>
+                            )}
+                            <FormMessage />
+                          </FormItem>
+                        );
+                      }}
                     />
                     <FormField
                       control={incomeForm.control}

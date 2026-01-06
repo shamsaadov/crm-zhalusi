@@ -101,8 +101,13 @@ export function CostCalculationDialog({
               details.sashDetails.map((sash) => (
                 <Card key={sash.index}>
                   <CardHeader className="py-3">
-                    <CardTitle className="text-base">
-                      Створка #{sash.index}
+                    <CardTitle className="text-base flex items-center justify-between">
+                      <span>Створка #{sash.index}</span>
+                      {sash.quantity > 1 && (
+                        <Badge variant="secondary" className="text-sm">
+                          × {sash.quantity} шт
+                        </Badge>
+                      )}
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="py-2 space-y-3">
@@ -258,7 +263,7 @@ export function CostCalculationDialog({
                     </div>
 
                     <Card className="bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800">
-                      <CardContent className="py-3">
+                      <CardContent className="py-3 space-y-2">
                         <div className="flex justify-between items-center">
                           <span className="font-medium">
                             Себестоимость створки:
@@ -267,10 +272,23 @@ export function CostCalculationDialog({
                             {formatCurrency(sash.sashCost)}
                           </span>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-1 font-mono">
+                        <p className="text-xs text-muted-foreground font-mono">
                           = {formatCurrency(sash.fabricCost)} (ткань) +{" "}
                           {formatCurrency(sash.componentsCost)} (компл.)
                         </p>
+                        {sash.quantity > 1 && (
+                          <>
+                            <Separator className="my-2" />
+                            <div className="flex justify-between items-center">
+                              <span className="font-medium">
+                                Итого × {sash.quantity} шт:
+                              </span>
+                              <span className="font-mono text-xl font-bold text-green-700 dark:text-green-400">
+                                {formatCurrency(sash.totalSashCost)}
+                              </span>
+                            </div>
+                          </>
+                        )}
                       </CardContent>
                     </Card>
                   </CardContent>

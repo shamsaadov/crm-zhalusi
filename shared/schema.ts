@@ -341,7 +341,6 @@ export const orderSashes = pgTable("order_sashes", {
   componentId: varchar("component_id").references(() => components.id, {
     onDelete: "set null",
   }), // Для заказов товара
-  quantity: integer("quantity").default(1),
   sashPrice: decimal("sash_price", { precision: 12, scale: 2 }).default("0"),
   sashCost: decimal("sash_cost", { precision: 12, scale: 2 }).default("0"),
 });

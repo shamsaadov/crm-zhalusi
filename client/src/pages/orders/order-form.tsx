@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { UseFormReturn, UseFieldArrayReturn } from "react-hook-form";
 import {
   Form,
@@ -20,8 +21,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
-import { Plus, Loader2 } from "lucide-react";
-import { ORDER_STATUSES, type Dealer, type Fabric, type Color } from "@shared/schema";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Plus, Loader2, Pencil, RotateCcw, FileText } from "lucide-react";
+import { formatCurrency } from "@/components/status-badge";
+import { ORDER_STATUSES, type Dealer, type Fabric } from "@shared/schema";
 import type { OrderFormValues } from "./schemas";
 import type {
   SystemWithComponents,
@@ -30,15 +33,14 @@ import type {
   CostCalculationDetails,
 } from "./types";
 import { SashFields } from "./sash-fields";
-import { calculateCostPrice } from "./utils";
+import { calculateCostPrice, printInvoicePreview } from "./utils";
 
 interface OrderFormProps {
   form: UseFormReturn<OrderFormValues>;
   fieldArray: UseFieldArrayReturn<OrderFormValues, "sashes">;
-  dealers: Dealer[];
+  dealers: (Dealer & { balance: number })[];
   systems: SystemWithComponents[];
   fabrics: Fabric[];
-  colors: Color[];
   fabricStock: FabricWithStock[];
   componentStock: ComponentWithStock[];
   isEditing: boolean;
@@ -54,7 +56,6 @@ export function OrderForm({
   dealers,
   systems,
   fabrics,
-  colors,
   fabricStock,
   componentStock,
   isEditing,
@@ -64,6 +65,8 @@ export function OrderForm({
   onShowCostCalculation,
 }: OrderFormProps) {
   const { fields, append, remove } = fieldArray;
+  const [isSalePriceEditable, setIsSalePriceEditable] = useState(false);
+  const [autoSalePrice, setAutoSalePrice] = useState<string | null>(null);
 
   const handleTestCalculation = () => {
     const sashes = form.getValues("sashes");
@@ -75,6 +78,19 @@ export function OrderForm({
       systems
     );
     onShowCostCalculation({ totalCost, sashDetails });
+  };
+
+  const handleInvoicePreview = () => {
+    const formData = form.getValues();
+    const selectedDealer = dealers.find((d) => d.id === formData.dealerId);
+
+    printInvoicePreview({
+      date: formData.date,
+      dealerName: selectedDealer?.fullName || "Не указан",
+      sashes: formData.sashes,
+      salePrice: formData.salePrice || "0",
+      comment: formData.comment,
+    });
   };
 
   return (
@@ -97,23 +113,44 @@ export function OrderForm({
           <FormField
             control={form.control}
             name="dealerId"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Дилер</FormLabel>
-                <SearchableSelect
-                  options={dealers.map((dealer) => ({
-                    value: dealer.id,
-                    label: dealer.fullName,
-                  }))}
-                  value={field.value}
-                  onValueChange={field.onChange}
-                  placeholder="Выберите дилера"
-                  searchPlaceholder="Поиск дилера..."
-                  emptyText="Дилер не найден"
-                />
-                <FormMessage />
-              </FormItem>
-            )}
+            render={({ field }) => {
+              const selectedDealer = dealers.find((d) => d.id === field.value);
+              return (
+                <FormItem>
+                  <FormLabel>Дилер</FormLabel>
+                  <SearchableSelect
+                    options={dealers.map((dealer) => ({
+                      value: dealer.id,
+                      label: dealer.fullName,
+                    }))}
+                    value={field.value}
+                    onValueChange={field.onChange}
+                    placeholder="Выберите дилера"
+                    searchPlaceholder="Поиск дилера..."
+                    emptyText="Дилер не найден"
+                  />
+                  {selectedDealer && (
+                    <p
+                      className={`text-sm font-medium ${
+                        selectedDealer.balance < 0
+                          ? "text-red-600 dark:text-red-400"
+                          : selectedDealer.balance > 0
+                          ? "text-green-600 dark:text-green-400"
+                          : "text-muted-foreground"
+                      }`}
+                    >
+                      Долг:{" "}
+                      {selectedDealer.balance < 0
+                        ? formatCurrency(Math.abs(selectedDealer.balance))
+                        : selectedDealer.balance > 0
+                        ? `Переплата ${formatCurrency(selectedDealer.balance)}`
+                        : "0"}
+                    </p>
+                  )}
+                  <FormMessage />
+                </FormItem>
+              );
+            }}
           />
           <FormField
             control={form.control}
@@ -148,7 +185,16 @@ export function OrderForm({
             <h3 className="text-lg font-medium">
               Створки
               <Badge variant="secondary" className="ml-2">
-                {fields.length}
+                {fields.length} {fields.length !== 1 ? "позиций" : "позиция"}
+              </Badge>
+              <Badge variant="outline" className="ml-2">
+                {fields.reduce((total, _, index) => {
+                  const quantity = parseFloat(
+                    form.watch(`sashes.${index}.quantity`) || "1"
+                  );
+                  return total + quantity;
+                }, 0)}{" "}
+                шт
               </Badge>
             </h3>
           </div>
@@ -160,7 +206,6 @@ export function OrderForm({
               form={form}
               systems={systems}
               fabrics={fabrics}
-              colors={colors}
               fabricStock={fabricStock}
               fieldsLength={fields.length}
               fieldId={field.id}
@@ -177,11 +222,10 @@ export function OrderForm({
               append({
                 width: "",
                 height: "",
+                quantity: "1",
                 systemId: firstSash?.systemId || "",
-                systemColorId: firstSash?.systemColorId || "",
                 controlSide: "",
                 fabricId: firstSash?.fabricId || "",
-                fabricColorId: firstSash?.fabricColorId || "",
                 sashPrice: "",
                 sashCost: "",
               });
@@ -198,24 +242,82 @@ export function OrderForm({
           <FormField
             control={form.control}
             name="salePrice"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Цена продажи (авто)</FormLabel>
-                <FormControl>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    {...field}
-                    className="bg-muted"
-                    readOnly
-                  />
-                </FormControl>
-                <p className="text-xs text-muted-foreground">
-                  Коэффициент × множитель системы
-                </p>
-                <FormMessage />
-              </FormItem>
-            )}
+            render={({ field }) => {
+              const salePrice = parseFloat(field.value || "0");
+              const costPrice = parseFloat(form.watch("costPrice") || "0");
+              const coefficient = costPrice > 0 ? salePrice / costPrice : 0;
+
+              return (
+                <FormItem>
+                  <FormLabel className="flex items-center gap-2">
+                    Цена продажи{" "}
+                    {isSalePriceEditable ? "(ручной ввод)" : "(авто)"}
+                    {!isSalePriceEditable ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => {
+                          setAutoSalePrice(field.value || "");
+                          setIsSalePriceEditable(true);
+                        }}
+                      >
+                        <Pencil className="h-3 w-3 mr-1" />
+                        Изменить
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => {
+                          if (autoSalePrice !== null) {
+                            field.onChange(autoSalePrice);
+                          }
+                          setIsSalePriceEditable(false);
+                        }}
+                      >
+                        <RotateCcw className="h-3 w-3 mr-1" />
+                        Сбросить
+                      </Button>
+                    )}
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      {...field}
+                      className={isSalePriceEditable ? "" : "bg-muted"}
+                      readOnly={!isSalePriceEditable}
+                    />
+                  </FormControl>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">
+                      {isSalePriceEditable
+                        ? "Введите свою цену (скидка/наценка)"
+                        : "Коэффициент × множитель системы"}
+                    </p>
+                    {coefficient > 0 && (
+                      <Badge
+                        variant={
+                          coefficient < 1
+                            ? "destructive"
+                            : coefficient < 1.5
+                            ? "secondary"
+                            : "default"
+                        }
+                        className="text-xs"
+                      >
+                        К: {coefficient.toFixed(2)}×
+                      </Badge>
+                    )}
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              );
+            }}
           />
           <FormField
             control={form.control}
@@ -266,17 +368,45 @@ export function OrderForm({
           )}
         />
 
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onCancel}>
-            Отмена
+        <FormField
+          control={form.control}
+          name="isPaid"
+          render={({ field }) => (
+            <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+              <FormControl>
+                <Checkbox
+                  checked={field.value}
+                  onCheckedChange={field.onChange}
+                />
+              </FormControl>
+              <div className="space-y-1 leading-none">
+                <FormLabel className="cursor-pointer">Оплачено</FormLabel>
+              </div>
+            </FormItem>
+          )}
+        />
+
+        <div className="flex justify-between gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleInvoicePreview}
+            className="gap-2"
+          >
+            <FileText className="h-4 w-4" />
+            Предпросмотр накладной
           </Button>
-          <Button type="submit" disabled={isPending}>
-            {isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            {isEditing ? "Сохранить" : "Создать"}
-          </Button>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={onCancel}>
+              Отмена
+            </Button>
+            <Button type="submit" disabled={isPending}>
+              {isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {isEditing ? "Сохранить" : "Создать"}
+            </Button>
+          </div>
         </div>
       </form>
     </Form>
   );
 }
-

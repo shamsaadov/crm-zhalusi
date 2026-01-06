@@ -22,7 +22,6 @@ import {
   ORDER_STATUSES,
   type Dealer,
   type Fabric,
-  type Color,
 } from "@shared/schema";
 import { format } from "date-fns";
 
@@ -109,7 +108,7 @@ export default function OrdersPage() {
     fetchNextPage,
   });
 
-  const { data: dealers = [] } = useQuery<Dealer[]>({
+  const { data: dealers = [] } = useQuery<(Dealer & { balance: number })[]>({
     queryKey: ["/api/dealers"],
   });
   const { data: systems = [] } = useQuery<SystemWithComponents[]>({
@@ -117,9 +116,6 @@ export default function OrdersPage() {
   });
   const { data: fabrics = [] } = useQuery<Fabric[]>({
     queryKey: ["/api/fabrics"],
-  });
-  const { data: colors = [] } = useQuery<Color[]>({
-    queryKey: ["/api/colors"],
   });
   const { data: stockData } = useQuery<{
     fabrics: FabricWithStock[];
@@ -141,15 +137,15 @@ export default function OrdersPage() {
       salePrice: "",
       costPrice: "",
       comment: "",
+      isPaid: false,
       sashes: [
         {
           width: "",
           height: "",
+          quantity: "1",
           systemId: "",
-          systemColorId: "",
           controlSide: "",
           fabricId: "",
-          fabricColorId: "",
           sashPrice: "",
           sashCost: "",
         },
@@ -171,6 +167,7 @@ export default function OrdersPage() {
       salePrice: "",
       costPrice: "",
       comment: "",
+      isPaid: false,
       components: [{ componentId: "", quantity: "1" }],
     },
   });
@@ -184,8 +181,14 @@ export default function OrdersPage() {
   const createMutation = useMutation({
     mutationFn: (data: OrderFormValues) =>
       apiRequest("POST", "/api/orders", data),
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      // Invalidate finance queries if order was paid
+      if (variables.isPaid) {
+        queryClient.invalidateQueries({ queryKey: ["/api/finance"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/cashboxes"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/dealers"] });
+      }
       setIsDialogOpen(false);
       form.reset();
       toast({ title: "Успешно", description: "Заказ создан" });
@@ -273,8 +276,14 @@ export default function OrdersPage() {
   const createProductMutation = useMutation({
     mutationFn: (data: ProductFormValues) =>
       apiRequest("POST", "/api/orders/product", data),
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      // Invalidate finance queries if order was paid
+      if (variables.isPaid) {
+        queryClient.invalidateQueries({ queryKey: ["/api/finance"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/cashboxes"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/dealers"] });
+      }
       setIsDialogOpen(false);
       productForm.reset();
       setActiveTab("order");
@@ -301,10 +310,30 @@ export default function OrdersPage() {
 
   // Handlers
   const onSubmit = (data: OrderFormValues) => {
+    // Размножаем створки с quantity > 1
+    const expandedSashes = data.sashes.flatMap((sash) => {
+      const quantity = parseInt(sash.quantity || "1");
+      // Создаем массив створок без поля quantity
+      return Array(quantity).fill(null).map(() => ({
+        width: sash.width,
+        height: sash.height,
+        systemId: sash.systemId,
+        controlSide: sash.controlSide,
+        fabricId: sash.fabricId,
+        sashPrice: sash.sashPrice,
+        sashCost: sash.sashCost,
+      }));
+    });
+
+    const dataToSubmit = {
+      ...data,
+      sashes: expandedSashes,
+    };
+
     if (editingOrder) {
-      updateMutation.mutate({ id: editingOrder.id, data });
+      updateMutation.mutate({ id: editingOrder.id, data: dataToSubmit });
     } else {
-      createMutation.mutate(data);
+      createMutation.mutate(dataToSubmit);
     }
   };
 
@@ -332,6 +361,30 @@ export default function OrdersPage() {
       });
       const fullOrder: OrderWithRelations = await response.json();
       setEditingOrder(fullOrder);
+      
+      // Группируем одинаковые створки и подсчитываем quantity
+      const groupedSashes = (fullOrder.sashes || []).reduce((acc, s) => {
+        const key = `${s.width}_${s.height}_${s.systemId}_${s.controlSide}_${s.fabricId}_${s.sashPrice}_${s.sashCost}`;
+        const existing = acc.find(item => item.key === key);
+        
+        if (existing) {
+          existing.quantity++;
+        } else {
+          acc.push({
+            key,
+            quantity: 1,
+            width: s.width?.toString() || "",
+            height: s.height?.toString() || "",
+            systemId: s.systemId || "",
+            controlSide: s.controlSide || "",
+            fabricId: s.fabricId || "",
+            sashPrice: s.sashPrice?.toString() || "",
+            sashCost: s.sashCost?.toString() || "",
+          });
+        }
+        return acc;
+      }, [] as Array<{key: string; quantity: number; width: string; height: string; systemId: string; controlSide: string; fabricId: string; sashPrice: string; sashCost: string}>);
+
       form.reset({
         date: fullOrder.date,
         dealerId: fullOrder.dealerId || "",
@@ -339,25 +392,17 @@ export default function OrdersPage() {
         salePrice: fullOrder.salePrice?.toString() || "",
         costPrice: fullOrder.costPrice?.toString() || "",
         comment: fullOrder.comment || "",
-        sashes: fullOrder.sashes?.map((s) => ({
-          width: s.width?.toString() || "",
-          height: s.height?.toString() || "",
-          systemId: s.systemId || "",
-          systemColorId: s.systemColorId || "",
-          controlSide: s.controlSide || "",
-          fabricId: s.fabricId || "",
-          fabricColorId: s.fabricColorId || "",
-          sashPrice: s.sashPrice?.toString() || "",
-          sashCost: s.sashCost?.toString() || "",
+        sashes: groupedSashes.map(({key, ...sash}) => ({
+          ...sash,
+          quantity: sash.quantity.toString(),
         })) || [
           {
             width: "",
             height: "",
+            quantity: "1",
             systemId: "",
-            systemColorId: "",
             controlSide: "",
             fabricId: "",
-            fabricColorId: "",
             sashPrice: "",
             sashCost: "",
           },
@@ -384,15 +429,14 @@ export default function OrdersPage() {
       salePrice: "",
       costPrice: "",
       comment: "",
+      isPaid: false,
       sashes: [
         {
           width: "",
           height: "",
           systemId: "",
-          systemColorId: "",
           controlSide: "",
           fabricId: "",
-          fabricColorId: "",
           sashPrice: "",
           sashCost: "",
         },
@@ -405,6 +449,7 @@ export default function OrdersPage() {
       salePrice: "",
       costPrice: "",
       comment: "",
+      isPaid: false,
       components: [{ componentId: "", quantity: "1" }],
     });
   };
@@ -418,7 +463,8 @@ export default function OrdersPage() {
         (name.includes("width") ||
           name.includes("height") ||
           name.includes("fabricId") ||
-          name.includes("systemId"))
+          name.includes("systemId") ||
+          name.includes("quantity"))
       ) {
         const sashes = value.sashes || [];
         const { totalCost, sashDetails } = calculateCostPrice(
@@ -505,6 +551,26 @@ export default function OrdersPage() {
               const system = systems.find((s) => s.id === systemId);
               const fabric = fabrics.find((f) => f.id === fabricId);
 
+              // Рассчитываем себестоимость створки
+              const sashCostData = calculateCostPrice(
+                [sash],
+                () => sash,
+                fabricStock,
+                componentStock,
+                systems
+              );
+              const sashCost = sashCostData.totalCost;
+
+              if (sashCost > 0) {
+                form.setValue(
+                  `sashes.${index}.sashCost`,
+                  sashCost.toFixed(2),
+                  {
+                    shouldValidate: false,
+                  }
+                );
+              }
+
               if (system && system.systemKey && fabric && fabric.category) {
                 try {
                   const response = await fetch("/api/coefficients/calculate", {
@@ -550,7 +616,11 @@ export default function OrdersPage() {
           })
         );
 
-        const totalPrice = sashPrices.reduce((sum, price) => sum + price, 0);
+        // Рассчитываем общую цену с учетом количества
+        const totalPrice = sashPrices.reduce((sum, price, index) => {
+          const quantity = parseFloat(sashes[index]?.quantity || "1");
+          return sum + (price * quantity);
+        }, 0);
 
         if (totalPrice > 0) {
           form.setValue("salePrice", totalPrice.toFixed(2), {
@@ -599,7 +669,7 @@ export default function OrdersPage() {
               Добавить
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-[95vw] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>
                 {editingOrder ? "Редактировать заказ" : "Новый заказ / товар"}
@@ -626,7 +696,6 @@ export default function OrdersPage() {
                     dealers={dealers}
                     systems={systems}
                     fabrics={fabrics}
-                    colors={colors}
                     fabricStock={fabricStock}
                     componentStock={componentStock}
                     isEditing={false}
@@ -661,7 +730,6 @@ export default function OrdersPage() {
                 dealers={dealers}
                 systems={systems}
                 fabrics={fabrics}
-                colors={colors}
                 fabricStock={fabricStock}
                 componentStock={componentStock}
                 isEditing={true}

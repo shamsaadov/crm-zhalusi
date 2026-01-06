@@ -68,6 +68,7 @@ export interface CostCalculationDetails {
     index: number;
     width: number;
     height: number;
+    quantity: number;
     fabricName: string;
     fabricType: string;
     fabricAvgPrice: number;
@@ -86,6 +87,7 @@ export interface CostCalculationDetails {
       formula: string;
     }>;
     sashCost: number;
+    totalSashCost: number;
   }>;
 }
 

@@ -34,12 +34,21 @@ import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Loader2, Eye, Trash2, X, Package, Pencil, History } from "lucide-react";
+import {
+  Plus,
+  Loader2,
+  Eye,
+  Trash2,
+  X,
+  Package,
+  Pencil,
+  History,
+} from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
@@ -70,6 +79,7 @@ const warehouseSchema = z.object({
 
 const inventoryAdjustmentSchema = z.object({
   newQuantity: z.string().min(1, "Обязательное поле"),
+  price: z.string().min(1, "Обязательное поле"),
   comment: z.string().optional(),
 });
 
@@ -122,10 +132,15 @@ export default function WarehousePage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [receiptToDelete, setReceiptToDelete] =
     useState<WarehouseReceiptWithRelations | null>(null);
+  const [editingReceipt, setEditingReceipt] =
+    useState<WarehouseReceiptWithRelations | null>(null);
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({});
   const [supplierFilter, setSupplierFilter] = useState("all");
   const [search, setSearch] = useState("");
-  
+  const [globalItemType, setGlobalItemType] = useState<"fabric" | "component">(
+    "fabric"
+  );
+
   // Inventory adjustment state
   const [isAdjustmentDialogOpen, setIsAdjustmentDialogOpen] = useState(false);
   const [adjustmentItem, setAdjustmentItem] = useState<{
@@ -133,6 +148,7 @@ export default function WarehousePage() {
     id: string;
     name: string;
     currentQuantity: number;
+    lastPrice: number;
     unit?: string;
   } | null>(null);
 
@@ -194,15 +210,17 @@ export default function WarehousePage() {
   const componentStock = stockData?.components || [];
 
   // Fetch inventory adjustments (writeoffs and receipts without order/supplier)
-  const { data: adjustments = [] } = useQuery<{
-    id: string;
-    type: "increase" | "decrease";
-    itemType: string;
-    itemName: string;
-    quantity: string;
-    date: string;
-    comment: string | null;
-  }[]>({
+  const { data: adjustments = [] } = useQuery<
+    {
+      id: string;
+      type: "increase" | "decrease";
+      itemType: string;
+      itemName: string;
+      quantity: string;
+      date: string;
+      comment: string | null;
+    }[]
+  >({
     queryKey: ["/api/stock/adjustments"],
   });
 
@@ -237,6 +255,7 @@ export default function WarehousePage() {
     resolver: zodResolver(inventoryAdjustmentSchema),
     defaultValues: {
       newQuantity: "",
+      price: "",
       comment: "",
     },
   });
@@ -301,6 +320,56 @@ export default function WarehousePage() {
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: WarehouseFormValues }) => {
+      const payload = {
+        ...data,
+        items: data.items.map((item) => ({
+          itemType: item.itemType,
+          componentId:
+            item.itemType === "component" ? item.componentId : undefined,
+          fabricId: item.itemType === "fabric" ? item.fabricId : undefined,
+          quantity: item.quantity,
+          price: item.price,
+          total: item.total,
+        })),
+      };
+      return apiRequest("PUT", `/api/warehouse/${id}`, payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/warehouse"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/fabrics"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/components"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stock"] });
+      setIsDialogOpen(false);
+      setEditingReceipt(null);
+      form.reset({
+        supplierId: "",
+        date: format(new Date(), "yyyy-MM-dd"),
+        comment: "",
+        items: [
+          {
+            itemType: "fabric",
+            componentId: "",
+            fabricId: "",
+            quantity: "",
+            price: "",
+            total: "",
+          },
+        ],
+      });
+      toast({ title: "Успешно", description: "Поступление обновлено" });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Ошибка",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (id: string) => apiRequest("DELETE", `/api/warehouse/${id}`),
     onSuccess: () => {
@@ -327,6 +396,7 @@ export default function WarehousePage() {
       itemId: string;
       newQuantity: string;
       currentQuantity: number;
+      price: string;
       comment?: string;
     }) => apiRequest("POST", "/api/stock/adjustment", data),
     onSuccess: () => {
@@ -348,7 +418,11 @@ export default function WarehousePage() {
   });
 
   const onSubmit = (data: WarehouseFormValues) => {
-    createMutation.mutate(data);
+    if (editingReceipt) {
+      updateMutation.mutate({ id: editingReceipt.id, data });
+    } else {
+      createMutation.mutate(data);
+    }
   };
 
   const openViewDialog = async (receipt: WarehouseReceiptWithRelations) => {
@@ -359,6 +433,48 @@ export default function WarehousePage() {
       const fullReceipt = await response.json();
       setViewingReceipt(fullReceipt);
       setIsViewDialogOpen(true);
+    } catch {
+      toast({ title: "Ошибка загрузки", variant: "destructive" });
+    }
+  };
+
+  const openEditDialog = async (receipt: WarehouseReceiptWithRelations) => {
+    try {
+      const response = await fetch(`/api/warehouse/${receipt.id}`, {
+        credentials: "include",
+      });
+      const fullReceipt = await response.json();
+      setEditingReceipt(fullReceipt);
+
+      // Set global item type from first item
+      const firstItemType = fullReceipt.items?.[0]?.itemType || "fabric";
+      setGlobalItemType(firstItemType);
+
+      // Populate form with receipt data
+      form.reset({
+        supplierId: fullReceipt.supplierId,
+        date: format(new Date(fullReceipt.date), "yyyy-MM-dd"),
+        comment: fullReceipt.comment || "",
+        items: fullReceipt.items?.map((item: ReceiptItem) => ({
+          itemType: item.itemType,
+          componentId: item.componentId || "",
+          fabricId: item.fabricId || "",
+          quantity: item.quantity || "",
+          price: item.price || "",
+          total: item.total || "",
+        })) || [
+          {
+            itemType: firstItemType,
+            componentId: "",
+            fabricId: "",
+            quantity: "",
+            price: "",
+            total: "",
+          },
+        ],
+      });
+
+      setIsDialogOpen(true);
     } catch {
       toast({ title: "Ошибка загрузки", variant: "destructive" });
     }
@@ -378,10 +494,13 @@ export default function WarehousePage() {
       id: item.id,
       name: item.name,
       currentQuantity: item.stock.quantity,
-      unit: type === "component" ? (item as ComponentWithStock).unit || "шт" : "м²",
+      lastPrice: item.stock.lastPrice,
+      unit:
+        type === "component" ? (item as ComponentWithStock).unit || "шт" : "м²",
     });
     adjustmentForm.reset({
       newQuantity: item.stock.quantity.toFixed(2),
+      price: item.stock.lastPrice.toFixed(2),
       comment: "",
     });
     setIsAdjustmentDialogOpen(true);
@@ -394,6 +513,7 @@ export default function WarehousePage() {
         itemId: adjustmentItem.id,
         newQuantity: data.newQuantity,
         currentQuantity: adjustmentItem.currentQuantity,
+        price: data.price,
         comment: data.comment,
       });
     }
@@ -487,6 +607,14 @@ export default function WarehousePage() {
           <Button
             size="icon"
             variant="ghost"
+            onClick={() => openEditDialog(r)}
+            data-testid={`button-edit-${r.id}`}
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
             onClick={() => openDeleteDialog(r)}
             data-testid={`button-delete-${r.id}`}
           >
@@ -505,6 +633,8 @@ export default function WarehousePage() {
           onOpenChange={(open) => {
             setIsDialogOpen(open);
             if (!open) {
+              setEditingReceipt(null);
+              setGlobalItemType("fabric");
               form.reset({
                 supplierId: "",
                 date: format(new Date(), "yyyy-MM-dd"),
@@ -529,9 +659,13 @@ export default function WarehousePage() {
               Добавить поступление
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-[95vw] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Новое поступление</DialogTitle>
+              <DialogTitle>
+                {editingReceipt
+                  ? "Редактировать поступление"
+                  : "Новое поступление"}
+              </DialogTitle>
             </DialogHeader>
             <Form {...form}>
               <form
@@ -584,215 +718,235 @@ export default function WarehousePage() {
 
                 <Separator />
 
-                <div className="space-y-4">
+                <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-medium">Позиции</h3>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        append({
-                          itemType: "fabric",
-                          componentId: "",
-                          fabricId: "",
-                          quantity: "",
-                          price: "",
-                          total: "",
-                        })
-                      }
-                      data-testid="button-add-item"
+                    <h3 className="text-sm font-medium text-muted-foreground">
+                      Позиции
+                    </h3>
+                    <RadioGroup
+                      value={globalItemType}
+                      onValueChange={(value: "fabric" | "component") => {
+                        setGlobalItemType(value);
+                        // Update all items with new type
+                        fields.forEach((_, index) => {
+                          form.setValue(`items.${index}.itemType`, value);
+                          // Reset item IDs when switching type
+                          form.setValue(`items.${index}.fabricId`, "");
+                          form.setValue(`items.${index}.componentId`, "");
+                        });
+                      }}
+                      className="flex gap-4"
                     >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Добавить позицию
-                    </Button>
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem value="fabric" id="global-fabric" />
+                        <Label
+                          htmlFor="global-fabric"
+                          className="text-sm cursor-pointer"
+                        >
+                          Ткань
+                        </Label>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem
+                          value="component"
+                          id="global-component"
+                        />
+                        <Label
+                          htmlFor="global-component"
+                          className="text-sm cursor-pointer"
+                        >
+                          Комплектующие
+                        </Label>
+                      </div>
+                    </RadioGroup>
                   </div>
 
-                  {fields.map((field, index) => (
-                    <Card key={field.id}>
-                      <CardHeader className="py-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <CardTitle className="text-sm">
-                            Позиция {index + 1}
-                          </CardTitle>
+                  {fields.map((field, index) => {
+                    // Sync itemType with globalItemType
+                    if (
+                      form.getValues(`items.${index}.itemType`) !==
+                      globalItemType
+                    ) {
+                      form.setValue(`items.${index}.itemType`, globalItemType);
+                    }
+
+                    return (
+                      <div
+                        key={field.id}
+                        className="border rounded-md p-1.5 bg-muted/30"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-medium text-muted-foreground w-6 text-center">
+                            {index + 1}
+                          </span>
+
+                          <div className="grid grid-cols-4 gap-1.5 flex-1">
+                            {globalItemType === "fabric" ? (
+                              <FormField
+                                key={`fabric-${index}-${field.id}`}
+                                control={form.control}
+                                name={`items.${index}.fabricId`}
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormControl>
+                                      <SearchableSelect
+                                        options={fabrics.map((fabric) => ({
+                                          value: fabric.id,
+                                          label: fabric.name,
+                                        }))}
+                                        value={field.value || ""}
+                                        onValueChange={(value) => {
+                                          field.onChange(value);
+                                          fetchPreviousPrice(
+                                            "fabric",
+                                            value,
+                                            index
+                                          );
+                                        }}
+                                        placeholder="Выберите ткань"
+                                        searchPlaceholder="Поиск ткани..."
+                                        emptyText="Ткань не найдена"
+                                        data-testid={`select-fabric-${index}`}
+                                      />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            ) : (
+                              <FormField
+                                key={`component-${index}-${field.id}`}
+                                control={form.control}
+                                name={`items.${index}.componentId`}
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormControl>
+                                      <SearchableSelect
+                                        options={components.map(
+                                          (component) => ({
+                                            value: component.id,
+                                            label: component.name,
+                                          })
+                                        )}
+                                        value={field.value || ""}
+                                        onValueChange={(value) => {
+                                          field.onChange(value);
+                                          fetchPreviousPrice(
+                                            "component",
+                                            value,
+                                            index
+                                          );
+                                        }}
+                                        placeholder="Выберите комплектующую"
+                                        searchPlaceholder="Поиск комплектующей..."
+                                        emptyText="Комплектующая не найдена"
+                                        data-testid={`select-component-${index}`}
+                                      />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            )}
+
+                            <FormField
+                              control={form.control}
+                              name={`items.${index}.quantity`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormControl>
+                                    <Input
+                                      type="number"
+                                      step="0.01"
+                                      placeholder="Кол-во"
+                                      className="h-7 text-xs"
+                                      {...field}
+                                      data-testid={`input-quantity-${index}`}
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+
+                            <FormField
+                              control={form.control}
+                              name={`items.${index}.price`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormControl>
+                                    <Input
+                                      type="number"
+                                      step="0.01"
+                                      placeholder="Цена"
+                                      className="h-7 text-xs"
+                                      {...field}
+                                      data-testid={`input-price-${index}`}
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+
+                            <FormField
+                              control={form.control}
+                              name={`items.${index}.total`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormControl>
+                                    <Input
+                                      {...field}
+                                      disabled
+                                      placeholder="Сумма"
+                                      className="bg-muted h-7 text-xs"
+                                      data-testid={`input-total-${index}`}
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </div>
+
                           {fields.length > 1 && (
                             <Button
                               type="button"
                               variant="ghost"
-                              size="icon"
+                              size="sm"
+                              className="h-7 w-7 p-0 flex-shrink-0"
                               onClick={() => remove(index)}
                               data-testid={`button-remove-item-${index}`}
                             >
-                              <X className="h-4 w-4" />
+                              <X className="h-3.5 w-3.5" />
                             </Button>
                           )}
                         </div>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <FormField
-                          control={form.control}
-                          name={`items.${index}.itemType`}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Тип</FormLabel>
-                              <FormControl>
-                                <RadioGroup
-                                  onValueChange={field.onChange}
-                                  value={field.value}
-                                  className="flex gap-4"
-                                >
-                                  <div className="flex items-center gap-2">
-                                    <RadioGroupItem
-                                      value="fabric"
-                                      id={`fabric-${index}`}
-                                    />
-                                    <Label htmlFor={`fabric-${index}`}>
-                                      Ткань
-                                    </Label>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <RadioGroupItem
-                                      value="component"
-                                      id={`component-${index}`}
-                                    />
-                                    <Label htmlFor={`component-${index}`}>
-                                      Комплектующие
-                                    </Label>
-                                  </div>
-                                </RadioGroup>
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
+                      </div>
+                    );
+                  })}
 
-                        <div className="grid grid-cols-4 gap-4">
-                          {watchedItems?.[index]?.itemType === "fabric" ? (
-                            <FormField
-                              control={form.control}
-                              name={`items.${index}.fabricId`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Ткань</FormLabel>
-                                  <FormControl>
-                                    <SearchableSelect
-                                      options={fabrics.map((fabric) => ({
-                                        value: fabric.id,
-                                        label: fabric.name,
-                                      }))}
-                                      value={field.value}
-                                      onValueChange={(value) => {
-                                        field.onChange(value);
-                                        fetchPreviousPrice(
-                                          "fabric",
-                                          value,
-                                          index
-                                        );
-                                      }}
-                                      placeholder="Выберите ткань"
-                                      searchPlaceholder="Поиск ткани..."
-                                      emptyText="Ткань не найдена"
-                                      data-testid={`select-fabric-${index}`}
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                          ) : (
-                            <FormField
-                              control={form.control}
-                              name={`items.${index}.componentId`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Комплектующие</FormLabel>
-                                  <FormControl>
-                                    <SearchableSelect
-                                      options={components.map((component) => ({
-                                        value: component.id,
-                                        label: component.name,
-                                      }))}
-                                      value={field.value}
-                                      onValueChange={(value) => {
-                                        field.onChange(value);
-                                        fetchPreviousPrice(
-                                          "component",
-                                          value,
-                                          index
-                                        );
-                                      }}
-                                      placeholder="Выберите комплектующую"
-                                      searchPlaceholder="Поиск комплектующей..."
-                                      emptyText="Комплектующая не найдена"
-                                      data-testid={`select-component-${index}`}
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                          )}
-
-                          <FormField
-                            control={form.control}
-                            name={`items.${index}.quantity`}
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Кол-во</FormLabel>
-                                <FormControl>
-                                  <Input
-                                    type="number"
-                                    step="0.01"
-                                    {...field}
-                                    data-testid={`input-quantity-${index}`}
-                                  />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-
-                          <FormField
-                            control={form.control}
-                            name={`items.${index}.price`}
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Цена</FormLabel>
-                                <FormControl>
-                                  <Input
-                                    type="number"
-                                    step="0.01"
-                                    {...field}
-                                    data-testid={`input-price-${index}`}
-                                  />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-
-                          <FormField
-                            control={form.control}
-                            name={`items.${index}.total`}
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Сумма</FormLabel>
-                                <FormControl>
-                                  <Input
-                                    {...field}
-                                    disabled
-                                    className="bg-muted"
-                                    data-testid={`input-total-${index}`}
-                                  />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                  {/* Кнопка добавления позиции внизу */}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => {
+                      append({
+                        itemType: globalItemType,
+                        componentId: "",
+                        fabricId: "",
+                        quantity: "",
+                        price: "",
+                        total: "",
+                      });
+                    }}
+                    data-testid="button-add-item"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Добавить позицию
+                  </Button>
                 </div>
 
                 <Separator />
@@ -821,13 +975,15 @@ export default function WarehousePage() {
                   </Button>
                   <Button
                     type="submit"
-                    disabled={createMutation.isPending}
+                    disabled={
+                      createMutation.isPending || updateMutation.isPending
+                    }
                     data-testid="button-submit"
                   >
-                    {createMutation.isPending && (
+                    {(createMutation.isPending || updateMutation.isPending) && (
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     )}
-                    Добавить
+                    {editingReceipt ? "Сохранить" : "Добавить"}
                   </Button>
                 </div>
               </form>
@@ -890,9 +1046,7 @@ export default function WarehousePage() {
                   Ткани ({fabricStock.length})
                 </h3>
                 {fabricStock.length === 0 ? (
-                  <p className="text-muted-foreground text-sm">
-                    Нет тканей
-                  </p>
+                  <p className="text-muted-foreground text-sm">Нет тканей</p>
                 ) : (
                   <div className="border rounded-md overflow-hidden">
                     <table className="w-full text-sm">
@@ -920,7 +1074,11 @@ export default function WarehousePage() {
                         {fabricStock.map((fabric) => (
                           <tr
                             key={fabric.id}
-                            className={`hover:bg-muted/30 transition-colors ${fabric.stock.quantity <= 0 ? "text-muted-foreground" : ""}`}
+                            className={`hover:bg-muted/30 transition-colors ${
+                              fabric.stock.quantity <= 0
+                                ? "text-muted-foreground"
+                                : ""
+                            }`}
                           >
                             <td className="py-1.5 px-3">{fabric.name}</td>
                             <td className="py-1.5 px-3">
@@ -933,7 +1091,13 @@ export default function WarehousePage() {
                                 </Badge>
                               )}
                             </td>
-                            <td className={`py-1.5 px-3 text-right font-mono ${fabric.stock.quantity < 0 ? "text-destructive" : ""}`}>
+                            <td
+                              className={`py-1.5 px-3 text-right font-mono ${
+                                fabric.stock.quantity < 0
+                                  ? "text-destructive"
+                                  : ""
+                              }`}
+                            >
                               {fabric.stock.quantity.toFixed(2)}
                             </td>
                             <td className="py-1.5 px-3 text-right font-mono">
@@ -942,7 +1106,8 @@ export default function WarehousePage() {
                             <td className="py-1.5 px-3 text-right font-mono font-medium">
                               {formatCurrency(
                                 fabric.stock.quantity > 0
-                                  ? fabric.stock.quantity * fabric.stock.lastPrice
+                                  ? fabric.stock.quantity *
+                                      fabric.stock.lastPrice
                                   : 0
                               )}
                             </td>
@@ -951,7 +1116,9 @@ export default function WarehousePage() {
                                 size="icon"
                                 variant="ghost"
                                 className="h-7 w-7"
-                                onClick={() => openAdjustmentDialog("fabric", fabric)}
+                                onClick={() =>
+                                  openAdjustmentDialog("fabric", fabric)
+                                }
                                 title="Корректировка остатка"
                               >
                                 <Pencil className="h-3.5 w-3.5" />
@@ -972,7 +1139,11 @@ export default function WarehousePage() {
                             {formatCurrency(
                               fabricStock
                                 .filter((f) => f.stock.quantity > 0)
-                                .reduce((sum, f) => sum + f.stock.quantity * f.stock.lastPrice, 0)
+                                .reduce(
+                                  (sum, f) =>
+                                    sum + f.stock.quantity * f.stock.lastPrice,
+                                  0
+                                )
                             )}
                           </td>
                         </tr>
@@ -1018,13 +1189,23 @@ export default function WarehousePage() {
                         {componentStock.map((component) => (
                           <tr
                             key={component.id}
-                            className={`hover:bg-muted/30 transition-colors ${component.stock.quantity <= 0 ? "text-muted-foreground" : ""}`}
+                            className={`hover:bg-muted/30 transition-colors ${
+                              component.stock.quantity <= 0
+                                ? "text-muted-foreground"
+                                : ""
+                            }`}
                           >
                             <td className="py-1.5 px-3">{component.name}</td>
                             <td className="py-1.5 px-3 text-muted-foreground">
                               {component.unit || "-"}
                             </td>
-                            <td className={`py-1.5 px-3 text-right font-mono ${component.stock.quantity < 0 ? "text-destructive" : ""}`}>
+                            <td
+                              className={`py-1.5 px-3 text-right font-mono ${
+                                component.stock.quantity < 0
+                                  ? "text-destructive"
+                                  : ""
+                              }`}
+                            >
                               {component.stock.quantity.toFixed(2)}
                             </td>
                             <td className="py-1.5 px-3 text-right font-mono">
@@ -1033,7 +1214,8 @@ export default function WarehousePage() {
                             <td className="py-1.5 px-3 text-right font-mono font-medium">
                               {formatCurrency(
                                 component.stock.quantity > 0
-                                  ? component.stock.quantity * component.stock.lastPrice
+                                  ? component.stock.quantity *
+                                      component.stock.lastPrice
                                   : 0
                               )}
                             </td>
@@ -1042,7 +1224,9 @@ export default function WarehousePage() {
                                 size="icon"
                                 variant="ghost"
                                 className="h-7 w-7"
-                                onClick={() => openAdjustmentDialog("component", component)}
+                                onClick={() =>
+                                  openAdjustmentDialog("component", component)
+                                }
                                 title="Корректировка остатка"
                               >
                                 <Pencil className="h-3.5 w-3.5" />
@@ -1063,7 +1247,11 @@ export default function WarehousePage() {
                             {formatCurrency(
                               componentStock
                                 .filter((c) => c.stock.quantity > 0)
-                                .reduce((sum, c) => sum + c.stock.quantity * c.stock.lastPrice, 0)
+                                .reduce(
+                                  (sum, c) =>
+                                    sum + c.stock.quantity * c.stock.lastPrice,
+                                  0
+                                )
                             )}
                           </td>
                         </tr>
@@ -1084,30 +1272,51 @@ export default function WarehousePage() {
                     <table className="w-full text-sm">
                       <thead className="bg-muted/50">
                         <tr className="border-b">
-                          <th className="text-left py-2 px-3 font-medium">Дата</th>
-                          <th className="text-left py-2 px-3 font-medium">Позиция</th>
-                          <th className="text-right py-2 px-3 font-medium w-28">Изменение</th>
-                          <th className="text-left py-2 px-3 font-medium">Комментарий</th>
+                          <th className="text-left py-2 px-3 font-medium">
+                            Дата
+                          </th>
+                          <th className="text-left py-2 px-3 font-medium">
+                            Позиция
+                          </th>
+                          <th className="text-right py-2 px-3 font-medium w-28">
+                            Изменение
+                          </th>
+                          <th className="text-left py-2 px-3 font-medium">
+                            Комментарий
+                          </th>
                         </tr>
                       </thead>
                       <tbody className="divide-y">
                         {adjustments.map((adj) => (
-                          <tr key={adj.id} className="hover:bg-muted/30 transition-colors">
+                          <tr
+                            key={adj.id}
+                            className="hover:bg-muted/30 transition-colors"
+                          >
                             <td className="py-1.5 px-3 text-muted-foreground">
                               {format(new Date(adj.date), "dd.MM.yyyy")}
                             </td>
                             <td className="py-1.5 px-3">
                               <div className="flex items-center gap-2">
-                                <Badge variant="outline" className="text-xs py-0">
-                                  {adj.itemType === "fabric" ? "Ткань" : "Компл."}
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs py-0"
+                                >
+                                  {adj.itemType === "fabric"
+                                    ? "Ткань"
+                                    : "Компл."}
                                 </Badge>
                                 {adj.itemName}
                               </div>
                             </td>
-                            <td className={`py-1.5 px-3 text-right font-mono ${
-                              adj.type === "increase" ? "text-green-600" : "text-red-600"
-                            }`}>
-                              {adj.type === "increase" ? "+" : "-"}{parseFloat(adj.quantity).toFixed(2)}
+                            <td
+                              className={`py-1.5 px-3 text-right font-mono ${
+                                adj.type === "increase"
+                                  ? "text-green-600"
+                                  : "text-red-600"
+                              }`}
+                            >
+                              {adj.type === "increase" ? "+" : "-"}
+                              {parseFloat(adj.quantity).toFixed(2)}
                             </td>
                             <td className="py-1.5 px-3 text-muted-foreground">
                               {adj.comment || "-"}
@@ -1252,40 +1461,73 @@ export default function WarehousePage() {
                 <div className="p-3 bg-muted rounded-md">
                   <p className="font-medium">{adjustmentItem.name}</p>
                   <p className="text-sm text-muted-foreground">
-                    Текущий остаток: {adjustmentItem.currentQuantity.toFixed(2)} {adjustmentItem.unit}
+                    Текущий остаток: {adjustmentItem.currentQuantity.toFixed(2)}{" "}
+                    {adjustmentItem.unit}
                   </p>
                 </div>
-                
-                <FormField
-                  control={adjustmentForm.control}
-                  name="newQuantity"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Фактический остаток ({adjustmentItem.unit})</FormLabel>
-                      <FormControl>
-                        <Input 
-                          type="number" 
-                          step="0.01" 
-                          {...field} 
-                          placeholder="Введите фактическое количество"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                      {field.value && (
-                        <p className="text-sm text-muted-foreground">
-                          {(() => {
-                            const diff = parseFloat(field.value) - adjustmentItem.currentQuantity;
-                            if (diff === 0) return "Без изменений";
-                            return diff > 0 
-                              ? <span className="text-green-600">Приход: +{diff.toFixed(2)} {adjustmentItem.unit}</span>
-                              : <span className="text-red-600">Списание: {diff.toFixed(2)} {adjustmentItem.unit}</span>;
-                          })()}
-                        </p>
-                      )}
-                    </FormItem>
-                  )}
-                />
-                
+
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={adjustmentForm.control}
+                    name="newQuantity"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          Фактический остаток ({adjustmentItem.unit})
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            {...field}
+                            placeholder="Введите количество"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                        {field.value && (
+                          <p className="text-sm text-muted-foreground">
+                            {(() => {
+                              const diff =
+                                parseFloat(field.value) -
+                                adjustmentItem.currentQuantity;
+                              if (diff === 0) return "Без изменений";
+                              return diff > 0 ? (
+                                <span className="text-green-600">
+                                  Приход: +{diff.toFixed(2)}{" "}
+                                  {adjustmentItem.unit}
+                                </span>
+                              ) : (
+                                <span className="text-red-600">
+                                  Списание: {diff.toFixed(2)}{" "}
+                                  {adjustmentItem.unit}
+                                </span>
+                              );
+                            })()}
+                          </p>
+                        )}
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={adjustmentForm.control}
+                    name="price"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Цена за единицу</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            {...field}
+                            placeholder="Введите цену"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
                 <FormField
                   control={adjustmentForm.control}
                   name="comment"
@@ -1293,8 +1535,8 @@ export default function WarehousePage() {
                     <FormItem>
                       <FormLabel>Комментарий</FormLabel>
                       <FormControl>
-                        <Textarea 
-                          {...field} 
+                        <Textarea
+                          {...field}
                           placeholder="Причина корректировки (инвентаризация, пересчёт...)"
                         />
                       </FormControl>
@@ -1302,7 +1544,7 @@ export default function WarehousePage() {
                     </FormItem>
                   )}
                 />
-                
+
                 <DialogFooter>
                   <Button
                     type="button"

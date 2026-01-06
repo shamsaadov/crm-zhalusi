@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
   Popover,
@@ -23,7 +24,7 @@ import {
 } from "@/components/ui/popover";
 import { X, Info } from "lucide-react";
 import { formatCurrency } from "@/components/status-badge";
-import { CONTROL_SIDES, type Fabric, type Color } from "@shared/schema";
+import { CONTROL_SIDES, type Fabric } from "@shared/schema";
 import type { OrderFormValues } from "./schemas";
 import type { SystemWithComponents, FabricWithStock } from "./types";
 
@@ -32,7 +33,6 @@ interface SashFieldsProps {
   form: UseFormReturn<OrderFormValues>;
   systems: SystemWithComponents[];
   fabrics: Fabric[];
-  colors: Color[];
   fabricStock: FabricWithStock[];
   fieldsLength: number;
   fieldId: string;
@@ -44,7 +44,6 @@ export function SashFields({
   form,
   systems,
   fabrics,
-  colors,
   fabricStock,
   fieldsLength,
   fieldId,
@@ -57,21 +56,34 @@ export function SashFields({
   const currentHeight = form.watch(`sashes.${index}.height`);
   const currentFabricId = form.watch(`sashes.${index}.fabricId`);
   const currentSashPrice = form.watch(`sashes.${index}.sashPrice`);
+  const currentSashCost = form.watch(`sashes.${index}.sashCost`);
   const currentFabric = fabrics.find((f) => f.id === currentFabricId);
   const selectedFabricInfo = fabricStock.find((f) => f.id === currentFabricId);
 
   const widthM = parseFloat(currentWidth || "0") / 1000;
   const heightM = parseFloat(currentHeight || "0") / 1000;
   const sashPriceNum = parseFloat(currentSashPrice || "0");
+  const sashCostNum = parseFloat(currentSashCost || "0");
+  const sashCoefficient = sashCostNum > 0 ? sashPriceNum / sashCostNum : 0;
 
   return (
     <div
       key={fieldId}
       className="flex items-end gap-2 p-3 border rounded-lg bg-muted/30"
     >
-      <span className="text-sm font-medium text-muted-foreground pb-2 min-w-[24px]">
-        {index + 1}.
-      </span>
+      <div className="flex flex-col items-center gap-1 pb-2 min-w-[50px]">
+        <span className="text-sm font-medium text-muted-foreground">
+          {index + 1}.
+        </span>
+        {sashCoefficient > 0 && (
+          <Badge 
+            variant={sashCoefficient < 1 ? "destructive" : sashCoefficient < 1.5 ? "secondary" : "default"}
+            className="text-[10px] px-1 py-0 h-5"
+          >
+            К: {sashCoefficient.toFixed(2)}×
+          </Badge>
+        )}
+      </div>
       <FormField
         control={form.control}
         name={`sashes.${index}.width`}
@@ -105,6 +117,26 @@ export function SashFields({
                 className="h-9"
                 {...field}
                 data-testid={`input-sash-height-${index}`}
+              />
+            </FormControl>
+          </FormItem>
+        )}
+      />
+      <FormField
+        control={form.control}
+        name={`sashes.${index}.quantity`}
+        render={({ field }) => (
+          <FormItem className="flex-1 min-w-[60px] max-w-[80px]">
+            <FormLabel className="text-xs">Кол-во</FormLabel>
+            <FormControl>
+              <Input
+                type="number"
+                step="1"
+                min="1"
+                placeholder="шт"
+                className="h-9"
+                {...field}
+                data-testid={`input-sash-quantity-${index}`}
               />
             </FormControl>
           </FormItem>
@@ -199,27 +231,6 @@ export function SashFields({
       />
       <FormField
         control={form.control}
-        name={`sashes.${index}.systemColorId`}
-        render={({ field }) => (
-          <FormItem className="flex-1 min-w-[100px]">
-            <FormLabel className="text-xs">Цвет сист.</FormLabel>
-            <SearchableSelect
-              options={colors.map((color) => ({
-                value: color.id,
-                label: color.name,
-              }))}
-              value={field.value}
-              onValueChange={field.onChange}
-              placeholder="Цвет"
-              searchPlaceholder="Поиск цвета..."
-              emptyText="Цвет не найден"
-              className="h-9"
-            />
-          </FormItem>
-        )}
-      />
-      <FormField
-        control={form.control}
         name={`sashes.${index}.fabricId`}
         render={({ field }) => (
           <FormItem className="flex-1 min-w-[120px]">
@@ -275,27 +286,6 @@ export function SashFields({
               placeholder="Ткань"
               searchPlaceholder="Поиск ткани..."
               emptyText="Ткань не найдена"
-              className="h-9"
-            />
-          </FormItem>
-        )}
-      />
-      <FormField
-        control={form.control}
-        name={`sashes.${index}.fabricColorId`}
-        render={({ field }) => (
-          <FormItem className="flex-1 min-w-[100px]">
-            <FormLabel className="text-xs">Цвет ткани</FormLabel>
-            <SearchableSelect
-              options={colors.map((color) => ({
-                value: color.id,
-                label: color.name,
-              }))}
-              value={field.value}
-              onValueChange={field.onChange}
-              placeholder="Цвет"
-              searchPlaceholder="Поиск цвета..."
-              emptyText="Цвет не найден"
               className="h-9"
             />
           </FormItem>

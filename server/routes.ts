@@ -1083,6 +1083,23 @@ export async function registerRoutes(
           }
         }
       }
+
+      // Check direct component (для заказов товара)
+      if (sash.componentId && !sash.systemId) {
+        const allComponents = await storage.getComponents(userId);
+        const component = allComponents.find((c) => c.id === sash.componentId);
+        if (component) {
+          const componentQty = quantity;
+          
+          if (!requiredComponents[sash.componentId]) {
+            requiredComponents[sash.componentId] = {
+              qty: 0,
+              name: component.name,
+            };
+          }
+          requiredComponents[sash.componentId].qty += componentQty;
+        }
+      }
     }
 
     // Validate fabric stock
@@ -1146,24 +1163,10 @@ export async function registerRoutes(
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
-        const { sashes, skipStockValidation, ...orderData } = req.body;
+        const { sashes, skipStockValidation, isPaid, ...orderData } = req.body;
 
-        // Validate stock availability for sash orders
-        if (
-          sashes &&
-          Array.isArray(sashes) &&
-          sashes.length > 0 &&
-          !skipStockValidation
-        ) {
-          const validation = await validateSashOrderStock(req.userId!, sashes);
-          if (!validation.valid) {
-            return res.status(400).json({
-              message: "Недостаточно материалов на складе",
-              errors: validation.errors,
-              stockError: true,
-            });
-          }
-        }
+        // Проверка остатков убрана - теперь можно создавать заказ без материалов
+        // Проверка будет только при смене статуса на "Готов"
 
         const orderNumber = await storage.getNextOrderNumber(req.userId!);
 
@@ -1182,6 +1185,23 @@ export async function registerRoutes(
           }
         }
 
+        // Create finance income operation if order is paid
+        if (isPaid && orderData.salePrice && parseFloat(orderData.salePrice) > 0) {
+          // Get default cashbox (first one)
+          const cashboxes = await storage.getCashboxes(req.userId!);
+          if (cashboxes.length > 0) {
+            await storage.createFinanceOperation({
+              type: "income",
+              amount: orderData.salePrice,
+              date: orderData.date,
+              cashboxId: cashboxes[0].id,
+              dealerId: orderData.dealerId && orderData.dealerId.trim() !== "" ? orderData.dealerId : null,
+              comment: `Оплата заказа №${orderNumber}`,
+              userId: req.userId!,
+            });
+          }
+        }
+
         res.json(order);
       } catch (error) {
         console.error("Create order error:", error);
@@ -1196,27 +1216,10 @@ export async function registerRoutes(
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
-        const { components, skipStockValidation, ...orderData } = req.body;
+        const { components, skipStockValidation, isPaid, ...orderData } = req.body;
 
-        // Validate stock availability for product orders
-        if (
-          components &&
-          Array.isArray(components) &&
-          components.length > 0 &&
-          !skipStockValidation
-        ) {
-          const validation = await validateProductOrderStock(
-            req.userId!,
-            components
-          );
-          if (!validation.valid) {
-            return res.status(400).json({
-              message: "Недостаточно товара на складе",
-              errors: validation.errors,
-              stockError: true,
-            });
-          }
-        }
+        // Проверка остатков убрана - теперь можно создавать заказ товара без материалов
+        // Проверка будет только при смене статуса на "Готов"
 
         const orderNumber = await storage.getNextOrderNumber(req.userId!);
 
@@ -1258,6 +1261,23 @@ export async function registerRoutes(
           }
         }
 
+        // Create finance income operation if order is paid
+        if (isPaid && orderData.salePrice && parseFloat(orderData.salePrice) > 0) {
+          // Get default cashbox (first one)
+          const cashboxes = await storage.getCashboxes(req.userId!);
+          if (cashboxes.length > 0) {
+            await storage.createFinanceOperation({
+              type: "income",
+              amount: orderData.salePrice,
+              date: orderData.date,
+              cashboxId: cashboxes[0].id,
+              dealerId: orderData.dealerId && orderData.dealerId.trim() !== "" ? orderData.dealerId : null,
+              comment: `Оплата заказа №${orderNumber}`,
+              userId: req.userId!,
+            });
+          }
+        }
+
         res.json(order);
       } catch (error) {
         console.error("Create product order error:", error);
@@ -1273,22 +1293,8 @@ export async function registerRoutes(
       try {
         const { sashes, skipStockValidation, ...orderData } = req.body;
 
-        // Validate stock availability if sashes are being updated
-        if (
-          sashes &&
-          Array.isArray(sashes) &&
-          sashes.length > 0 &&
-          !skipStockValidation
-        ) {
-          const validation = await validateSashOrderStock(req.userId!, sashes);
-          if (!validation.valid) {
-            return res.status(400).json({
-              message: "Недостаточно материалов на складе",
-              errors: validation.errors,
-              stockError: true,
-            });
-          }
-        }
+        // Проверка остатков убрана - теперь можно редактировать заказ без материалов
+        // Проверка будет только при смене статуса на "Готов"
 
         const order = await storage.updateOrder(req.params.id, orderData);
 
@@ -1352,6 +1358,16 @@ export async function registerRoutes(
           if (existingWriteoffs.length === 0) {
             // Получаем створки заказа
             const sashes = await storage.getOrderSashes(req.params.id);
+            
+            // ПРОВЕРКА ОСТАТКОВ перед изменением статуса на "Готов"
+            const validation = await validateSashOrderStock(req.userId!, sashes);
+            if (!validation.valid) {
+              return res.status(400).json({
+                message: "Невозможно изменить статус на 'Готов'. Недостаточно материалов на складе",
+                errors: validation.errors,
+                stockError: true,
+              });
+            }
             console.log(`[Order Status] Found ${sashes.length} sashes`);
 
             const allFabrics = await storage.getFabrics(req.userId!);
@@ -1972,6 +1988,49 @@ export async function registerRoutes(
     }
   );
 
+  app.put(
+    "/api/warehouse/:id",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const { items, ...receiptData } = req.body;
+
+        let total = 0;
+        if (items && Array.isArray(items)) {
+          total = items.reduce(
+            (sum: number, item: any) => sum + parseFloat(item.total || "0"),
+            0
+          );
+        }
+
+        const receipt = await storage.updateWarehouseReceipt(req.params.id, {
+          ...receiptData,
+          total: total.toString(),
+        });
+
+        if (!receipt) {
+          return res.status(404).json({ message: "Поступление не найдено" });
+        }
+
+        // Delete old items and create new ones
+        await storage.deleteWarehouseReceiptItemsByReceiptId(receipt.id);
+        if (items && Array.isArray(items)) {
+          for (const item of items) {
+            await storage.createWarehouseReceiptItem({
+              ...item,
+              receiptId: receipt.id,
+            });
+          }
+        }
+
+        res.json(receipt);
+      } catch (error) {
+        console.error("Update warehouse error:", error);
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
   app.delete(
     "/api/warehouse/:id",
     authMiddleware,
@@ -2237,18 +2296,20 @@ export async function registerRoutes(
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
-        const { itemType, itemId, newQuantity, currentQuantity, comment } =
+        const { itemType, itemId, newQuantity, currentQuantity, price, comment } =
           req.body;
 
         const newQty = parseFloat(newQuantity);
         const currentQty = parseFloat(currentQuantity.toString());
         const difference = newQty - currentQty;
+        const itemPrice = parseFloat(price || "0");
 
         if (difference === 0) {
           return res.json({ success: true, message: "Без изменений" });
         }
 
         const today = new Date().toISOString().split("T")[0];
+        const total = (Math.abs(difference) * itemPrice).toFixed(2);
 
         if (difference > 0) {
           // Need to add stock - create a receipt without supplier (adjustment)
@@ -2256,7 +2317,7 @@ export async function registerRoutes(
           const receipt = await storage.createWarehouseReceipt({
             date: today,
             supplierId: null,
-            total: "0",
+            total: total,
             comment:
               comment ||
               `Инвентаризация: корректировка +${difference.toFixed(2)}`,
@@ -2269,8 +2330,8 @@ export async function registerRoutes(
             fabricId: itemType === "fabric" ? itemId : null,
             componentId: itemType === "component" ? itemId : null,
             quantity: difference.toFixed(4),
-            price: "0",
-            total: "0",
+            price: itemPrice.toFixed(2),
+            total: total,
           });
         } else {
           // Need to reduce stock - create a writeoff
@@ -2280,8 +2341,8 @@ export async function registerRoutes(
             fabricId: itemType === "fabric" ? itemId : null,
             componentId: itemType === "component" ? itemId : null,
             quantity: Math.abs(difference).toFixed(4),
-            price: "0",
-            total: "0",
+            price: itemPrice.toFixed(2),
+            total: total,
             date: today,
             userId: req.userId!,
             comment:
