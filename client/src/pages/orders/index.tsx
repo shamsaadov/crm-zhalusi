@@ -19,11 +19,7 @@ import { Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
 import { apiRequest, queryClient, ApiError } from "@/lib/queryClient";
-import {
-  ORDER_STATUSES,
-  type Dealer,
-  type Fabric,
-} from "@shared/schema";
+import { ORDER_STATUSES, type Dealer, type Fabric } from "@shared/schema";
 import { format } from "date-fns";
 
 import type {
@@ -73,6 +69,9 @@ export default function OrdersPage() {
   const [showCostCalculation, setShowCostCalculation] = useState(false);
   const [costCalculationDetails, setCostCalculationDetails] =
     useState<CostCalculationDetails | null>(null);
+  const [calculatingSashes, setCalculatingSashes] = useState<Set<number>>(
+    new Set()
+  );
 
   // Data fetching
   const {
@@ -312,14 +311,17 @@ export default function OrdersPage() {
   });
 
   // Handlers
-  const handleSashRemove = useCallback((index: number) => {
-    // Очищаем состояние калькулятора для удалённой створки и всех последующих
-    // (т.к. индексы сдвигаются после удаления)
-    const sashes = form.getValues("sashes");
-    for (let i = index; i < sashes.length; i++) {
-      coefficientCalculator.cleanupSash(`sash-${i}`);
-    }
-  }, [form, coefficientCalculator]);
+  const handleSashRemove = useCallback(
+    (index: number) => {
+      // Очищаем состояние калькулятора для удалённой створки и всех последующих
+      // (т.к. индексы сдвигаются после удаления)
+      const sashes = form.getValues("sashes");
+      for (let i = index; i < sashes.length; i++) {
+        coefficientCalculator.cleanupSash(`sash-${i}`);
+      }
+    },
+    [form, coefficientCalculator]
+  );
 
   const onSubmit = (data: OrderFormValues) => {
     // Проверка на отсутствующие коэффициенты (только если система вообще не найдена)
@@ -327,7 +329,8 @@ export default function OrdersPage() {
       const width = parseFloat(sash.width || "0");
       const height = parseFloat(sash.height || "0");
       const sashPrice = parseFloat(sash.sashPrice || "0");
-      const hasAllData = width > 0 && height > 0 && sash.systemId && sash.fabricId;
+      const hasAllData =
+        width > 0 && height > 0 && sash.systemId && sash.fabricId;
       return hasAllData && sashPrice === 0;
     });
 
@@ -344,17 +347,20 @@ export default function OrdersPage() {
     // Размножаем створки с quantity > 1
     const expandedSashes = data.sashes.flatMap((sash) => {
       const quantity = parseInt(sash.quantity || "1");
-      // Создаем массив створок без поля quantity и coefficient (не нужны в БД)
-      return Array(quantity).fill(null).map(() => ({
-        width: sash.width,
-        height: sash.height,
-        systemId: sash.systemId,
-        controlSide: sash.controlSide,
-        fabricId: sash.fabricId,
-        sashPrice: sash.sashPrice,
-        sashCost: sash.sashCost,
-        // coefficient не отправляем - он нужен только для UI
-      }));
+      // Создаем массив створок (quantity и coefficient не нужны в БД, но quantity нужен для типа)
+      return Array(quantity)
+        .fill(null)
+        .map(() => ({
+          width: sash.width,
+          height: sash.height,
+          quantity: "1", // Каждая развернутая створка = 1 шт
+          systemId: sash.systemId,
+          controlSide: sash.controlSide,
+          fabricId: sash.fabricId,
+          sashPrice: sash.sashPrice,
+          sashCost: sash.sashCost,
+          // coefficient не отправляем - он нужен только для UI
+        }));
     });
 
     const dataToSubmit = {
@@ -393,12 +399,12 @@ export default function OrdersPage() {
       });
       const fullOrder: OrderWithRelations = await response.json();
       setEditingOrder(fullOrder);
-      
+
       // Группируем одинаковые створки и подсчитываем quantity
       const groupedSashes = (fullOrder.sashes || []).reduce((acc, s) => {
         const key = `${s.width}_${s.height}_${s.systemId}_${s.controlSide}_${s.fabricId}_${s.sashPrice}_${s.sashCost}`;
-        const existing = acc.find(item => item.key === key);
-        
+        const existing = acc.find((item) => item.key === key);
+
         if (existing) {
           existing.quantity++;
         } else {
@@ -417,7 +423,7 @@ export default function OrdersPage() {
           });
         }
         return acc;
-      }, [] as Array<{key: string; quantity: number; width: string; height: string; systemId: string; controlSide: string; fabricId: string; sashPrice: string; sashCost: string; coefficient: string}>);
+      }, [] as Array<{ key: string; quantity: number; width: string; height: string; systemId: string; controlSide: string; fabricId: string; sashPrice: string; sashCost: string; coefficient: string; isCalculating: boolean }>);
 
       form.reset({
         date: fullOrder.date,
@@ -426,7 +432,7 @@ export default function OrdersPage() {
         salePrice: fullOrder.salePrice?.toString() || "",
         costPrice: fullOrder.costPrice?.toString() || "",
         comment: fullOrder.comment || "",
-        sashes: groupedSashes.map(({key, ...sash}) => ({
+        sashes: groupedSashes.map(({ key, ...sash }) => ({
           ...sash,
           quantity: sash.quantity.toString(),
           isCalculating: false,
@@ -496,37 +502,52 @@ export default function OrdersPage() {
   // Auto-calculate cost price effect
   useEffect(() => {
     const subscription = form.watch((value, { name }) => {
-      if (
-        name &&
+      if (!name) return;
+
+      // Только реагируем на изменения связанные с sashes
+      const isRelevantChange =
         name.includes("sashes") &&
         (name.includes("width") ||
           name.includes("height") ||
           name.includes("fabricId") ||
           name.includes("systemId") ||
-          name.includes("quantity"))
-      ) {
-        const sashes = value.sashes || [];
-        const { totalCost, sashDetails } = calculateCostPrice(
-          sashes as {
-            width?: string;
-            height?: string;
-            fabricId?: string;
-            systemId?: string;
-          }[],
-          (i) => form.getValues(`sashes.${i}`),
-          fabricStock,
-          componentStock,
-          systems
-        );
+          name.includes("quantity"));
 
-        setCostCalculationDetails({ totalCost, sashDetails });
+      if (!isRelevantChange) return;
 
-        const currentCostPrice = parseFloat(value.costPrice || "0");
-        if (totalCost > 0 && Math.abs(totalCost - currentCostPrice) > 0.01) {
-          form.setValue("costPrice", totalCost.toFixed(2), {
-            shouldValidate: false,
-          });
-        }
+      const sashes = value.sashes || [];
+
+      // Используем данные напрямую из value, а не из form.getValues
+      const { totalCost, sashDetails } = calculateCostPrice(
+        sashes as {
+          width?: string;
+          height?: string;
+          fabricId?: string;
+          systemId?: string;
+          quantity?: string;
+        }[],
+        (i) =>
+          sashes[i] as
+            | {
+                width?: string;
+                height?: string;
+                fabricId?: string;
+                systemId?: string;
+                quantity?: string;
+              }
+            | undefined,
+        fabricStock,
+        componentStock,
+        systems
+      );
+
+      setCostCalculationDetails({ totalCost, sashDetails });
+
+      const currentCostPrice = parseFloat(value.costPrice || "0");
+      if (totalCost > 0 && Math.abs(totalCost - currentCostPrice) > 0.01) {
+        form.setValue("costPrice", totalCost.toFixed(2), {
+          shouldValidate: false,
+        });
       }
     });
 
@@ -568,65 +589,84 @@ export default function OrdersPage() {
   // Рассчитывать только для конкретной изменённой створки, а не для всех
   useEffect(() => {
     const subscription = form.watch((value, { name }) => {
+      console.log("[DEBUG] watch triggered, name:", name);
+
       if (!name || !name.includes("sashes")) return;
-      
+
       // Проверяем, что изменилось одно из полей, влияющих на расчёт
-      const isRelevantField = 
+      const isRelevantField =
         name.includes("width") ||
         name.includes("height") ||
         name.includes("systemId") ||
         name.includes("fabricId");
-      
-      if (!isRelevantField) return;
+
+      if (!isRelevantField) {
+        console.log("[DEBUG] not relevant field:", name);
+        return;
+      }
 
       // Извлекаем индекс створки из имени поля (формат: "sashes.0.width")
       const match = name.match(/^sashes\.(\d+)\./);
-      if (!match) return;
-      
+      if (!match) {
+        console.log("[DEBUG] no match for sash index");
+        return;
+      }
+
       const index = parseInt(match[1], 10);
       const sashes = value.sashes || [];
-      const sash = sashes[index];
-      
-      if (!sash) return;
+      const rawSash = sashes[index];
+
+      if (!rawSash) {
+        console.log("[DEBUG] no sash at index", index);
+        return;
+      }
+
+      // Клонируем данные створки чтобы избежать работы с Proxy
+      const sash = {
+        width: rawSash.width,
+        height: rawSash.height,
+        systemId: rawSash.systemId,
+        fabricId: rawSash.fabricId,
+        quantity: rawSash.quantity,
+      };
 
       const width = parseFloat(sash.width || "0");
       const height = parseFloat(sash.height || "0");
       const systemId = sash.systemId;
       const fabricId = sash.fabricId;
 
-      // Рассчитываем себестоимость створки (синхронно)
-      if (width > 0 && height > 0) {
-        const sashCostData = calculateCostPrice(
-          [sash],
-          () => sash,
-          fabricStock,
-          componentStock,
-          systems
-        );
-        const sashCost = sashCostData.totalCost;
-
-        if (sashCost > 0) {
-          form.setValue(
-            `sashes.${index}.sashCost`,
-            sashCost.toFixed(2),
-            { shouldValidate: false }
-          );
-        }
-      }
+      console.log("[DEBUG] parsed values:", {
+        width,
+        height,
+        systemId,
+        fabricId,
+      });
 
       // Рассчитываем коэффициент (асинхронно с debounce)
       if (width > 0 && height > 0 && systemId && fabricId) {
         const system = systems.find((s) => s.id === systemId);
         const fabric = fabrics.find((f) => f.id === fabricId);
 
+        console.log(
+          "[DEBUG] found system:",
+          system?.name,
+          "systemKey:",
+          system?.systemKey
+        );
+        console.log(
+          "[DEBUG] found fabric:",
+          fabric?.name,
+          "category:",
+          fabric?.category
+        );
+
         if (system && system.systemKey && fabric && fabric.category) {
+          console.log("[DEBUG] calling coefficientCalculator.calculate");
           // Используем уникальный sashId для отдельного debounce каждой створки
           const sashId = `sash-${index}`;
 
-          // Устанавливаем состояние загрузки
-          form.setValue(`sashes.${index}.isCalculating`, true, {
-            shouldValidate: false,
-          });
+          // Устанавливаем состояние загрузки (через React state, не через form)
+          setCalculatingSashes((prev) => new Set(prev).add(index));
 
           coefficientCalculator.calculate(
             {
@@ -655,15 +695,15 @@ export default function OrdersPage() {
               );
 
               // Сохраняем цену
-              form.setValue(
-                `sashes.${index}.sashPrice`,
-                sashPrice.toFixed(2),
-                { shouldValidate: false }
-              );
+              form.setValue(`sashes.${index}.sashPrice`, sashPrice.toFixed(2), {
+                shouldValidate: false,
+              });
 
               // Убираем состояние загрузки
-              form.setValue(`sashes.${index}.isCalculating`, false, {
-                shouldValidate: false,
+              setCalculatingSashes((prev) => {
+                const next = new Set(prev);
+                next.delete(index);
+                return next;
               });
 
               // Показываем предупреждение только один раз при fallback
@@ -692,8 +732,10 @@ export default function OrdersPage() {
 
               // Ошибка при расчете
               console.error("Ошибка при расчете коэффициента:", error);
-              form.setValue(`sashes.${index}.isCalculating`, false, {
-                shouldValidate: false,
+              setCalculatingSashes((prev) => {
+                const next = new Set(prev);
+                next.delete(index);
+                return next;
               });
               form.setValue(`sashes.${index}.sashPrice`, "0", {
                 shouldValidate: false,
@@ -713,7 +755,14 @@ export default function OrdersPage() {
       subscription.unsubscribe();
       coefficientCalculator.cleanup();
     };
-  }, [form, systems, fabrics, fabricStock, componentStock, coefficientCalculator]);
+  }, [
+    form,
+    systems,
+    fabrics,
+    fabricStock,
+    componentStock,
+    coefficientCalculator,
+  ]);
 
   // Filtering
   const filteredOrders = orders.filter((order) => {
@@ -789,6 +838,7 @@ export default function OrdersPage() {
                       setShowCostCalculation(true);
                     }}
                     onSashRemove={handleSashRemove}
+                    calculatingSashes={calculatingSashes}
                   />
                 </TabsContent>
 
@@ -824,6 +874,7 @@ export default function OrdersPage() {
                   setShowCostCalculation(true);
                 }}
                 onSashRemove={handleSashRemove}
+                calculatingSashes={calculatingSashes}
               />
             )}
           </DialogContent>

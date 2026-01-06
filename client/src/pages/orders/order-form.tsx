@@ -49,6 +49,7 @@ interface OrderFormProps {
   onCancel: () => void;
   onShowCostCalculation: (details: CostCalculationDetails) => void;
   onSashRemove?: (index: number) => void;
+  calculatingSashes?: Set<number>;
 }
 
 export function OrderForm({
@@ -65,6 +66,7 @@ export function OrderForm({
   onCancel,
   onShowCostCalculation,
   onSashRemove,
+  calculatingSashes,
 }: OrderFormProps) {
   const { fields, append, remove } = fieldArray;
   const [isSalePriceEditable, setIsSalePriceEditable] = useState(false);
@@ -219,6 +221,7 @@ export function OrderForm({
               fieldsLength={fields.length}
               fieldId={field.id}
               onRemove={handleSashRemove}
+              isCalculating={calculatingSashes?.has(index) || false}
             />
           ))}
 
@@ -257,9 +260,7 @@ export function OrderForm({
               // Рассчитываем сумму коэффициентов из файла по всем створкам (с учетом количества)
               const sashes = form.watch("sashes") || [];
               const totalCoefficient = sashes.reduce((sum, sash) => {
-                const coefficient = parseFloat(sash.coefficient || "0");
-                const quantity = parseFloat(sash.quantity || "1");
-                return sum + coefficient * quantity;
+                return parseFloat(sash.coefficient || "0");
               }, 0);
 
               return (
@@ -314,15 +315,6 @@ export function OrderForm({
                         ? "Введите свою цену (скидка/наценка)"
                         : "Сумма коэффициентов × множитель"}
                     </p>
-                    {totalCoefficient > 0 && (
-                      <Badge
-                        variant="default"
-                        className="text-xs font-semibold"
-                        title="Сумма всех коэффициентов из файла coefficients.json (с учетом количества створок)"
-                      >
-                        Σ К: {totalCoefficient.toFixed(2)}
-                      </Badge>
-                    )}
                   </div>
                   <FormMessage />
                 </FormItem>

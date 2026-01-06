@@ -37,6 +37,7 @@ interface SashFieldsProps {
   fieldsLength: number;
   fieldId: string;
   onRemove: (index: number) => void;
+  isCalculating?: boolean;
 }
 
 export function SashFields({
@@ -48,6 +49,7 @@ export function SashFields({
   fieldsLength,
   fieldId,
   onRemove,
+  isCalculating = false,
 }: SashFieldsProps) {
   const selectedSystem = systems.find(
     (s) => s.id === form.watch(`sashes.${index}.systemId`)
@@ -58,7 +60,7 @@ export function SashFields({
   const currentSashPrice = form.watch(`sashes.${index}.sashPrice`);
   const currentSashCost = form.watch(`sashes.${index}.sashCost`);
   const currentCoefficient = form.watch(`sashes.${index}.coefficient`); // Коэффициент из файла
-  const isCalculating = form.watch(`sashes.${index}.isCalculating`); // Состояние загрузки
+  // isCalculating теперь передаётся как prop
   const currentFabric = fabrics.find((f) => f.id === currentFabricId);
   const selectedFabricInfo = fabricStock.find((f) => f.id === currentFabricId);
 

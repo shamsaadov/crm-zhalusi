@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useMemo } from "react";
 
 interface CoefficientCache {
   [key: string]: {
@@ -19,6 +19,7 @@ interface CalculateParams {
 interface SashState {
   timeout: NodeJS.Timeout | null;
   abortController: AbortController | null;
+  lastParams: string | null; // Для предотвращения дублирования запросов с одинаковыми параметрами
 }
 
 export function useCoefficientCalculator() {
@@ -31,7 +32,7 @@ export function useCoefficientCalculator() {
 
   const getSashState = (sashId: string): SashState => {
     if (!sashStatesRef.current.has(sashId)) {
-      sashStatesRef.current.set(sashId, { timeout: null, abortController: null });
+      sashStatesRef.current.set(sashId, { timeout: null, abortController: null, lastParams: null });
     }
     return sashStatesRef.current.get(sashId)!;
   };
@@ -48,31 +49,52 @@ export function useCoefficientCalculator() {
       debounceMs: number = 500,
       sashId: string = "default" // Идентификатор створки для отдельного debounce
     ) => {
+      console.log("[CALC] calculate called with sashId:", sashId, "params:", params, "debounceMs:", debounceMs);
+      
       // Проверяем кэш
       const cacheKey = getCacheKey(params);
       if (cacheRef.current[cacheKey]) {
+        console.log("[CALC] cache hit for", cacheKey);
         onSuccess(cacheRef.current[cacheKey]);
         return;
       }
 
       const sashState = getSashState(sashId);
+      console.log("[CALC] sashState:", sashState);
 
-      // Отменяем предыдущий запрос для этой створки
+      // Если таймаут уже установлен с такими же параметрами - не перезапускаем
+      if (sashState.timeout && sashState.lastParams === cacheKey) {
+        console.log("[CALC] same params, keeping existing timeout for", sashId);
+        return;
+      }
+
+      // Отменяем предыдущий запрос для этой створки (только если параметры изменились)
       if (sashState.abortController) {
+        console.log("[CALC] aborting previous request for", sashId);
         sashState.abortController.abort();
       }
 
       // Очищаем предыдущий таймаут для этой створки
       if (sashState.timeout) {
+        console.log("[CALC] clearing previous timeout for", sashId);
         clearTimeout(sashState.timeout);
       }
+      
+      // Сохраняем текущие параметры
+      sashState.lastParams = cacheKey;
 
       // Создаем новый AbortController для этой створки
       sashState.abortController = new AbortController();
       const signal = sashState.abortController.signal;
 
+      console.log("[CALC] setting timeout for", debounceMs, "ms");
       // Устанавливаем debounce
       sashState.timeout = setTimeout(async () => {
+        console.log("[CALC] timeout fired, sending request...");
+        // Очищаем таймаут и lastParams после срабатывания
+        sashState.timeout = null;
+        sashState.lastParams = null;
+        
         try {
           const response = await fetch("/api/coefficients/calculate", {
             method: "POST",
@@ -120,9 +142,11 @@ export function useCoefficientCalculator() {
   }, []);
 
   const cleanup = useCallback(() => {
+    console.log("[CALC] cleanup called!");
     // Очищаем все состояния створок
     sashStatesRef.current.forEach((state) => {
       if (state.timeout) {
+        console.log("[CALC] cleanup: clearing timeout");
         clearTimeout(state.timeout);
       }
       if (state.abortController) {
@@ -145,11 +169,12 @@ export function useCoefficientCalculator() {
     }
   }, []);
 
-  return {
+  // Мемоизируем возвращаемый объект, чтобы он не менялся при ре-рендерах
+  return useMemo(() => ({
     calculate,
     clearCache,
     cleanup,
     cleanupSash,
-  };
+  }), [calculate, clearCache, cleanup, cleanupSash]);
 }
 
