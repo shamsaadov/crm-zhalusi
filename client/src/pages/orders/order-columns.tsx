@@ -11,15 +11,15 @@ import {
   formatCurrency,
   BalanceBadge,
 } from "@/components/status-badge";
-import { Eye, Edit, FileText, Trash2 } from "lucide-react";
+import { ClipboardList, Edit, FileText, Trash2 } from "lucide-react";
 import { ORDER_STATUSES, type OrderStatus } from "@shared/schema";
 import { format } from "date-fns";
 import type { OrderWithRelations } from "./types";
 
 interface ColumnActions {
-  onView: (order: OrderWithRelations) => void;
   onEdit: (order: OrderWithRelations) => void;
-  onPrint: (order: OrderWithRelations) => void;
+  onWorkshopPrint: (order: OrderWithRelations) => void | Promise<void>;
+  onCustomerPrint: (order: OrderWithRelations) => void | Promise<void>;
   onDelete: (order: OrderWithRelations) => void;
   onStatusChange: (id: string, status: string) => void;
 }
@@ -117,10 +117,18 @@ export function getOrderColumns(actions: ColumnActions) {
           <Button
             size="icon"
             variant="ghost"
-            onClick={() => actions.onView(order)}
-            data-testid={`button-view-${order.id}`}
+            onClick={() => actions.onWorkshopPrint(order)}
+            data-testid={`button-workshop-invoice-${order.id}`}
           >
-            <Eye className="h-4 w-4" />
+            <ClipboardList className="h-4 w-4" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => actions.onCustomerPrint(order)}
+            data-testid={`button-customer-invoice-${order.id}`}
+          >
+            <FileText className="h-4 w-4" />
           </Button>
           <Button
             size="icon"
@@ -129,14 +137,6 @@ export function getOrderColumns(actions: ColumnActions) {
             data-testid={`button-edit-${order.id}`}
           >
             <Edit className="h-4 w-4" />
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={() => actions.onPrint(order)}
-            data-testid={`button-invoice-${order.id}`}
-          >
-            <FileText className="h-4 w-4" />
           </Button>
           <Button
             size="icon"
@@ -151,6 +151,4 @@ export function getOrderColumns(actions: ColumnActions) {
     },
   ];
 }
-
-
 

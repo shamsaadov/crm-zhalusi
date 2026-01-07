@@ -6,3 +6,4 @@ ALTER TABLE "warehouse_writeoffs" ADD COLUMN "comment" text;
 
 
 
+

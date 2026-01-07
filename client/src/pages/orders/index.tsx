@@ -46,7 +46,11 @@ import { DeleteOrderDialog } from "./delete-order-dialog";
 import { CostCalculationDialog } from "./cost-calculation-dialog";
 import { OrderForm } from "./order-form";
 import { ProductForm } from "./product-form";
-import { calculateCostPrice, printInvoice } from "./utils";
+import {
+  calculateCostPrice,
+  printInvoice,
+  printCustomerInvoice,
+} from "./utils";
 
 export default function OrdersPage() {
   const { toast } = useToast();
@@ -896,9 +900,9 @@ export default function OrdersPage() {
   }, [search]);
 
   const columns = getOrderColumns({
-    onView: openViewDialog,
     onEdit: openEditDialog,
-    onPrint: printInvoice,
+    onWorkshopPrint: printInvoice,
+    onCustomerPrint: printCustomerInvoice,
     onDelete: openDeleteDialog,
     onStatusChange: (id, status) => updateStatusMutation.mutate({ id, status }),
   });

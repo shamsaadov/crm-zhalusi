@@ -3,3 +3,4 @@ ALTER TABLE order_sashes ADD COLUMN IF NOT EXISTS component_id VARCHAR REFERENCE
 
 
 
+

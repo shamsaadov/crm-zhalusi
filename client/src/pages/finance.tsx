@@ -51,6 +51,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAuth } from "@/lib/auth";
 import {
   type FinanceOperation,
   type Dealer,
@@ -119,6 +120,7 @@ const typeColors: Record<string, string> = {
 
 export default function FinancePage() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("income");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingOperation, setEditingOperation] =
@@ -135,6 +137,15 @@ export default function FinancePage() {
   const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
+  const [isReceiptDialogOpen, setIsReceiptDialogOpen] = useState(false);
+  const [receiptPreview, setReceiptPreview] = useState<{
+    dealerName: string;
+    brand: string;
+    date: string;
+    amount: string;
+    debt: string;
+    cashbox: string;
+  } | null>(null);
 
   const {
     data: operationsData,
@@ -208,6 +219,8 @@ export default function FinancePage() {
   const { data: expenseTypes = [] } = useQuery<ExpenseType[]>({
     queryKey: ["/api/expense-types"],
   });
+
+  const brandName = user?.name || user?.email || "Пользователь";
 
   const incomeForm = useForm({
     resolver: zodResolver(incomeSchema),
@@ -504,6 +517,86 @@ export default function FinancePage() {
     });
   };
 
+  const formatReceiptAmount = (value: string) => {
+    const amountInKopecks = Math.round(Math.abs(parseFloat(value || "0")) * 100);
+    const rubles = Math.floor(amountInKopecks / 100);
+    const kopeks = amountInKopecks % 100;
+    return `${rubles.toLocaleString("ru-RU")} руб. ${kopeks
+      .toString()
+      .padStart(2, "0")} коп.`;
+  };
+
+  const handlePrintReceipt = () => {
+    const { amount, dealerId, cashboxId } = incomeForm.getValues();
+
+    if (!dealerId) {
+      toast({
+        title: "Укажите дилера",
+        description: "Выберите дилера, чтобы сформировать квитанцию.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const dealer = dealers.find((d) => d.id === dealerId);
+    if (!dealer) {
+      toast({
+        title: "Дилер не найден",
+        description: "Обновите список дилеров или выберите дилера заново.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!cashboxId) {
+      toast({
+        title: "Укажите кассу",
+        description: "Выберите кассу для квитанции.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const cashbox = cashboxes.find((c) => c.id === cashboxId);
+    if (!cashbox) {
+      toast({
+        title: "Касса не найдена",
+        description: "Обновите список касс или выберите кассу заново.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const parsedAmount = parseFloat(amount);
+    if (!amount || Number.isNaN(parsedAmount) || parsedAmount <= 0) {
+      toast({
+        title: "Введите сумму",
+        description: "Укажите сумму прихода для печати квитанции.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const receiptDate = format(new Date(), "dd.MM.yyyy");
+    const dealerBalance = Number(dealer.balance ?? 0);
+    const dealerDebt = dealerBalance < 0 ? Math.abs(dealerBalance) : 0;
+    const formattedDebt = `${dealerDebt.toLocaleString("ru-RU", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    })} руб.`;
+    const formattedAmount = formatReceiptAmount(amount);
+
+    setReceiptPreview({
+      dealerName: dealer.fullName,
+      brand: brandName,
+      date: receiptDate,
+      amount: formattedAmount,
+      debt: formattedDebt,
+      cashbox: cashbox.name,
+    });
+    setIsReceiptDialogOpen(true);
+  };
+
   useEffect(() => {
     const id = setTimeout(() => setDebouncedSearch(search), 250);
     return () => clearTimeout(id);
@@ -755,7 +848,7 @@ export default function FinancePage() {
                         );
                         return (
                           <FormItem>
-                            <FormLabel>Дилер (опционально)</FormLabel>
+                            <FormLabel>Дилер</FormLabel>
                             <Select
                               onValueChange={field.onChange}
                               value={field.value}
@@ -1240,6 +1333,17 @@ export default function FinancePage() {
                 </Form>
               </TabsContent>
             </Tabs>
+            {activeTab === "income" && (
+              <DialogFooter className="mt-2">
+                <Button
+                  variant="outline"
+                  onClick={handlePrintReceipt}
+                  data-testid="button-income-receipt"
+                >
+                  Квитанция
+                </Button>
+              </DialogFooter>
+            )}
           </DialogContent>
         </Dialog>
 
@@ -1392,6 +1496,56 @@ export default function FinancePage() {
               Удалить
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isReceiptDialogOpen} onOpenChange={setIsReceiptDialogOpen}>
+        <DialogContent className="max-w-xl">
+          {receiptPreview && (
+            <div className="space-y-4">
+              <div className="text-center space-y-1">
+                <p className="text-lg font-semibold">{receiptPreview.brand}</p>
+                <p className="text-base font-semibold">КВИТАНЦИЯ</p>
+                <p className="text-sm text-muted-foreground">
+                  к приходному кассовому ордеру
+                </p>
+                <p className="text-sm">от {receiptPreview.date}</p>
+              </div>
+
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Принято от</span>
+                  <span className="font-semibold text-right">
+                    {receiptPreview.dealerName}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Касса</span>
+                  <span className="font-semibold text-right">
+                    {receiptPreview.cashbox}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-base">
+                  <span className="text-muted-foreground">Оплаченная сумма:</span>
+                  <span className="font-bold">{receiptPreview.amount}</span>
+                </div>
+              </div>
+
+              <div className="border border-destructive/60 rounded-md p-3">
+                <p className="text-sm leading-tight">
+                  Общий долг клиента<br />
+                  с ожидаемыми отгрузками:
+                </p>
+                <p className="text-lg font-bold mt-2">{receiptPreview.debt}</p>
+              </div>
+
+              <DialogFooter className="justify-end">
+                <Button variant="outline" onClick={() => setIsReceiptDialogOpen(false)}>
+                  Закрыть
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </Layout>
