@@ -65,8 +65,10 @@ const itemSchema = z.object({
   componentId: z.string().optional(),
   fabricId: z.string().optional(),
   quantity: z.string().min(1, "Обязательное поле"),
-  total: z.string().min(1, "Обязательное поле"),
-  price: z.string().optional(), // Вычисляется автоматически: total / quantity
+  // Для тканей: total обязателен (вводится), price вычисляется
+  // Для комплектующих: price обязателен (вводится), total вычисляется
+  total: z.string().optional(),
+  price: z.string().optional(),
 });
 
 const warehouseSchema = z.object({
@@ -279,15 +281,28 @@ export default function WarehousePage() {
     },
   });
 
-  // Автоматический расчёт цены: сумма / количество
+  // Автоматический расчёт:
+  // - Ткани: цена = сумма / количество (пользователь вводит сумму и кол-во)
+  // - Комплектующие: сумма = цена * количество (пользователь вводит цену и кол-во)
   useEffect(() => {
     watchedItems?.forEach((item, index) => {
       const qty = parseFloat(item.quantity || "0");
-      const total = parseFloat(item.total || "0");
-      if (qty > 0 && total > 0) {
-        const calculatedPrice = (total / qty).toFixed(2);
-        if (item.price !== calculatedPrice) {
-          form.setValue(`items.${index}.price`, calculatedPrice);
+      
+      if (item.itemType === "fabric") {
+        // Для тканей: вычисляем цену из суммы
+        const total = parseFloat(item.total || "0");
+        if (qty > 0 && total > 0) {
+          const calculatedPrice = (total / qty).toFixed(2);
+          if (item.price !== calculatedPrice) {
+            form.setValue(`items.${index}.price`, calculatedPrice);
+          }
+        }
+      } else {
+        // Для комплектующих: вычисляем сумму из цены
+        const price = parseFloat(item.price || "0");
+        const calculatedTotal = (qty * price).toFixed(2);
+        if (item.total !== calculatedTotal) {
+          form.setValue(`items.${index}.total`, calculatedTotal);
         }
       }
     });
@@ -845,44 +860,89 @@ export default function WarehousePage() {
                               )}
                             />
 
-                            <FormField
-                              control={form.control}
-                              name={`items.${index}.total`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormControl>
-                                    <Input
-                                      type="number"
-                                      step="0.01"
-                                      placeholder="Сумма покупки"
-                                      className="h-7 text-xs"
-                                      {...field}
-                                      data-testid={`input-total-${index}`}
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-
-                            <FormField
-                              control={form.control}
-                              name={`items.${index}.price`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormControl>
-                                    <Input
-                                      {...field}
-                                      disabled
-                                      placeholder="Цена/м²"
-                                      className="bg-muted h-7 text-xs"
-                                      data-testid={`input-price-${index}`}
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
+                            {/* Для тканей: Сумма покупки (ввод) → Цена/м² (авто) */}
+                            {/* Для комплектующих: Цена (ввод) → Сумма (авто) */}
+                            {globalItemType === "fabric" ? (
+                              <>
+                                <FormField
+                                  control={form.control}
+                                  name={`items.${index}.total`}
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormControl>
+                                        <Input
+                                          type="number"
+                                          step="0.01"
+                                          placeholder="Сумма покупки"
+                                          className="h-7 text-xs"
+                                          {...field}
+                                          data-testid={`input-total-${index}`}
+                                        />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                                <FormField
+                                  control={form.control}
+                                  name={`items.${index}.price`}
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormControl>
+                                        <Input
+                                          {...field}
+                                          disabled
+                                          placeholder="Цена/м²"
+                                          className="bg-muted h-7 text-xs"
+                                          data-testid={`input-price-${index}`}
+                                        />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                              </>
+                            ) : (
+                              <>
+                                <FormField
+                                  control={form.control}
+                                  name={`items.${index}.price`}
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormControl>
+                                        <Input
+                                          type="number"
+                                          step="0.01"
+                                          placeholder="Цена"
+                                          className="h-7 text-xs"
+                                          {...field}
+                                          data-testid={`input-price-${index}`}
+                                        />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                                <FormField
+                                  control={form.control}
+                                  name={`items.${index}.total`}
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormControl>
+                                        <Input
+                                          {...field}
+                                          disabled
+                                          placeholder="Сумма"
+                                          className="bg-muted h-7 text-xs"
+                                          data-testid={`input-total-${index}`}
+                                        />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                              </>
+                            )}
                           </div>
 
                           {fields.length > 1 && (
