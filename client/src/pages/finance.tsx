@@ -212,7 +212,7 @@ export default function FinancePage() {
     queryKey: ["/api/dealers"],
   });
 
-  const { data: suppliers = [] } = useQuery<Supplier[]>({
+  const { data: suppliers = [] } = useQuery<(Supplier & { balance: number })[]>({
     queryKey: ["/api/suppliers"],
   });
 
@@ -1129,29 +1129,54 @@ export default function FinancePage() {
                     <FormField
                       control={supplierForm.control}
                       name="supplierId"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Поставщик</FormLabel>
-                          <Select
-                            onValueChange={field.onChange}
-                            value={field.value}
-                          >
-                            <FormControl>
-                              <SelectTrigger data-testid="select-supplier">
-                                <SelectValue placeholder="Выберите поставщика" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {suppliers.map((s) => (
-                                <SelectItem key={s.id} value={s.id}>
-                                  {s.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
+                      render={({ field }) => {
+                        const selectedSupplier = suppliers.find(
+                          (s) => s.id === field.value
+                        );
+                        return (
+                          <FormItem>
+                            <FormLabel>Поставщик</FormLabel>
+                            <Select
+                              onValueChange={field.onChange}
+                              value={field.value}
+                            >
+                              <FormControl>
+                                <SelectTrigger data-testid="select-supplier">
+                                  <SelectValue placeholder="Выберите поставщика" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {suppliers.map((s) => (
+                                  <SelectItem key={s.id} value={s.id}>
+                                    {s.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            {selectedSupplier && (
+                              <p
+                                className={`text-sm font-medium ${
+                                  selectedSupplier.balance > 0
+                                    ? "text-red-600 dark:text-red-400"
+                                    : selectedSupplier.balance < 0
+                                    ? "text-green-600 dark:text-green-400"
+                                    : "text-muted-foreground"
+                                }`}
+                              >
+                                Долг:{" "}
+                                {selectedSupplier.balance > 0
+                                  ? formatCurrency(selectedSupplier.balance)
+                                  : selectedSupplier.balance < 0
+                                  ? `Переплата ${formatCurrency(
+                                      Math.abs(selectedSupplier.balance)
+                                    )}`
+                                  : "0"}
+                              </p>
+                            )}
+                            <FormMessage />
+                          </FormItem>
+                        );
+                      }}
                     />
                     <FormField
                       control={supplierForm.control}
