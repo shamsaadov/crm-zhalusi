@@ -39,14 +39,23 @@ export function CostCalculationDialog({
   details?.sashDetails.forEach((sash) => {
     sash.componentsDetails.forEach((comp) => {
       const key = comp.name;
+      const isMetric = ["м", "пм", "п.м.", "м.п."].includes(
+        comp.unit.toLowerCase()
+      );
+      // Для метрических единиц используем sizeValue (размер в метрах)
+      // умноженный на sizeMultiplier и quantity
+      const componentQty = isMetric
+        ? comp.sizeValue * comp.sizeMultiplier * comp.quantity * sash.quantity
+        : comp.quantity * sash.quantity;
+
       const existing = allComponents.get(key);
       if (existing) {
-        existing.totalQty += comp.quantity * sash.quantity;
+        existing.totalQty += componentQty;
       } else {
         allComponents.set(key, {
           name: comp.name,
           unit: comp.unit,
-          totalQty: comp.quantity * sash.quantity,
+          totalQty: componentQty,
         });
       }
     });
@@ -60,7 +69,10 @@ export function CostCalculationDialog({
   details?.sashDetails.forEach((sash) => {
     if (sash.fabricName) {
       const key = `${sash.fabricName}-${sash.fabricType}`;
-      const area = (sash.width / 1000) * (sash.height / 1000) * sash.quantity;
+      // Для зебры требуется двойная площадь ткани (fabricMultiplier = 2)
+      const baseArea =
+        (sash.width / 1000) * (sash.height / 1000) * sash.quantity;
+      const area = baseArea * (sash.fabricMultiplier || 1);
       const existing = allFabrics.get(key);
       if (existing) {
         existing.totalArea += area;
