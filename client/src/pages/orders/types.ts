@@ -89,6 +89,7 @@ export interface CostCalculationDetails {
       formula: string;
     }>;
     sashCost: number;
+    sashFixedCost: number;
     totalSashCost: number;
   }>;
 }

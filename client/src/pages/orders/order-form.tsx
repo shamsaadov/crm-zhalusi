@@ -68,6 +68,8 @@ interface OrderFormProps {
   onShowCostCalculation: (details: CostCalculationDetails) => void;
   onSashRemove?: (index: number) => void;
   calculatingSashes?: Set<number>;
+  isManualSalePrice?: boolean;
+  onManualSalePriceChange?: (isManual: boolean) => void;
 }
 
 export function OrderForm({
@@ -86,11 +88,23 @@ export function OrderForm({
   onShowCostCalculation,
   onSashRemove,
   calculatingSashes,
+  isManualSalePrice = false,
+  onManualSalePriceChange,
 }: OrderFormProps) {
   const { fields, append, remove } = fieldArray;
-  const [isSalePriceEditable, setIsSalePriceEditable] = useState(false);
   const [autoSalePrice, setAutoSalePrice] = useState<string | null>(null);
   const [isPaidPopoverOpen, setIsPaidPopoverOpen] = useState(false);
+  const [localManualPrice, setLocalManualPrice] = useState(false);
+  
+  // Используем внешнее состояние если передано, иначе локальное
+  const isSalePriceEditable = onManualSalePriceChange ? isManualSalePrice : localManualPrice;
+  const setIsSalePriceEditable = (value: boolean) => {
+    if (onManualSalePriceChange) {
+      onManualSalePriceChange(value);
+    } else {
+      setLocalManualPrice(value);
+    }
+  };
 
   const handleSashRemove = (index: number) => {
     // Вызываем callback для очистки состояния калькулятора

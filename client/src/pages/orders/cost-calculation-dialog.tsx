@@ -38,7 +38,7 @@ export function CostCalculationDialog({
                     Общая формула:
                   </p>
                   <p className="font-mono text-sm mt-1">
-                    Себестоимость = Ткань + Комплектующие
+                    Себестоимость = Ткань + Комплектующие + 150₽ (надбавка за створку)
                   </p>
                 </div>
 
@@ -274,7 +274,8 @@ export function CostCalculationDialog({
                         </div>
                         <p className="text-xs text-muted-foreground font-mono">
                           = {formatCurrency(sash.fabricCost)} (ткань) +{" "}
-                          {formatCurrency(sash.componentsCost)} (компл.)
+                          {formatCurrency(sash.componentsCost)} (компл.) +{" "}
+                          {formatCurrency(sash.sashFixedCost)} (надбавка)
                         </p>
                         {sash.quantity > 1 && (
                           <>

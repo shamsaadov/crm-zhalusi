@@ -82,6 +82,7 @@ export default function OrdersPage() {
   const [calculatingSashes, setCalculatingSashes] = useState<Set<number>>(
     new Set()
   );
+  const [isManualSalePrice, setIsManualSalePrice] = useState(false);
 
   // Data fetching
   const {
@@ -427,6 +428,9 @@ export default function OrdersPage() {
 
   const openEditDialog = async (order: OrderWithRelations) => {
     try {
+      // Сбрасываем флаг ручной цены при открытии редактирования
+      setIsManualSalePrice(false);
+
       const response = await fetch(`/api/orders/${order.id}`, {
         credentials: "include",
       });
@@ -548,18 +552,20 @@ export default function OrdersPage() {
                     return next;
                   });
 
-                  // Пересчитываем общую цену после всех коэффициентов
-                  const allSashes = form.getValues("sashes");
-                  const totalPrice = allSashes.reduce((sum, s) => {
-                    const price = parseFloat(s.sashPrice || "0");
-                    const qty = parseFloat(s.quantity || "1");
-                    return sum + price * qty;
-                  }, 0);
+                  // Пересчитываем общую цену после всех коэффициентов (только если не ручной режим)
+                  if (!isManualSalePrice) {
+                    const allSashes = form.getValues("sashes");
+                    const totalPrice = allSashes.reduce((sum, s) => {
+                      const price = parseFloat(s.sashPrice || "0");
+                      const qty = parseFloat(s.quantity || "1");
+                      return sum + price * qty;
+                    }, 0);
 
-                  if (totalPrice > 0) {
-                    form.setValue("salePrice", totalPrice.toFixed(2), {
-                      shouldValidate: false,
-                    });
+                    if (totalPrice > 0) {
+                      form.setValue("salePrice", totalPrice.toFixed(2), {
+                        shouldValidate: false,
+                      });
+                    }
                   }
                 },
                 (error) => {
@@ -592,6 +598,7 @@ export default function OrdersPage() {
   const resetForms = () => {
     setEditingOrder(null);
     setActiveTab("order");
+    setIsManualSalePrice(false);
     form.reset({
       date: format(new Date(), "yyyy-MM-dd"),
       dealerId: "",
@@ -840,18 +847,20 @@ export default function OrdersPage() {
                 console.warn(`[Заказ] ${data.warning}`);
               }
 
-              // Пересчитываем общую цену
-              const allSashes = form.getValues("sashes");
-              const totalPrice = allSashes.reduce((sum, s) => {
-                const price = parseFloat(s.sashPrice || "0");
-                const qty = parseFloat(s.quantity || "1");
-                return sum + price * qty;
-              }, 0);
+              // Пересчитываем общую цену (только если не ручной режим)
+              if (!isManualSalePrice) {
+                const allSashes = form.getValues("sashes");
+                const totalPrice = allSashes.reduce((sum, s) => {
+                  const price = parseFloat(s.sashPrice || "0");
+                  const qty = parseFloat(s.quantity || "1");
+                  return sum + price * qty;
+                }, 0);
 
-              if (totalPrice > 0) {
-                form.setValue("salePrice", totalPrice.toFixed(2), {
-                  shouldValidate: false,
-                });
+                if (totalPrice > 0) {
+                  form.setValue("salePrice", totalPrice.toFixed(2), {
+                    shouldValidate: false,
+                  });
+                }
               }
             },
             (error) => {
@@ -891,6 +900,7 @@ export default function OrdersPage() {
     fabricStock,
     componentStock,
     coefficientCalculator,
+    isManualSalePrice,
   ]);
 
   // Filtering
@@ -963,6 +973,8 @@ export default function OrdersPage() {
                     }}
                     onSashRemove={handleSashRemove}
                     calculatingSashes={calculatingSashes}
+                    isManualSalePrice={isManualSalePrice}
+                    onManualSalePriceChange={setIsManualSalePrice}
                   />
                 </TabsContent>
 
@@ -1001,6 +1013,8 @@ export default function OrdersPage() {
                 }}
                 onSashRemove={handleSashRemove}
                 calculatingSashes={calculatingSashes}
+                isManualSalePrice={isManualSalePrice}
+                onManualSalePriceChange={setIsManualSalePrice}
               />
             )}
           </DialogContent>
@@ -1052,14 +1066,14 @@ export default function OrdersPage() {
           }}
         />
 
-          <DataTable
-            columns={columns}
-            data={orders}
-            isLoading={ordersLoading}
-            emptyMessage="Заказы не найдены"
-            getRowKey={(order) => order.id}
-            hasNextPage={hasNextPage}
-            isFetchingNextPage={isFetchingNextPage}
+        <DataTable
+          columns={columns}
+          data={orders}
+          isLoading={ordersLoading}
+          emptyMessage="Заказы не найдены"
+          getRowKey={(order) => order.id}
+          hasNextPage={hasNextPage}
+          isFetchingNextPage={isFetchingNextPage}
           loadMoreRef={loadMoreRef}
         />
       </Tabs>

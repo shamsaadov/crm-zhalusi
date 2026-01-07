@@ -138,6 +138,10 @@ export function calculateCostPrice(
         }
       }
 
+      // Фиксированная надбавка 150 рублей за каждую створку
+      const sashFixedCost = 150;
+      sashCost += sashFixedCost;
+
       const totalSashCost = sashCost * quantity;
       totalCost += totalSashCost;
 
@@ -154,6 +158,7 @@ export function calculateCostPrice(
         componentsCost,
         componentsDetails,
         sashCost,
+        sashFixedCost,
         totalSashCost,
       });
     }
