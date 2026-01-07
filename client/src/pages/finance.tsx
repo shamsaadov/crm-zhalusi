@@ -44,9 +44,9 @@ import {
   ArrowDownCircle,
   ArrowRightLeft,
   CreditCard,
-  Edit,
   Trash2,
   RotateCcw,
+  Receipt,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
@@ -526,65 +526,37 @@ export default function FinancePage() {
       .padStart(2, "0")} коп.`;
   };
 
-  const handlePrintReceipt = () => {
-    const { amount, dealerId, cashboxId } = incomeForm.getValues();
+  const handlePrintReceiptFromTable = (op: FinanceOperationWithRelations) => {
+    if (op.type !== "income") return;
 
-    if (!dealerId) {
-      toast({
-        title: "Укажите дилера",
-        description: "Выберите дилера, чтобы сформировать квитанцию.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const dealer = dealers.find((d) => d.id === dealerId);
+    const dealer = op.dealer;
     if (!dealer) {
       toast({
         title: "Дилер не найден",
-        description: "Обновите список дилеров или выберите дилера заново.",
+        description: "У этой операции нет привязанного дилера.",
         variant: "destructive",
       });
       return;
     }
 
-    if (!cashboxId) {
-      toast({
-        title: "Укажите кассу",
-        description: "Выберите кассу для квитанции.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const cashbox = cashboxes.find((c) => c.id === cashboxId);
+    const cashbox = op.cashbox;
     if (!cashbox) {
       toast({
         title: "Касса не найдена",
-        description: "Обновите список касс или выберите кассу заново.",
+        description: "У этой операции нет привязанной кассы.",
         variant: "destructive",
       });
       return;
     }
 
-    const parsedAmount = parseFloat(amount);
-    if (!amount || Number.isNaN(parsedAmount) || parsedAmount <= 0) {
-      toast({
-        title: "Введите сумму",
-        description: "Укажите сумму прихода для печати квитанции.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const receiptDate = format(new Date(), "dd.MM.yyyy");
+    const receiptDate = format(new Date(op.date), "dd.MM.yyyy");
     const dealerBalance = Number(dealer.balance ?? 0);
     const dealerDebt = dealerBalance < 0 ? Math.abs(dealerBalance) : 0;
     const formattedDebt = `${dealerDebt.toLocaleString("ru-RU", {
       minimumFractionDigits: 0,
       maximumFractionDigits: 2,
     })} руб.`;
-    const formattedAmount = formatReceiptAmount(amount);
+    const formattedAmount = formatReceiptAmount(op.amount?.toString() || "0");
 
     setReceiptPreview({
       dealerName: dealer.fullName,
@@ -704,14 +676,16 @@ export default function FinancePage() {
             </>
           ) : (
             <>
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() => openEditDialog(op)}
-                data-testid={`button-edit-${op.id}`}
-              >
-                <Edit className="h-4 w-4" />
-              </Button>
+              {op.type === "income" && op.dealerId && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => handlePrintReceiptFromTable(op)}
+                  data-testid={`button-receipt-${op.id}`}
+                >
+                  <Receipt className="h-4 w-4" />
+                </Button>
+              )}
               <Button
                 size="icon"
                 variant="ghost"
@@ -1358,17 +1332,6 @@ export default function FinancePage() {
                 </Form>
               </TabsContent>
             </Tabs>
-            {activeTab === "income" && (
-              <DialogFooter className="mt-2">
-                <Button
-                  variant="outline"
-                  onClick={handlePrintReceipt}
-                  data-testid="button-income-receipt"
-                >
-                  Квитанция
-                </Button>
-              </DialogFooter>
-            )}
           </DialogContent>
         </Dialog>
 
@@ -1427,6 +1390,7 @@ export default function FinancePage() {
           showDrafts ? "Черновики не найдены" : "Операции не найдены"
         }
         getRowKey={(op) => op.id}
+        onRowDoubleClick={(op) => !op.isDraft && openEditDialog(op)}
         hasNextPage={hasNextPage}
         isFetchingNextPage={isFetchingNextPage}
         loadMoreRef={loadMoreRef}
