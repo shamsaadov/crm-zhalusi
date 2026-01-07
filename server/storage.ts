@@ -401,7 +401,8 @@ export class DatabaseStorage implements IStorage {
           .where(
             and(
               eq(financeOperations.dealerId, dealer.id),
-              eq(financeOperations.type, "income")
+              eq(financeOperations.type, "income"),
+              eq(financeOperations.isDraft, false)
             )
           );
 
@@ -457,7 +458,8 @@ export class DatabaseStorage implements IStorage {
           .where(
             and(
               eq(financeOperations.cashboxId, cashbox.id),
-              eq(financeOperations.type, "income")
+              eq(financeOperations.type, "income"),
+              eq(financeOperations.isDraft, false)
             )
           );
 
@@ -467,7 +469,8 @@ export class DatabaseStorage implements IStorage {
           .where(
             and(
               eq(financeOperations.cashboxId, cashbox.id),
-              eq(financeOperations.type, "expense")
+              eq(financeOperations.type, "expense"),
+              eq(financeOperations.isDraft, false)
             )
           );
 
@@ -477,19 +480,30 @@ export class DatabaseStorage implements IStorage {
           .where(
             and(
               eq(financeOperations.cashboxId, cashbox.id),
-              eq(financeOperations.type, "supplier_payment")
+              eq(financeOperations.type, "supplier_payment"),
+              eq(financeOperations.isDraft, false)
             )
           );
 
         const transfersOut = await db
           .select({ total: sum(financeOperations.amount) })
           .from(financeOperations)
-          .where(eq(financeOperations.fromCashboxId, cashbox.id));
+          .where(
+            and(
+              eq(financeOperations.fromCashboxId, cashbox.id),
+              eq(financeOperations.isDraft, false)
+            )
+          );
 
         const transfersIn = await db
           .select({ total: sum(financeOperations.amount) })
           .from(financeOperations)
-          .where(eq(financeOperations.toCashboxId, cashbox.id));
+          .where(
+            and(
+              eq(financeOperations.toCashboxId, cashbox.id),
+              eq(financeOperations.isDraft, false)
+            )
+          );
 
         const opening = parseFloat(cashbox.openingBalance?.toString() || "0");
         const income = parseFloat(incomes[0]?.total?.toString() || "0");
@@ -694,7 +708,8 @@ export class DatabaseStorage implements IStorage {
           .where(
             and(
               eq(financeOperations.supplierId, supplier.id),
-              eq(financeOperations.type, "supplier_payment")
+              eq(financeOperations.type, "supplier_payment"),
+              eq(financeOperations.isDraft, false)
             )
           );
 
