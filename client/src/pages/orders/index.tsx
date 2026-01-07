@@ -428,8 +428,9 @@ export default function OrdersPage() {
 
   const openEditDialog = async (order: OrderWithRelations) => {
     try {
-      // Сбрасываем флаг ручной цены при открытии редактирования
-      setIsManualSalePrice(false);
+      // При редактировании заказа сохраняем текущую цену как "ручную"
+      // чтобы она не перезаписывалась автоматическим расчётом
+      setIsManualSalePrice(true);
 
       const response = await fetch(`/api/orders/${order.id}`, {
         credentials: "include",
@@ -503,7 +504,8 @@ export default function OrdersPage() {
               ],
       });
 
-      // Пересчитываем коэффициенты для каждой створки после загрузки
+      // Пересчитываем только коэффициенты для каждой створки после загрузки
+      // НО НЕ МЕНЯЕМ sashPrice и salePrice - они уже сохранены в базе
       setTimeout(() => {
         sashesData.forEach((sash, index) => {
           const width = parseFloat(sash.width || "0");
@@ -527,23 +529,11 @@ export default function OrdersPage() {
                   height: height / 1000,
                 },
                 (data) => {
-                  const multiplier = system.multiplier;
-                  const multiplierValue = multiplier
-                    ? parseFloat(multiplier.value?.toString() || "1")
-                    : 1;
-                  const sashPrice = data.coefficient * multiplierValue;
-
+                  // Только обновляем коэффициент для отображения
                   form.setValue(
                     `sashes.${index}.coefficient`,
                     data.coefficient.toFixed(2),
                     { shouldValidate: false }
-                  );
-                  form.setValue(
-                    `sashes.${index}.sashPrice`,
-                    sashPrice.toFixed(2),
-                    {
-                      shouldValidate: false,
-                    }
                   );
 
                   setCalculatingSashes((prev) => {
@@ -552,21 +542,8 @@ export default function OrdersPage() {
                     return next;
                   });
 
-                  // Пересчитываем общую цену после всех коэффициентов (только если не ручной режим)
-                  if (!isManualSalePrice) {
-                    const allSashes = form.getValues("sashes");
-                    const totalPrice = allSashes.reduce((sum, s) => {
-                      const price = parseFloat(s.sashPrice || "0");
-                      const qty = parseFloat(s.quantity || "1");
-                      return sum + price * qty;
-                    }, 0);
-
-                    if (totalPrice > 0) {
-                      form.setValue("salePrice", totalPrice.toFixed(2), {
-                        shouldValidate: false,
-                      });
-                    }
-                  }
+                  // НЕ пересчитываем sashPrice и salePrice при редактировании
+                  // Они уже сохранены в базе данных
                 },
                 (error) => {
                   console.error("Ошибка при расчете коэффициента:", error);
