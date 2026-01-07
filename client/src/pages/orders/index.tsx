@@ -887,7 +887,6 @@ export default function OrdersPage() {
   }, [search]);
 
   const columns = getOrderColumns({
-    onEdit: openEditDialog,
     onWorkshopPrint: printInvoice,
     onCustomerPrint: printCustomerInvoice,
     onDelete: openDeleteDialog,
@@ -1049,6 +1048,7 @@ export default function OrdersPage() {
           isLoading={ordersLoading}
           emptyMessage="Заказы не найдены"
           getRowKey={(order) => order.id}
+          onRowDoubleClick={openEditDialog}
           hasNextPage={hasNextPage}
           isFetchingNextPage={isFetchingNextPage}
           loadMoreRef={loadMoreRef}

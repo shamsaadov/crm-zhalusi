@@ -34,6 +34,7 @@ import {
   FileText,
   Check,
   Wallet,
+  Info,
 } from "lucide-react";
 import { formatCurrency } from "@/components/status-badge";
 import {
@@ -95,9 +96,11 @@ export function OrderForm({
   const [autoSalePrice, setAutoSalePrice] = useState<string | null>(null);
   const [isPaidPopoverOpen, setIsPaidPopoverOpen] = useState(false);
   const [localManualPrice, setLocalManualPrice] = useState(false);
-  
+
   // Используем внешнее состояние если передано, иначе локальное
-  const isSalePriceEditable = onManualSalePriceChange ? isManualSalePrice : localManualPrice;
+  const isSalePriceEditable = onManualSalePriceChange
+    ? isManualSalePrice
+    : localManualPrice;
   const setIsSalePriceEditable = (value: boolean) => {
     if (onManualSalePriceChange) {
       onManualSalePriceChange(value);
@@ -329,6 +332,16 @@ export function OrderForm({
                 шт
               </Badge>
             </h3>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleTestCalculation}
+              className="gap-2"
+            >
+              <Info className="h-4 w-4" />
+              Подробности заказа
+            </Button>
           </div>
 
           {fields.map((field, index) => (
@@ -338,7 +351,6 @@ export function OrderForm({
               form={form}
               systems={systems}
               fabrics={fabrics}
-              fabricStock={fabricStock}
               fieldsLength={fields.length}
               fieldId={field.id}
               onRemove={handleSashRemove}
@@ -457,18 +469,7 @@ export function OrderForm({
             name="costPrice"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="flex items-center gap-2">
-                  Себестоимость (авто)
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-6 text-xs"
-                    onClick={handleTestCalculation}
-                  >
-                    🧪 Тест расчета
-                  </Button>
-                </FormLabel>
+                <FormLabel>Себестоимость (авто)</FormLabel>
                 <FormControl>
                   <Input
                     type="number"

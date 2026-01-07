@@ -22,6 +22,8 @@ interface DataTableProps<T> {
   isLoading?: boolean;
   emptyMessage?: string;
   getRowKey: (item: T) => string;
+  // Row double click handler
+  onRowDoubleClick?: (item: T) => void;
   // Infinite scroll props
   hasNextPage?: boolean;
   isFetchingNextPage?: boolean;
@@ -34,6 +36,7 @@ export function DataTable<T>({
   isLoading = false,
   emptyMessage = "Нет данных",
   getRowKey,
+  onRowDoubleClick,
   hasNextPage,
   isFetchingNextPage,
   loadMoreRef,
@@ -112,6 +115,8 @@ export function DataTable<T>({
             <TableRow
               key={getRowKey(item)}
               data-testid={`row-${getRowKey(item)}`}
+              onDoubleClick={() => onRowDoubleClick?.(item)}
+              className={onRowDoubleClick ? "cursor-pointer" : undefined}
             >
               {columns.map((column) => (
                 <TableCell key={column.key} className={column.className}>

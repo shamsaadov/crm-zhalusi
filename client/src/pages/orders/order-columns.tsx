@@ -11,13 +11,12 @@ import {
   formatCurrency,
   BalanceBadge,
 } from "@/components/status-badge";
-import { ClipboardList, Edit, FileText, Trash2 } from "lucide-react";
+import { ClipboardList, FileText, Trash2 } from "lucide-react";
 import { ORDER_STATUSES, type OrderStatus } from "@shared/schema";
 import { format } from "date-fns";
 import type { OrderWithRelations } from "./types";
 
 interface ColumnActions {
-  onEdit: (order: OrderWithRelations) => void;
   onWorkshopPrint: (order: OrderWithRelations) => void | Promise<void>;
   onCustomerPrint: (order: OrderWithRelations) => void | Promise<void>;
   onDelete: (order: OrderWithRelations) => void;
@@ -129,14 +128,6 @@ export function getOrderColumns(actions: ColumnActions) {
             data-testid={`button-customer-invoice-${order.id}`}
           >
             <FileText className="h-4 w-4" />
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={() => actions.onEdit(order)}
-            data-testid={`button-edit-${order.id}`}
-          >
-            <Edit className="h-4 w-4" />
           </Button>
           <Button
             size="icon"
