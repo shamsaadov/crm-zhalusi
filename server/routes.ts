@@ -884,8 +884,7 @@ export async function registerRoutes(
             ? req.query.status
             : undefined;
         const dealerId =
-          typeof req.query.dealerId === "string" &&
-          req.query.dealerId !== "all"
+          typeof req.query.dealerId === "string" && req.query.dealerId !== "all"
             ? req.query.dealerId
             : undefined;
         const from =
@@ -937,10 +936,14 @@ export async function registerRoutes(
         const filters = { status, dealerId, from, to, search };
 
         if (paginated) {
-          let result = await storage.getOrdersPaginated(req.userId!, {
-            limit,
-            cursor,
-          }, filters);
+          let result = await storage.getOrdersPaginated(
+            req.userId!,
+            {
+              limit,
+              cursor,
+            },
+            filters
+          );
 
           let enriched = await enrichOrders(result.data);
           if (orderTypeFilter) {
@@ -1513,6 +1516,7 @@ export async function registerRoutes(
               string,
               {
                 quantity: number;
+                totalReceived: number;
                 avgPrice: number;
                 totalValue: number;
                 lastPrice: number;
@@ -1524,6 +1528,7 @@ export async function registerRoutes(
                 if (!fabricStock[item.fabricId!]) {
                   fabricStock[item.fabricId!] = {
                     quantity: 0,
+                    totalReceived: 0,
                     avgPrice: 0,
                     totalValue: 0,
                     lastPrice: 0,
@@ -1532,6 +1537,7 @@ export async function registerRoutes(
                 const qty = parseFloat(item.quantity?.toString() || "0");
                 const price = parseFloat(item.price?.toString() || "0");
                 fabricStock[item.fabricId!].quantity += qty;
+                fabricStock[item.fabricId!].totalReceived += qty;
                 fabricStock[item.fabricId!].totalValue += qty * price;
                 fabricStock[item.fabricId!].lastPrice = price; // Последняя цена закупки
               }
@@ -1544,11 +1550,11 @@ export async function registerRoutes(
                 );
               }
             }
-            // Считаем средние цены
+            // Считаем средние цены (от общего количества поступлений, а не от остатка)
             for (const id of Object.keys(fabricStock)) {
-              if (fabricStock[id].quantity > 0) {
+              if (fabricStock[id].totalReceived > 0) {
                 fabricStock[id].avgPrice =
-                  fabricStock[id].totalValue / fabricStock[id].quantity;
+                  fabricStock[id].totalValue / fabricStock[id].totalReceived;
               }
             }
 
@@ -1557,6 +1563,7 @@ export async function registerRoutes(
               string,
               {
                 quantity: number;
+                totalReceived: number;
                 avgPrice: number;
                 totalValue: number;
                 lastPrice: number;
@@ -1568,6 +1575,7 @@ export async function registerRoutes(
                 if (!componentStock[item.componentId!]) {
                   componentStock[item.componentId!] = {
                     quantity: 0,
+                    totalReceived: 0,
                     avgPrice: 0,
                     totalValue: 0,
                     lastPrice: 0,
@@ -1576,6 +1584,7 @@ export async function registerRoutes(
                 const qty = parseFloat(item.quantity?.toString() || "0");
                 const price = parseFloat(item.price?.toString() || "0");
                 componentStock[item.componentId!].quantity += qty;
+                componentStock[item.componentId!].totalReceived += qty;
                 componentStock[item.componentId!].totalValue += qty * price;
                 componentStock[item.componentId!].lastPrice = price;
               }
@@ -1588,11 +1597,12 @@ export async function registerRoutes(
                 );
               }
             }
-            // Считаем средние цены
+            // Считаем средние цены (от общего количества поступлений, а не от остатка)
             for (const id of Object.keys(componentStock)) {
-              if (componentStock[id].quantity > 0) {
+              if (componentStock[id].totalReceived > 0) {
                 componentStock[id].avgPrice =
-                  componentStock[id].totalValue / componentStock[id].quantity;
+                  componentStock[id].totalValue /
+                  componentStock[id].totalReceived;
               }
             }
 
@@ -2214,6 +2224,7 @@ export async function registerRoutes(
           string,
           {
             quantity: number;
+            totalReceived: number;
             lastPrice: number;
             avgPrice: number;
             totalValue: number;
@@ -2224,6 +2235,7 @@ export async function registerRoutes(
           if (!fabricStock[fabricId]) {
             fabricStock[fabricId] = {
               quantity: 0,
+              totalReceived: 0,
               lastPrice: 0,
               avgPrice: 0,
               totalValue: 0,
@@ -2232,6 +2244,7 @@ export async function registerRoutes(
           const qty = parseFloat(item.quantity?.toString() || "0");
           const price = parseFloat(item.price?.toString() || "0");
           fabricStock[fabricId].quantity += qty;
+          fabricStock[fabricId].totalReceived += qty;
           fabricStock[fabricId].lastPrice = price;
           fabricStock[fabricId].totalValue += qty * price;
         }
@@ -2250,6 +2263,7 @@ export async function registerRoutes(
           string,
           {
             quantity: number;
+            totalReceived: number;
             lastPrice: number;
             avgPrice: number;
             totalValue: number;
@@ -2260,6 +2274,7 @@ export async function registerRoutes(
           if (!componentStock[componentId]) {
             componentStock[componentId] = {
               quantity: 0,
+              totalReceived: 0,
               lastPrice: 0,
               avgPrice: 0,
               totalValue: 0,
@@ -2268,6 +2283,7 @@ export async function registerRoutes(
           const qty = parseFloat(item.quantity?.toString() || "0");
           const price = parseFloat(item.price?.toString() || "0");
           componentStock[componentId].quantity += qty;
+          componentStock[componentId].totalReceived += qty;
           componentStock[componentId].lastPrice = price;
           componentStock[componentId].totalValue += qty * price;
         }
@@ -2281,17 +2297,17 @@ export async function registerRoutes(
           }
         }
 
-        // Calculate average prices (based on total receipts value / remaining quantity)
+        // Calculate average prices (based on total receipts value / total received quantity)
         for (const id of Object.keys(fabricStock)) {
-          if (fabricStock[id].quantity > 0) {
+          if (fabricStock[id].totalReceived > 0) {
             fabricStock[id].avgPrice =
-              fabricStock[id].totalValue / fabricStock[id].quantity;
+              fabricStock[id].totalValue / fabricStock[id].totalReceived;
           }
         }
         for (const id of Object.keys(componentStock)) {
-          if (componentStock[id].quantity > 0) {
+          if (componentStock[id].totalReceived > 0) {
             componentStock[id].avgPrice =
-              componentStock[id].totalValue / componentStock[id].quantity;
+              componentStock[id].totalValue / componentStock[id].totalReceived;
           }
         }
 
@@ -2632,8 +2648,7 @@ export async function registerRoutes(
             ? req.query.status
             : undefined;
         const dealerId =
-          typeof req.query.dealerId === "string" &&
-          req.query.dealerId !== "all"
+          typeof req.query.dealerId === "string" && req.query.dealerId !== "all"
             ? req.query.dealerId
             : undefined;
         const from =
