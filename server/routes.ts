@@ -1434,7 +1434,11 @@ export async function registerRoutes(
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
-        const { sashes, skipStockValidation, ...orderData } = req.body;
+        const { sashes, skipStockValidation, isPaid, cashboxId, ...orderData } =
+          req.body;
+
+        // Получаем существующий заказ
+        const existingOrder = await storage.getOrder(req.params.id);
 
         // Проверка остатков убрана - теперь можно редактировать заказ без материалов
         // Проверка будет только при смене статуса на "Готов"
@@ -1448,6 +1452,51 @@ export async function registerRoutes(
               ...sanitizeSashData(sash),
               orderId: req.params.id,
             });
+          }
+        }
+
+        // Создаём финансовую операцию, если заказ отмечен как оплаченный
+        const salePrice = orderData.salePrice || existingOrder?.salePrice;
+        if (isPaid && salePrice && parseFloat(salePrice) > 0) {
+          // Проверяем, не была ли уже создана оплата для этого заказа
+          const paymentComment = `Оплата заказа №${
+            existingOrder?.orderNumber || order?.orderNumber
+          }`;
+          const existingOperations = await storage.getFinanceOperations(
+            req.userId!,
+            false
+          );
+          const alreadyPaid = existingOperations.some(
+            (op) => op.comment === paymentComment && op.type === "income"
+          );
+
+          if (!alreadyPaid) {
+            // Используем указанную кассу или первую по умолчанию
+            let targetCashboxId = cashboxId;
+            if (!targetCashboxId) {
+              const allCashboxes = await storage.getCashboxes(req.userId!);
+              if (allCashboxes.length > 0) {
+                targetCashboxId = allCashboxes[0].id;
+              }
+            }
+
+            if (targetCashboxId) {
+              await storage.createFinanceOperation({
+                type: "income",
+                amount: salePrice,
+                date:
+                  orderData.date ||
+                  existingOrder?.date ||
+                  new Date().toISOString().split("T")[0],
+                cashboxId: targetCashboxId,
+                dealerId:
+                  orderData.dealerId && orderData.dealerId.trim() !== ""
+                    ? orderData.dealerId
+                    : existingOrder?.dealerId || null,
+                comment: paymentComment,
+                userId: req.userId!,
+              });
+            }
           }
         }
 
