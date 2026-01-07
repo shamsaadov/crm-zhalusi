@@ -312,10 +312,6 @@ export function ProductForm({
                 />
                 {selectedComponent && selectedComponent.stock && (
                   <div className="flex flex-col text-xs text-muted-foreground pb-2">
-                    <span>
-                      Ср. цена:{" "}
-                      {formatCurrency(selectedComponent.stock.avgPrice ?? 0)}
-                    </span>
                     <span className="font-medium text-foreground">
                       Сумма:{" "}
                       {formatCurrency(
@@ -389,9 +385,6 @@ export function ProductForm({
                     readOnly
                   />
                 </FormControl>
-                <p className="text-xs text-muted-foreground">
-                  Сумма по комплектующим × ср. цена
-                </p>
                 <FormMessage />
               </FormItem>
             )}

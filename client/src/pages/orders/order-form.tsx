@@ -478,9 +478,6 @@ export function OrderForm({
                     readOnly
                   />
                 </FormControl>
-                <p className="text-xs text-muted-foreground">
-                  Ткань (площадь × ср. цена × множитель) + комплектующие
-                </p>
                 <FormMessage />
               </FormItem>
             )}

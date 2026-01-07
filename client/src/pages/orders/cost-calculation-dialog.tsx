@@ -150,12 +150,7 @@ export function CostCalculationDialog({
                             )}
                           </span>
                         </div>
-                        <div className="flex justify-between">
-                          <span>Ср. цена (за м²):</span>
-                          <span className="font-mono">
-                            {formatCurrency(sash.fabricAvgPrice)}
-                          </span>
-                        </div>
+                       
                         <div className="flex justify-between">
                           <span>Множитель типа:</span>
                           <span className="font-bold text-orange-600">

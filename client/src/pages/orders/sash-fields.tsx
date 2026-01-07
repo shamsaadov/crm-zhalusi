@@ -274,14 +274,6 @@ export function SashFields({
                             )}
                           </p>
                         </div>
-                        <div>
-                          <p className="text-muted-foreground">Ср. цена</p>
-                          <p className="font-medium">
-                            {formatCurrency(
-                              selectedFabricInfo.stock.avgPrice ?? 0
-                            )}
-                          </p>
-                        </div>
                       </div>
                     </div>
                   </PopoverContent>
