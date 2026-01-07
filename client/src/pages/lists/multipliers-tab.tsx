@@ -31,7 +31,7 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Edit, Trash2, Loader2 } from "lucide-react";
+import { Plus, Trash2, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Multiplier } from "@shared/schema";
@@ -215,9 +215,6 @@ export function MultipliersTab({ search }: { search: string }) {
             header: "",
             cell: (m: Multiplier) => (
               <div className="flex gap-1 justify-end">
-                <Button size="icon" variant="ghost" onClick={() => openEdit(m)}>
-                  <Edit className="h-4 w-4" />
-                </Button>
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button size="icon" variant="ghost">
@@ -246,6 +243,7 @@ export function MultipliersTab({ search }: { search: string }) {
         isLoading={isLoading}
         emptyMessage="Множители не найдены"
         getRowKey={(m) => m.id}
+        onRowDoubleClick={openEdit}
       />
     </>
   );

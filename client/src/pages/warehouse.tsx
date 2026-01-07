@@ -46,7 +46,6 @@ import {
   Trash2,
   X,
   Package,
-  Pencil,
   History,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -606,14 +605,6 @@ export default function WarehousePage() {
           <Button
             size="icon"
             variant="ghost"
-            onClick={() => openEditDialog(r)}
-            data-testid={`button-edit-${r.id}`}
-          >
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
             onClick={() => openDeleteDialog(r)}
             data-testid={`button-delete-${r.id}`}
           >
@@ -1017,6 +1008,7 @@ export default function WarehousePage() {
             isLoading={isLoading}
             emptyMessage="Поступления не найдены"
             getRowKey={(r) => r.id}
+            onRowDoubleClick={openEditDialog}
             hasNextPage={hasNextPage}
             isFetchingNextPage={isFetchingNextPage}
             loadMoreRef={loadMoreRef}
@@ -1057,18 +1049,20 @@ export default function WarehousePage() {
                           <th className="text-right py-2 px-3 font-medium w-32">
                             Сумма
                           </th>
-                          <th className="w-12"></th>
                         </tr>
                       </thead>
                       <tbody className="divide-y">
                         {fabricStock.map((fabric) => (
                           <tr
                             key={fabric.id}
-                            className={`hover:bg-muted/30 transition-colors ${
+                            className={`hover:bg-muted/30 transition-colors cursor-pointer ${
                               fabric.stock.quantity <= 0
                                 ? "text-muted-foreground"
                                 : ""
                             }`}
+                            onDoubleClick={() =>
+                              openAdjustmentDialog("fabric", fabric)
+                            }
                           >
                             <td className="py-1.5 px-3">{fabric.name}</td>
                             <td className="py-1.5 px-3">
@@ -1101,26 +1095,13 @@ export default function WarehousePage() {
                                   : 0
                               )}
                             </td>
-                            <td className="py-1.5 px-1">
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-7 w-7"
-                                onClick={() =>
-                                  openAdjustmentDialog("fabric", fabric)
-                                }
-                                title="Корректировка остатка"
-                              >
-                                <Pencil className="h-3.5 w-3.5" />
-                              </Button>
-                            </td>
                           </tr>
                         ))}
                       </tbody>
                       <tfoot className="bg-muted/50 border-t">
                         <tr>
                           <td
-                            colSpan={5}
+                            colSpan={4}
                             className="py-2 px-3 text-right font-medium"
                           >
                             Итого:
@@ -1172,18 +1153,20 @@ export default function WarehousePage() {
                           <th className="text-right py-2 px-3 font-medium w-32">
                             Сумма
                           </th>
-                          <th className="w-12"></th>
                         </tr>
                       </thead>
                       <tbody className="divide-y">
                         {componentStock.map((component) => (
                           <tr
                             key={component.id}
-                            className={`hover:bg-muted/30 transition-colors ${
+                            className={`hover:bg-muted/30 transition-colors cursor-pointer ${
                               component.stock.quantity <= 0
                                 ? "text-muted-foreground"
                                 : ""
                             }`}
+                            onDoubleClick={() =>
+                              openAdjustmentDialog("component", component)
+                            }
                           >
                             <td className="py-1.5 px-3">{component.name}</td>
                             <td className="py-1.5 px-3 text-muted-foreground">
@@ -1209,26 +1192,13 @@ export default function WarehousePage() {
                                   : 0
                               )}
                             </td>
-                            <td className="py-1.5 px-1">
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-7 w-7"
-                                onClick={() =>
-                                  openAdjustmentDialog("component", component)
-                                }
-                                title="Корректировка остатка"
-                              >
-                                <Pencil className="h-3.5 w-3.5" />
-                              </Button>
-                            </td>
                           </tr>
                         ))}
                       </tbody>
                       <tfoot className="bg-muted/50 border-t">
                         <tr>
                           <td
-                            colSpan={5}
+                            colSpan={4}
                             className="py-2 px-3 text-right font-medium"
                           >
                             Итого:

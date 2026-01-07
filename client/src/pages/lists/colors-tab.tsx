@@ -32,7 +32,7 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Edit, Trash2, Loader2 } from "lucide-react";
+import { Plus, Trash2, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Color } from "@shared/schema";
@@ -189,14 +189,6 @@ export function ColorsTab({ search }: { search: string }) {
             header: "",
             cell: (c: Color) => (
               <div className="flex gap-1 justify-end">
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => openEdit(c)}
-                  data-testid={`button-edit-${c.id}`}
-                >
-                  <Edit className="h-4 w-4" />
-                </Button>
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button
@@ -232,6 +224,7 @@ export function ColorsTab({ search }: { search: string }) {
         isLoading={isLoading}
         emptyMessage="Цвета не найдены"
         getRowKey={(c) => c.id}
+        onRowDoubleClick={openEdit}
       />
     </>
   );

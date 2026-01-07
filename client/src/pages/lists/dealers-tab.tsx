@@ -31,7 +31,7 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Edit, Trash2, Loader2 } from "lucide-react";
+import { Plus, Trash2, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Dealer } from "@shared/schema";
@@ -258,9 +258,6 @@ export function DealersTab({ search }: { search: string }) {
             header: "",
             cell: (d: Dealer) => (
               <div className="flex gap-1 justify-end">
-                <Button size="icon" variant="ghost" onClick={() => openEdit(d)}>
-                  <Edit className="h-4 w-4" />
-                </Button>
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button size="icon" variant="ghost">
@@ -289,6 +286,7 @@ export function DealersTab({ search }: { search: string }) {
         isLoading={isLoading}
         emptyMessage="Дилеры не найдены"
         getRowKey={(d) => d.id}
+        onRowDoubleClick={openEdit}
       />
     </>
   );
