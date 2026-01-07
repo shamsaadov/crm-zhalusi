@@ -66,8 +66,8 @@ const itemSchema = z.object({
   componentId: z.string().optional(),
   fabricId: z.string().optional(),
   quantity: z.string().min(1, "Обязательное поле"),
-  price: z.string().min(1, "Обязательное поле"),
-  total: z.string().optional(),
+  total: z.string().min(1, "Обязательное поле"),
+  price: z.string().optional(), // Вычисляется автоматически: total / quantity
 });
 
 const warehouseSchema = z.object({
@@ -280,13 +280,16 @@ export default function WarehousePage() {
     },
   });
 
+  // Автоматический расчёт цены: сумма / количество
   useEffect(() => {
     watchedItems?.forEach((item, index) => {
       const qty = parseFloat(item.quantity || "0");
-      const price = parseFloat(item.price || "0");
-      const total = (qty * price).toFixed(2);
-      if (item.total !== total) {
-        form.setValue(`items.${index}.total`, total);
+      const total = parseFloat(item.total || "0");
+      if (qty > 0 && total > 0) {
+        const calculatedPrice = (total / qty).toFixed(2);
+        if (item.price !== calculatedPrice) {
+          form.setValue(`items.${index}.price`, calculatedPrice);
+        }
       }
     });
   }, [watchedItems, form]);
@@ -536,26 +539,6 @@ export default function WarehousePage() {
         price: data.price,
         comment: data.comment,
       });
-    }
-  };
-
-  const fetchPreviousPrice = async (
-    itemType: string,
-    itemId: string,
-    index: number
-  ) => {
-    if (!itemId) return;
-    try {
-      const response = await fetch(
-        `/api/warehouse/previous-price?itemType=${itemType}&itemId=${itemId}`,
-        { credentials: "include" }
-      );
-      const data = await response.json();
-      if (data.price) {
-        form.setValue(`items.${index}.price`, data.price);
-      }
-    } catch {
-      // Ignore errors
     }
   };
 
@@ -811,14 +794,7 @@ export default function WarehousePage() {
                                           label: fabric.name,
                                         }))}
                                         value={field.value || ""}
-                                        onValueChange={(value) => {
-                                          field.onChange(value);
-                                          fetchPreviousPrice(
-                                            "fabric",
-                                            value,
-                                            index
-                                          );
-                                        }}
+                                        onValueChange={field.onChange}
                                         placeholder="Выберите ткань"
                                         searchPlaceholder="Поиск ткани..."
                                         emptyText="Ткань не найдена"
@@ -845,14 +821,7 @@ export default function WarehousePage() {
                                           })
                                         )}
                                         value={field.value || ""}
-                                        onValueChange={(value) => {
-                                          field.onChange(value);
-                                          fetchPreviousPrice(
-                                            "component",
-                                            value,
-                                            index
-                                          );
-                                        }}
+                                        onValueChange={field.onChange}
                                         placeholder="Выберите комплектующую"
                                         searchPlaceholder="Поиск комплектующей..."
                                         emptyText="Комплектующая не найдена"
@@ -874,30 +843,10 @@ export default function WarehousePage() {
                                     <Input
                                       type="number"
                                       step="0.01"
-                                      placeholder="Кол-во"
+                                      placeholder="Кол-во (м²)"
                                       className="h-7 text-xs"
                                       {...field}
                                       data-testid={`input-quantity-${index}`}
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-
-                            <FormField
-                              control={form.control}
-                              name={`items.${index}.price`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormControl>
-                                    <Input
-                                      type="number"
-                                      step="0.01"
-                                      placeholder="Цена"
-                                      className="h-7 text-xs"
-                                      {...field}
-                                      data-testid={`input-price-${index}`}
                                     />
                                   </FormControl>
                                   <FormMessage />
@@ -912,11 +861,31 @@ export default function WarehousePage() {
                                 <FormItem>
                                   <FormControl>
                                     <Input
+                                      type="number"
+                                      step="0.01"
+                                      placeholder="Сумма покупки"
+                                      className="h-7 text-xs"
+                                      {...field}
+                                      data-testid={`input-total-${index}`}
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+
+                            <FormField
+                              control={form.control}
+                              name={`items.${index}.price`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormControl>
+                                    <Input
                                       {...field}
                                       disabled
-                                      placeholder="Сумма"
+                                      placeholder="Цена/м²"
                                       className="bg-muted h-7 text-xs"
-                                      data-testid={`input-total-${index}`}
+                                      data-testid={`input-price-${index}`}
                                     />
                                   </FormControl>
                                   <FormMessage />
