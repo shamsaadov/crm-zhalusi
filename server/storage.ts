@@ -767,7 +767,7 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(orders)
       .where(whereClause)
-      .orderBy(desc(orders.date));
+      .orderBy(desc(orders.orderNumber));
   }
 
   async getOrdersPaginated(
@@ -783,27 +783,21 @@ export class DatabaseStorage implements IStorage {
     let query = db.select().from(orders).where(baseWhere);
 
     if (cursor) {
-      // Cursor is the date-id combination for stable pagination
-      const [cursorDate, cursorId] = cursor.split("_");
+      // Cursor is the orderNumber for stable pagination (newest first)
+      const cursorOrderNumber = parseInt(cursor, 10);
       query = db
         .select()
         .from(orders)
         .where(
           and(
             baseWhere,
-            or(
-              sql`${orders.date} < ${cursorDate}`,
-              and(
-                sql`${orders.date} = ${cursorDate}`,
-                sql`${orders.id} < ${cursorId}`
-              )
-            )
+            sql`${orders.orderNumber} < ${cursorOrderNumber}`
           )
         );
     }
 
     const data = await query
-      .orderBy(desc(orders.date), desc(orders.id))
+      .orderBy(desc(orders.orderNumber))
       .limit(limit + 1);
 
     const hasMore = data.length > limit;
@@ -811,7 +805,7 @@ export class DatabaseStorage implements IStorage {
 
     const lastItem = results[results.length - 1];
     const nextCursor =
-      hasMore && lastItem ? `${lastItem.date}_${lastItem.id}` : null;
+      hasMore && lastItem ? String(lastItem.orderNumber) : null;
 
     return { data: results, nextCursor, hasMore };
   }
