@@ -52,7 +52,7 @@ export function calculateCostPrice(
       const areaM2 = widthM * heightM;
 
       if (fabricId) {
-        const fabric = fabricStock.find((f) => f.id === fabricId);
+        const fabric: any = fabricStock.find((f) => f.id === fabricId);
         if (fabric) {
           fabricName = fabric.name;
           fabricType = fabric.fabricType || "roll";
@@ -234,7 +234,7 @@ export async function printInvoice(order: OrderWithRelations): Promise<void> {
   const win = window.open("", "_blank");
   if (!win) return;
 
-  let fullOrder = order;
+  let fullOrder: any = order;
 
   // Подтягиваем полный заказ с расшифровкой створок, если их нет в краткой выдаче
   if (!order.sashes || order.sashes.length === 0 || !order.dealer) {
@@ -263,7 +263,7 @@ export async function printInvoice(order: OrderWithRelations): Promise<void> {
   const isProductOrder =
     fullOrder.orderType === "product" ||
     (sashes.length > 0 &&
-      sashes.every((s) => !!s.componentId && !s.systemId && !s.fabricId));
+      sashes.every((s: any) => !!s.componentId && !s.systemId && !s.fabricId));
 
   if (isProductOrder) {
     // Для заказов комплектующих выводим другую таблицу
@@ -319,7 +319,7 @@ export async function printInvoice(order: OrderWithRelations): Promise<void> {
 
     const groupedComponents = new Map<string, GroupedComponent>();
 
-    sashes.forEach((sash) => {
+    sashes.forEach((sash: any) => {
       const compId = sash.componentId || "unknown";
       const dir = (componentsDirectory && componentsDirectory[compId]) || null;
       const name = dir?.name || "Комплектующее";
@@ -421,7 +421,7 @@ export async function printInvoice(order: OrderWithRelations): Promise<void> {
 
   const grouped = new Map<string, GroupedSash>();
 
-  sashes.forEach((sash) => {
+  sashes.forEach((sash: any) => {
     const widthNum =
       sash.width !== null && sash.width !== undefined
         ? parseFloat(sash.width.toString())
@@ -577,7 +577,7 @@ export async function printCustomerInvoice(
   if (
     fullOrder.orderType === "product" ||
     (sashes.length > 0 &&
-      sashes.every((s) => !!s.componentId && !s.systemId && !s.fabricId))
+      sashes.every((s: any) => !!s.componentId && !s.systemId && !s.fabricId))
   ) {
     // Накладная для заказчика по комплектующим
     let componentsDirectory: Record<
@@ -617,7 +617,7 @@ export async function printCustomerInvoice(
     };
     const grouped = new Map<string, GroupedComp>();
 
-    sashes.forEach((sash) => {
+    sashes.forEach((sash: any) => {
       const compId = sash.componentId || "unknown";
       const dir = (componentsDirectory && componentsDirectory[compId]) || null;
       const name = dir?.name || "Комплектующее";

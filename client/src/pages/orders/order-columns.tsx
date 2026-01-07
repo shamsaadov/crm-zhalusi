@@ -89,11 +89,11 @@ export function getOrderColumns(actions: ColumnActions) {
       className: "text-right",
     },
     {
-      key: "dealerDebt",
-      header: "Долг дилера",
+      key: "dealerBalance",
+      header: "Баланс дилера",
       cell: (order: OrderWithRelations) => (
         <BalanceBadge
-          balance={parseFloat(order.dealerDebt?.toString() || "0")}
+          balance={order.dealerBalance || 0}
         />
       ),
       className: "text-right",

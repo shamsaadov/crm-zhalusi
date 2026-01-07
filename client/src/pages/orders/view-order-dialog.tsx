@@ -50,9 +50,9 @@ export function ViewOrderDialog({
                 <StatusBadge status={(order.status as OrderStatus) || "Новый"} />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Долг дилера</p>
+                <p className="text-sm text-muted-foreground">Баланс дилера</p>
                 <BalanceBadge
-                  balance={parseFloat(order.dealerDebt?.toString() || "0")}
+                  balance={order.dealerBalance || 0}
                 />
               </div>
             </div>
