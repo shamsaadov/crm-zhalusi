@@ -100,7 +100,9 @@ export function calculateCostPrice(
                   quantity;
                 formula = `${compStock.stock.avgPrice.toFixed(
                   2
-                )} × ${sizeValue.toFixed(3)}м × ${sizeMultiplier} × ${quantity}`;
+                )} × ${sizeValue.toFixed(
+                  3
+                )}м × ${sizeMultiplier} × ${quantity}`;
               } else if (isMetric && !sizeSource) {
                 sizeValue = widthM;
                 componentPrice =
@@ -218,7 +220,10 @@ const fetchDealerInfo = async (dealerId?: string | null) => {
     return {
       dealerName: dealer?.fullName || "—",
       dealerPhone: dealer?.phone || "",
-      debt: dealer && dealer.balance && dealer.balance < 0 ? Math.abs(dealer.balance) : 0,
+      debt:
+        dealer && dealer.balance && dealer.balance < 0
+          ? Math.abs(dealer.balance)
+          : 0,
     };
   } catch {
     return { dealerName: "—", dealerPhone: "", debt: 0 };
@@ -262,8 +267,10 @@ export async function printInvoice(order: OrderWithRelations): Promise<void> {
 
   if (isProductOrder) {
     // Для заказов комплектующих выводим другую таблицу
-    let componentsDirectory: Record<string, { name: string; unit?: string }> | null =
-      null;
+    let componentsDirectory: Record<
+      string,
+      { name: string; unit?: string }
+    > | null = null;
 
     const parseCommentQuantities = (comment?: string) => {
       const result = new Map<string, number>();
@@ -314,19 +321,17 @@ export async function printInvoice(order: OrderWithRelations): Promise<void> {
 
     sashes.forEach((sash) => {
       const compId = sash.componentId || "unknown";
-      const dir =
-        (componentsDirectory && componentsDirectory[compId]) ||
-        null;
+      const dir = (componentsDirectory && componentsDirectory[compId]) || null;
       const name = dir?.name || "Комплектующее";
       const unit = dir?.unit || "шт.";
       const qtyFromSash = parseFloat((sash as any).quantity || "NaN");
       const qtyFromComment = commentQuantities.get(name.toLowerCase());
       const qty =
-        (!Number.isNaN(qtyFromSash) && qtyFromSash > 0
+        !Number.isNaN(qtyFromSash) && qtyFromSash > 0
           ? qtyFromSash
           : qtyFromComment && qtyFromComment > 0
           ? qtyFromComment
-          : 1);
+          : 1;
 
       const key = `${name}|${unit}`;
       const existing = groupedComponents.get(key);
@@ -522,8 +527,6 @@ export async function printInvoice(order: OrderWithRelations): Promise<void> {
             ${rows.join("")}
           </tbody>
         </table>
-
-        <div class="total">Итого к оплате: ${totalAmount}</div>
       </body>
     </html>
   `);
@@ -577,8 +580,10 @@ export async function printCustomerInvoice(
       sashes.every((s) => !!s.componentId && !s.systemId && !s.fabricId))
   ) {
     // Накладная для заказчика по комплектующим
-    let componentsDirectory: Record<string, { name: string; unit?: string }> | null =
-      null;
+    let componentsDirectory: Record<
+      string,
+      { name: string; unit?: string }
+    > | null = null;
 
     try {
       const res = await fetch("/api/components", { credentials: "include" });
@@ -614,9 +619,7 @@ export async function printCustomerInvoice(
 
     sashes.forEach((sash) => {
       const compId = sash.componentId || "unknown";
-      const dir =
-        (componentsDirectory && componentsDirectory[compId]) ||
-        null;
+      const dir = (componentsDirectory && componentsDirectory[compId]) || null;
       const name = dir?.name || "Комплектующее";
       const unit = dir?.unit || "шт.";
       const qty = parseFloat((sash as any).quantity || "NaN");
@@ -761,7 +764,10 @@ export async function printCustomerInvoice(
     const qtyRaw = parseFloat((sash as any).quantity || "NaN");
     const quantity = !Number.isNaN(qtyRaw) && qtyRaw > 0 ? qtyRaw : 1;
     const unitPriceRaw = parseFloat((sash as any).sashPrice || "NaN");
-    const unitPrice = !Number.isNaN(unitPriceRaw) && unitPriceRaw > 0 ? unitPriceRaw : unitFallback;
+    const unitPrice =
+      !Number.isNaN(unitPriceRaw) && unitPriceRaw > 0
+        ? unitPriceRaw
+        : unitFallback;
 
     const key = [
       widthNum ?? 0,
@@ -914,10 +920,18 @@ export function printInvoicePreview(data: {
         <p>Дилер: ${data.dealerName || "-"}</p>
         <table>
           <tr><th>Позиция</th><th>Створки</th><th>Сумма</th></tr>
-          <tr><td>Новый заказ</td><td>${totalSashes}</td><td>${formatCurrency(parseFloat(data.salePrice || "0"))}</td></tr>
+          <tr><td>Новый заказ</td><td>${totalSashes}</td><td>${formatCurrency(
+    parseFloat(data.salePrice || "0")
+  )}</td></tr>
         </table>
-        <p class="total">Итого к оплате: ${formatCurrency(parseFloat(data.salePrice || "0"))}</p>
-        ${data.comment ? `<div class="comment"><strong>Комментарий:</strong><br>${data.comment}</div>` : ""}
+        <p class="total">Итого к оплате: ${formatCurrency(
+          parseFloat(data.salePrice || "0")
+        )}</p>
+        ${
+          data.comment
+            ? `<div class="comment"><strong>Комментарий:</strong><br>${data.comment}</div>`
+            : ""
+        }
       </body>
     </html>
   `);
