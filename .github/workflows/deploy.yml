@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -47,6 +48,14 @@ jobs:
 
             # Устанавливаем зависимости
             npm install
+
+            # Применяем миграции базы данных
+            echo "🔄 Applying database migrations..."
+            npm run db:migrate || {
+              echo "❌ Migration failed, showing error:"
+              exit 1
+            }
+            echo "✅ Migrations applied successfully"
 
             # Делаем сборку
             npm run build

@@ -1,6 +1,6 @@
 {
-  "id": "a06236bb-a58e-4ec7-9ff7-b94db09656a3",
-  "prevId": "00000000-0000-0000-0000-000000000000",
+  "id": "dd4200e7-f1ad-4f86-9015-efde462ca5ff",
+  "prevId": "a06236bb-a58e-4ec7-9ff7-b94db09656a3",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -314,8 +314,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "material": {
-          "name": "material",
+        "fabric_type": {
+          "name": "fabric_type",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -676,12 +676,11 @@
           "primaryKey": false,
           "notNull": false
         },
-        "quantity": {
-          "name": "quantity",
-          "type": "integer",
+        "component_id": {
+          "name": "component_id",
+          "type": "varchar",
           "primaryKey": false,
-          "notNull": false,
-          "default": 1
+          "notNull": false
         },
         "sash_price": {
           "name": "sash_price",
@@ -749,7 +748,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "set null",
           "onUpdate": "no action"
         },
         "order_sashes_fabric_color_id_colors_id_fk": {
@@ -762,7 +761,20 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "order_sashes_component_id_components_id_fk": {
+          "name": "order_sashes_component_id_components_id_fk",
+          "tableFrom": "order_sashes",
+          "tableTo": "components",
+          "columnsFrom": [
+            "component_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },
@@ -952,6 +964,26 @@
           "type": "varchar",
           "primaryKey": false,
           "notNull": true
+        },
+        "quantity": {
+          "name": "quantity",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'1'"
+        },
+        "size_source": {
+          "name": "size_source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "size_multiplier": {
+          "name": "size_multiplier",
+          "type": "numeric(10, 4)",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'1'"
         }
       },
       "indexes": {},
@@ -1006,15 +1038,15 @@
           "primaryKey": false,
           "notNull": true
         },
-        "system_key": {
-          "name": "system_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "color_id": {
           "name": "color_id",
           "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "system_key": {
+          "name": "system_key",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -1062,7 +1094,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "set null",
           "onUpdate": "no action"
         },
         "systems_user_id_users_id_fk": {
@@ -1223,7 +1255,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "set null",
           "onUpdate": "no action"
         },
         "warehouse_receipt_items_fabric_id_fabrics_id_fk": {
@@ -1236,7 +1268,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },
@@ -1307,6 +1339,141 @@
         "warehouse_receipts_user_id_users_id_fk": {
           "name": "warehouse_receipts_user_id_users_id_fk",
           "tableFrom": "warehouse_receipts",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.warehouse_writeoffs": {
+      "name": "warehouse_writeoffs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "varchar",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "order_id": {
+          "name": "order_id",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "item_type": {
+          "name": "item_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "component_id": {
+          "name": "component_id",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fabric_id": {
+          "name": "fabric_id",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quantity": {
+          "name": "quantity",
+          "type": "numeric(12, 4)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "price": {
+          "name": "price",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'0'"
+        },
+        "total": {
+          "name": "total",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'0'"
+        },
+        "date": {
+          "name": "date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "comment": {
+          "name": "comment",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "warehouse_writeoffs_order_id_orders_id_fk": {
+          "name": "warehouse_writeoffs_order_id_orders_id_fk",
+          "tableFrom": "warehouse_writeoffs",
+          "tableTo": "orders",
+          "columnsFrom": [
+            "order_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "warehouse_writeoffs_component_id_components_id_fk": {
+          "name": "warehouse_writeoffs_component_id_components_id_fk",
+          "tableFrom": "warehouse_writeoffs",
+          "tableTo": "components",
+          "columnsFrom": [
+            "component_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "warehouse_writeoffs_fabric_id_fabrics_id_fk": {
+          "name": "warehouse_writeoffs_fabric_id_fabrics_id_fk",
+          "tableFrom": "warehouse_writeoffs",
+          "tableTo": "fabrics",
+          "columnsFrom": [
+            "fabric_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "warehouse_writeoffs_user_id_users_id_fk": {
+          "name": "warehouse_writeoffs_user_id_users_id_fk",
+          "tableFrom": "warehouse_writeoffs",
           "tableTo": "users",
           "columnsFrom": [
             "user_id"
