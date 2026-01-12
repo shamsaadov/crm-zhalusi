@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
   TableBody,
@@ -14,7 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertTriangle, RefreshCw } from "lucide-react";
+import { AlertTriangle, RefreshCw, ChevronLeft, ChevronRight, Layers } from "lucide-react";
 
 type LowStockItem = {
   name: string;
@@ -40,83 +42,41 @@ type DashboardData = {
     inProgress: number;
     overdue: number;
   };
-  sales7d: {
+  salesMonth: {
     ordersCount: number;
     totalAmount: number;
+  };
+  sashes: {
+    created: number;
+    sold: number;
   };
   overduePayments: {
     totalAmount: number;
     count: number;
   };
   overdueOrders: OverdueOrder[];
+  period: {
+    year: number;
+    month: number;
+    startDate: string;
+    endDate: string;
+  };
 };
 
-const mockData: DashboardData = {
-  lowStock: [
-    {
-      name: "Ткань Blackout 25 мм",
-      quantity: 3.2,
-      minQuantity: 5,
-      unit: "м",
-      lastPrice: 820,
-    },
-    {
-      name: "Карниз алюминиевый 50 мм",
-      quantity: 7,
-      minQuantity: 10,
-      unit: "м",
-      lastPrice: 560,
-    },
-    {
-      name: "Кронштейн усиленный",
-      quantity: 14,
-      minQuantity: 25,
-      unit: "шт",
-      lastPrice: 95,
-    },
-  ],
-  orders: {
-    today: 6,
-    inProgress: 14,
-    overdue: 3,
-  },
-  sales7d: {
-    ordersCount: 21,
-    totalAmount: 584000,
-  },
-  overduePayments: {
-    totalAmount: 124000,
-    count: 4,
-  },
-  overdueOrders: [
-    {
-      orderNumber: 1482,
-      dealer: "Sunrise Decor",
-      date: "2024-12-05",
-      dueDate: "2024-12-10",
-      status: "В производстве",
-      amount: 72000,
-    },
-    {
-      orderNumber: 1480,
-      dealer: "Blind House",
-      date: "2024-12-03",
-      dueDate: "2024-12-07",
-      status: "Готов",
-      amount: 41500,
-    },
-    {
-      orderNumber: 1476,
-      dealer: "Light&Shadow",
-      date: "2024-12-01",
-      dueDate: "2024-12-06",
-      status: "Новый",
-      amount: 105500,
-    },
-  ],
-};
-
-type LoadStatus = "loading" | "success" | "error";
+const MONTH_NAMES = [
+  "Январь",
+  "Февраль",
+  "Март",
+  "Апрель",
+  "Май",
+  "Июнь",
+  "Июль",
+  "Август",
+  "Сентябрь",
+  "Октябрь",
+  "Ноябрь",
+  "Декабрь",
+];
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("ru-RU", {
@@ -126,24 +86,96 @@ function formatCurrency(value: number) {
   }).format(value);
 }
 
+function getMonthOptions() {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+
+  const options = [];
+
+  // Add current month and previous 5 months
+  for (let i = 0; i < 6; i++) {
+    let month = currentMonth - i;
+    let year = currentYear;
+
+    if (month <= 0) {
+      month += 12;
+      year -= 1;
+    }
+
+    options.push({
+      year,
+      month,
+      label: `${MONTH_NAMES[month - 1]} ${year}`,
+      key: `${year}-${month}`,
+    });
+  }
+
+  return options;
+}
+
 export default function DashboardPage() {
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [status, setStatus] = useState<LoadStatus>("loading");
+  const now = new Date();
+  const [selectedYear, setSelectedYear] = useState(now.getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
 
-  const loadData = () => {
-    setStatus("loading");
-    const timer = window.setTimeout(() => {
-      setData(mockData);
-      setStatus("success");
-    }, 450);
+  const monthOptions = useMemo(() => getMonthOptions(), []);
 
-    return timer;
+  const {
+    data,
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery<DashboardData>({
+    queryKey: ["/api/dashboard", selectedYear, selectedMonth],
+    queryFn: async () => {
+      const response = await fetch(
+        `/api/dashboard?year=${selectedYear}&month=${selectedMonth}`,
+        { credentials: "include" }
+      );
+      if (!response.ok) {
+        throw new Error("Failed to fetch dashboard data");
+      }
+      return response.json();
+    },
+  });
+
+  const handlePreviousMonth = () => {
+    let newMonth = selectedMonth - 1;
+    let newYear = selectedYear;
+    if (newMonth <= 0) {
+      newMonth = 12;
+      newYear -= 1;
+    }
+    setSelectedYear(newYear);
+    setSelectedMonth(newMonth);
   };
 
-  useEffect(() => {
-    const timer = loadData();
-    return () => clearTimeout(timer);
-  }, []);
+  const handleNextMonth = () => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+
+    let newMonth = selectedMonth + 1;
+    let newYear = selectedYear;
+    if (newMonth > 12) {
+      newMonth = 1;
+      newYear += 1;
+    }
+
+    // Don't allow going beyond current month
+    if (newYear > currentYear || (newYear === currentYear && newMonth > currentMonth)) {
+      return;
+    }
+
+    setSelectedYear(newYear);
+    setSelectedMonth(newMonth);
+  };
+
+  const isCurrentMonth = () => {
+    const now = new Date();
+    return selectedYear === now.getFullYear() && selectedMonth === now.getMonth() + 1;
+  };
 
   const kpis = useMemo(() => {
     if (!data) return [];
@@ -152,7 +184,7 @@ export default function DashboardPage() {
         title: "Остатки ниже минимума",
         value: data.lowStock.length,
         hint: "Позиций на контроле",
-        tone: "destructive" as const,
+        tone: data.lowStock.length > 0 ? "destructive" : "default",
       },
       {
         title: "Заказы сегодня",
@@ -170,28 +202,42 @@ export default function DashboardPage() {
         title: "Просроченные заказы",
         value: data.orders.overdue,
         hint: "Требуют отгрузки",
-        tone: "warning" as const,
+        tone: data.orders.overdue > 0 ? "warning" : "default",
       },
       {
-        title: "Продажи за 7 дней",
-        value: formatCurrency(data.sales7d.totalAmount),
-        hint: `${data.sales7d.ordersCount} заказов`,
+        title: `Продажи за ${MONTH_NAMES[selectedMonth - 1].toLowerCase()}`,
+        value: formatCurrency(data.salesMonth.totalAmount),
+        hint: `${data.salesMonth.ordersCount} заказов`,
         tone: "default" as const,
       },
       {
         title: "Просроченные оплаты",
         value: formatCurrency(data.overduePayments.totalAmount),
-        hint: `${data.overduePayments.count} плательщика`,
+        hint: `${data.overduePayments.count} дилеров`,
         tone: data.overduePayments.totalAmount > 0 ? "warning" : "default",
       },
+      {
+        title: "Створок создано",
+        value: data.sashes.created,
+        hint: `За ${MONTH_NAMES[selectedMonth - 1].toLowerCase()}`,
+        tone: "default" as const,
+        icon: Layers,
+      },
+      {
+        title: "Створок продано",
+        value: data.sashes.sold,
+        hint: "Отгруженные заказы",
+        tone: "default" as const,
+        icon: Layers,
+      },
     ];
-  }, [data]);
+  }, [data, selectedMonth]);
 
   const renderKpiCards = () => {
-    if (status === "loading") {
+    if (isLoading) {
       return (
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, idx) => (
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 8 }).map((_, idx) => (
             <Card key={idx} className="border-muted-foreground/10">
               <CardHeader className="px-4 pt-3 pb-2">
                 <Skeleton className="h-3 w-24" />
@@ -209,11 +255,12 @@ export default function DashboardPage() {
     if (!data) return null;
 
     return (
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {kpis.map((kpi) => (
           <Card key={kpi.title} className="relative overflow-hidden border-muted-foreground/10">
             <CardHeader className="px-4 pt-3 pb-2">
-              <CardTitle className="text-sm font-medium">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                {kpi.icon && <kpi.icon className="h-4 w-4 text-muted-foreground" />}
                 {kpi.title}
               </CardTitle>
             </CardHeader>
@@ -235,7 +282,7 @@ export default function DashboardPage() {
   };
 
   const renderLowStock = () => {
-    if (status === "loading") {
+    if (isLoading) {
       return <Skeleton className="h-40 w-full" />;
     }
 
@@ -282,7 +329,7 @@ export default function DashboardPage() {
   };
 
   const renderOverdueOrders = () => {
-    if (status === "loading") {
+    if (isLoading) {
       return <Skeleton className="h-40 w-full" />;
     }
 
@@ -333,24 +380,71 @@ export default function DashboardPage() {
   return (
     <Layout title="Сводка" breadcrumbs={[{ label: "Сводка" }]}>
       <div className="flex items-center justify-between gap-4 mb-4">
-        <h1>ТУТ ПОКА НЕНАСТОЯЩИЕ ДАННЫЕ Я ИХ ПРИКРУЧУ ЧУТЬ ПОЗЖЕ</h1>
-        <div>
-          <p className="text-sm text-muted-foreground leading-tight">
-            Мини-дашборд с ключевыми показателями и проблемными зонами.
-          </p>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handlePreviousMonth}
+              className="h-8 w-8"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="text-sm font-medium min-w-[140px] text-center">
+              {MONTH_NAMES[selectedMonth - 1]} {selectedYear}
+            </span>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handleNextMonth}
+              disabled={isCurrentMonth()}
+              className="h-8 w-8"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={loadData}
-          disabled={status === "loading"}
-        >
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Обновить
-        </Button>
+        <div className="flex items-center gap-4">
+          <p className="text-sm text-muted-foreground leading-tight hidden md:block">
+            Ключевые показатели и проблемные зоны
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => refetch()}
+            disabled={isLoading}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+            Обновить
+          </Button>
+        </div>
       </div>
 
-      {status === "error" && (
+      {/* Quick month tabs */}
+      <div className="mb-4">
+        <Tabs
+          value={`${selectedYear}-${selectedMonth}`}
+          onValueChange={(value) => {
+            const [year, month] = value.split("-").map(Number);
+            setSelectedYear(year);
+            setSelectedMonth(month);
+          }}
+        >
+          <TabsList className="w-full flex overflow-x-auto">
+            {monthOptions.map((option) => (
+              <TabsTrigger
+                key={option.key}
+                value={option.key}
+                className="flex-1 min-w-[120px]"
+              >
+                {MONTH_NAMES[option.month - 1].slice(0, 3)}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+      </div>
+
+      {isError && (
         <Alert variant="destructive" className="mb-6">
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>Не удалось загрузить данные</AlertTitle>

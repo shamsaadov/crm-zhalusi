@@ -2905,5 +2905,231 @@ export async function registerRoutes(
     }
   );
 
+  // ===== DASHBOARD =====
+  app.get(
+    "/api/dashboard",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const year = parseInt(req.query.year as string) || new Date().getFullYear();
+        const month = parseInt(req.query.month as string) || new Date().getMonth() + 1;
+
+        // Calculate date range for the month
+        const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
+        const lastDay = new Date(year, month, 0).getDate();
+        const endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+
+        const today = new Date().toISOString().split("T")[0];
+
+        // Get all necessary data
+        const [
+          allOrders,
+          allDealers,
+          allFabrics,
+          allComponents,
+          receipts,
+          writeoffs,
+        ] = await Promise.all([
+          storage.getOrders(req.userId!),
+          storage.getDealers(req.userId!),
+          storage.getFabrics(req.userId!),
+          storage.getComponents(req.userId!),
+          storage.getWarehouseReceipts(req.userId!),
+          storage.getWarehouseWriteoffs(req.userId!),
+        ]);
+
+        // Filter orders for the selected month
+        const monthOrders = allOrders.filter((order) => {
+          const orderDate = order.date;
+          return orderDate >= startDate && orderDate <= endDate;
+        });
+
+        // Get today's orders
+        const todayOrders = allOrders.filter((order) => order.date === today);
+
+        // Get orders in progress (Новый, В производстве)
+        const inProgressOrders = allOrders.filter(
+          (order) =>
+            order.status === "Новый" || order.status === "В производстве"
+        );
+
+        // Get overdue orders (status not Отгружен and older than 7 days)
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        const overdueDate = sevenDaysAgo.toISOString().split("T")[0];
+        
+        const overdueOrders = allOrders.filter(
+          (order) =>
+            order.status !== "Отгружен" &&
+            order.date < overdueDate
+        );
+
+        // Calculate monthly sales
+        const monthlySales = monthOrders.reduce(
+          (sum, order) => sum + parseFloat(order.salePrice?.toString() || "0"),
+          0
+        );
+
+        // Calculate sashes count for the month
+        let totalSashesCount = 0;
+        for (const order of monthOrders) {
+          const sashes = await storage.getOrderSashes(order.id);
+          // Count only sashes that have systemId (actual sash orders, not product orders)
+          const sashCount = sashes.filter((s) => s.systemId).length;
+          totalSashesCount += sashCount;
+        }
+
+        // Get shipped orders for the month (sold products)
+        const shippedMonthOrders = monthOrders.filter(
+          (order) => order.status === "Отгружен"
+        );
+        let soldSashesCount = 0;
+        for (const order of shippedMonthOrders) {
+          const sashes = await storage.getOrderSashes(order.id);
+          const sashCount = sashes.filter((s) => s.systemId).length;
+          soldSashesCount += sashCount;
+        }
+
+        // Calculate overdue payments (dealers with negative balance)
+        const overduePayments = allDealers.filter((d) => d.balance < 0);
+        const totalOverduePayments = overduePayments.reduce(
+          (sum, d) => sum + Math.abs(d.balance),
+          0
+        );
+
+        // Calculate stock levels and find low stock items
+        const receiptItems: { fabricId?: string | null; componentId?: string | null; quantity: string; price: string }[] = [];
+        for (const receipt of receipts) {
+          const items = await storage.getWarehouseReceiptItems(receipt.id);
+          receiptItems.push(...items.map((item) => ({
+            fabricId: item.fabricId,
+            componentId: item.componentId,
+            quantity: item.quantity?.toString() || "0",
+            price: item.price?.toString() || "0",
+          })));
+        }
+
+        // Calculate fabric stock
+        const fabricStock: Record<string, { quantity: number; lastPrice: number }> = {};
+        for (const item of receiptItems.filter((i) => i.fabricId)) {
+          const fabricId = item.fabricId!;
+          if (!fabricStock[fabricId]) {
+            fabricStock[fabricId] = { quantity: 0, lastPrice: 0 };
+          }
+          fabricStock[fabricId].quantity += parseFloat(item.quantity);
+          fabricStock[fabricId].lastPrice = parseFloat(item.price);
+        }
+        // Subtract writeoffs
+        for (const wo of writeoffs.filter((w) => w.fabricId)) {
+          if (fabricStock[wo.fabricId!]) {
+            fabricStock[wo.fabricId!].quantity -= parseFloat(wo.quantity?.toString() || "0");
+          }
+        }
+
+        // Calculate component stock
+        const componentStock: Record<string, { quantity: number; lastPrice: number }> = {};
+        for (const item of receiptItems.filter((i) => i.componentId)) {
+          const componentId = item.componentId!;
+          if (!componentStock[componentId]) {
+            componentStock[componentId] = { quantity: 0, lastPrice: 0 };
+          }
+          componentStock[componentId].quantity += parseFloat(item.quantity);
+          componentStock[componentId].lastPrice = parseFloat(item.price);
+        }
+        // Subtract writeoffs
+        for (const wo of writeoffs.filter((w) => w.componentId)) {
+          if (componentStock[wo.componentId!]) {
+            componentStock[wo.componentId!].quantity -= parseFloat(wo.quantity?.toString() || "0");
+          }
+        }
+
+        // Find low stock items (below minimum threshold of 5 for fabrics, 10 for components)
+        const lowStockItems: {
+          name: string;
+          quantity: number;
+          minQuantity: number;
+          unit: string;
+          lastPrice: number;
+        }[] = [];
+
+        for (const fabric of allFabrics) {
+          const stock = fabricStock[fabric.id];
+          const quantity = stock?.quantity || 0;
+          const minQuantity = 5; // Default minimum for fabrics
+          if (quantity < minQuantity) {
+            lowStockItems.push({
+              name: fabric.name,
+              quantity: Math.round(quantity * 100) / 100,
+              minQuantity,
+              unit: "м²",
+              lastPrice: stock?.lastPrice || 0,
+            });
+          }
+        }
+
+        for (const component of allComponents) {
+          const stock = componentStock[component.id];
+          const quantity = stock?.quantity || 0;
+          const minQuantity = 10; // Default minimum for components
+          if (quantity < minQuantity) {
+            lowStockItems.push({
+              name: component.name,
+              quantity: Math.round(quantity * 100) / 100,
+              minQuantity,
+              unit: component.unit || "шт",
+              lastPrice: stock?.lastPrice || 0,
+            });
+          }
+        }
+
+        // Format overdue orders for response
+        const overdueOrdersList = overdueOrders.slice(0, 10).map((order) => {
+          const dealer = allDealers.find((d) => d.id === order.dealerId);
+          const dueDate = new Date(order.date);
+          dueDate.setDate(dueDate.getDate() + 7);
+          return {
+            orderNumber: order.orderNumber,
+            dealer: dealer?.fullName || "Без дилера",
+            date: order.date,
+            dueDate: dueDate.toISOString().split("T")[0],
+            status: order.status || "Новый",
+            amount: parseFloat(order.salePrice?.toString() || "0"),
+          };
+        });
+
+        res.json({
+          lowStock: lowStockItems.slice(0, 10),
+          orders: {
+            today: todayOrders.length,
+            inProgress: inProgressOrders.length,
+            overdue: overdueOrders.length,
+          },
+          salesMonth: {
+            ordersCount: monthOrders.length,
+            totalAmount: monthlySales,
+          },
+          sashes: {
+            created: totalSashesCount,
+            sold: soldSashesCount,
+          },
+          overduePayments: {
+            totalAmount: totalOverduePayments,
+            count: overduePayments.length,
+          },
+          overdueOrders: overdueOrdersList,
+          period: {
+            year,
+            month,
+            startDate,
+            endDate,
+          },
+        });
+      } catch (error) {
+        console.error("Dashboard error:", error);
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
   return httpServer;
 }

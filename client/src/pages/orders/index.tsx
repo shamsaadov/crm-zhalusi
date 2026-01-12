@@ -390,12 +390,18 @@ export default function OrdersPage() {
         return sum + price * qty;
       }, 0);
 
+      console.log("[SUBMIT] isManualSalePrice:", isManualSalePrice);
+      console.log("[SUBMIT] manualSalePrice:", manualSalePrice);
+      console.log("[SUBMIT] autoTotalPrice:", autoTotalPrice);
+
       if (manualSalePrice > 0 && autoTotalPrice > 0) {
         // Распределяем пропорционально автоматическим ценам
         const ratio = manualSalePrice / autoTotalPrice;
-        sashesWithDistributedPrice = data.sashes.map((sash) => {
+        console.log("[SUBMIT] ratio:", ratio);
+        sashesWithDistributedPrice = data.sashes.map((sash, idx) => {
           const autoPrice = parseFloat(sash.sashPrice || "0");
           const newPrice = autoPrice * ratio;
+          console.log(`[SUBMIT] sash ${idx}: autoPrice=${autoPrice}, newPrice=${newPrice}`);
           return {
             ...sash,
             sashPrice: newPrice.toFixed(2),
@@ -409,12 +415,14 @@ export default function OrdersPage() {
         
         if (totalQuantity > 0) {
           const pricePerUnit = manualSalePrice / totalQuantity;
+          console.log("[SUBMIT] distributing evenly, pricePerUnit:", pricePerUnit);
           sashesWithDistributedPrice = data.sashes.map((sash) => ({
             ...sash,
             sashPrice: pricePerUnit.toFixed(2),
           }));
         }
       }
+      console.log("[SUBMIT] sashesWithDistributedPrice:", sashesWithDistributedPrice);
     }
 
     // Размножаем створки с quantity > 1
