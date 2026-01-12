@@ -16,7 +16,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertTriangle, RefreshCw, ChevronLeft, ChevronRight, Layers } from "lucide-react";
+import {
+  AlertTriangle,
+  RefreshCw,
+  ChevronLeft,
+  ChevronRight,
+  Layers,
+} from "lucide-react";
 
 type LowStockItem = {
   name: string;
@@ -121,12 +127,7 @@ export default function DashboardPage() {
 
   const monthOptions = useMemo(() => getMonthOptions(), []);
 
-  const {
-    data,
-    isLoading,
-    isError,
-    refetch,
-  } = useQuery<DashboardData>({
+  const { data, isLoading, isError, refetch } = useQuery<DashboardData>({
     queryKey: ["/api/dashboard", selectedYear, selectedMonth],
     queryFn: async () => {
       const response = await fetch(
@@ -164,7 +165,10 @@ export default function DashboardPage() {
     }
 
     // Don't allow going beyond current month
-    if (newYear > currentYear || (newYear === currentYear && newMonth > currentMonth)) {
+    if (
+      newYear > currentYear ||
+      (newYear === currentYear && newMonth > currentMonth)
+    ) {
       return;
     }
 
@@ -174,7 +178,9 @@ export default function DashboardPage() {
 
   const isCurrentMonth = () => {
     const now = new Date();
-    return selectedYear === now.getFullYear() && selectedMonth === now.getMonth() + 1;
+    return (
+      selectedYear === now.getFullYear() && selectedMonth === now.getMonth() + 1
+    );
   };
 
   const kpis = useMemo(() => {
@@ -257,10 +263,15 @@ export default function DashboardPage() {
     return (
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {kpis.map((kpi) => (
-          <Card key={kpi.title} className="relative overflow-hidden border-muted-foreground/10">
+          <Card
+            key={kpi.title}
+            className="relative overflow-hidden border-muted-foreground/10"
+          >
             <CardHeader className="px-4 pt-3 pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
-                {kpi.icon && <kpi.icon className="h-4 w-4 text-muted-foreground" />}
+                {kpi.icon && (
+                  <kpi.icon className="h-4 w-4 text-muted-foreground" />
+                )}
                 {kpi.title}
               </CardTitle>
             </CardHeader>
@@ -270,7 +281,11 @@ export default function DashboardPage() {
               </div>
               <p className="text-xs text-muted-foreground">{kpi.hint}</p>
               {kpi.tone !== "default" && (
-                <Badge variant={kpi.tone === "destructive" ? "destructive" : "outline"}>
+                <Badge
+                  variant={
+                    kpi.tone === "destructive" ? "destructive" : "outline"
+                  }
+                >
                   {kpi.tone === "destructive" ? "Внимание" : "Важно"}
                 </Badge>
               )}
@@ -359,7 +374,9 @@ export default function DashboardPage() {
           <TableBody>
             {items.map((order) => (
               <TableRow key={order.orderNumber}>
-                <TableCell className="font-medium">#{order.orderNumber}</TableCell>
+                <TableCell className="font-medium">
+                  #{order.orderNumber}
+                </TableCell>
                 <TableCell>{order.dealer}</TableCell>
                 <TableCell>{order.date}</TableCell>
                 <TableCell>{order.dueDate}</TableCell>
@@ -414,7 +431,9 @@ export default function DashboardPage() {
             onClick={() => refetch()}
             disabled={isLoading}
           >
-            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+            <RefreshCw
+              className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`}
+            />
             Обновить
           </Button>
         </div>
@@ -452,9 +471,7 @@ export default function DashboardPage() {
         </Alert>
       )}
 
-      <section className="space-y-3">
-        {renderKpiCards()}
-      </section>
+      <section className="space-y-3">{renderKpiCards()}</section>
 
       <Separator className="my-5" />
 

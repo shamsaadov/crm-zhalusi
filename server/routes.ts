@@ -1347,12 +1347,8 @@ export async function registerRoutes(
           ...orderData
         } = req.body;
 
-        // Проверка остатков убрана - теперь можно создавать заказ товара без материалов
-        // Проверка будет только при смене статуса на "Готов"
-
         const orderNumber = await storage.getNextOrderNumber(req.userId!);
 
-        // Генерируем комментарий с описанием комплектующих
         let comment = orderData.comment || "";
         if (components && Array.isArray(components) && components.length > 0) {
           const allComponents = await storage.getComponents(req.userId!);
@@ -1382,21 +1378,17 @@ export async function registerRoutes(
             await storage.createOrderSash({
               orderId: order.id,
               componentId: comp.componentId,
-              quantity: comp.quantity || "1",
-              // Остальные поля не нужны для заказа товара
               width: "0",
               height: "0",
             });
           }
         }
 
-        // Create finance income operation if order is paid
         if (
           isPaid &&
           orderData.salePrice &&
           parseFloat(orderData.salePrice) > 0
         ) {
-          // Используем указанную кассу или первую по умолчанию
           let targetCashboxId = cashboxId;
           if (!targetCashboxId) {
             const allCashboxes = await storage.getCashboxes(req.userId!);
@@ -1665,7 +1657,8 @@ export async function registerRoutes(
               const widthM = width / 1000;
               const heightM = height / 1000;
               const areaM2 = widthM * heightM;
-              const quantity = parseInt(sash.quantity?.toString() || "1");
+              // Свойство quantity отсутствует у sash, использовать 1 по умолчанию
+              const quantity = 1;
 
               // Списываем ткань
               if (sash.fabricId) {
@@ -2911,13 +2904,17 @@ export async function registerRoutes(
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
-        const year = parseInt(req.query.year as string) || new Date().getFullYear();
-        const month = parseInt(req.query.month as string) || new Date().getMonth() + 1;
+        const year =
+          parseInt(req.query.year as string) || new Date().getFullYear();
+        const month =
+          parseInt(req.query.month as string) || new Date().getMonth() + 1;
 
         // Calculate date range for the month
         const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
         const lastDay = new Date(year, month, 0).getDate();
-        const endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+        const endDate = `${year}-${String(month).padStart(2, "0")}-${String(
+          lastDay
+        ).padStart(2, "0")}`;
 
         const today = new Date().toISOString().split("T")[0];
 
@@ -2957,11 +2954,9 @@ export async function registerRoutes(
         const sevenDaysAgo = new Date();
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
         const overdueDate = sevenDaysAgo.toISOString().split("T")[0];
-        
+
         const overdueOrders = allOrders.filter(
-          (order) =>
-            order.status !== "Отгружен" &&
-            order.date < overdueDate
+          (order) => order.status !== "Отгружен" && order.date < overdueDate
         );
 
         // Calculate monthly sales
@@ -2998,19 +2993,29 @@ export async function registerRoutes(
         );
 
         // Calculate stock levels and find low stock items
-        const receiptItems: { fabricId?: string | null; componentId?: string | null; quantity: string; price: string }[] = [];
+        const receiptItems: {
+          fabricId?: string | null;
+          componentId?: string | null;
+          quantity: string;
+          price: string;
+        }[] = [];
         for (const receipt of receipts) {
           const items = await storage.getWarehouseReceiptItems(receipt.id);
-          receiptItems.push(...items.map((item) => ({
-            fabricId: item.fabricId,
-            componentId: item.componentId,
-            quantity: item.quantity?.toString() || "0",
-            price: item.price?.toString() || "0",
-          })));
+          receiptItems.push(
+            ...items.map((item) => ({
+              fabricId: item.fabricId,
+              componentId: item.componentId,
+              quantity: item.quantity?.toString() || "0",
+              price: item.price?.toString() || "0",
+            }))
+          );
         }
 
         // Calculate fabric stock
-        const fabricStock: Record<string, { quantity: number; lastPrice: number }> = {};
+        const fabricStock: Record<
+          string,
+          { quantity: number; lastPrice: number }
+        > = {};
         for (const item of receiptItems.filter((i) => i.fabricId)) {
           const fabricId = item.fabricId!;
           if (!fabricStock[fabricId]) {
@@ -3022,12 +3027,17 @@ export async function registerRoutes(
         // Subtract writeoffs
         for (const wo of writeoffs.filter((w) => w.fabricId)) {
           if (fabricStock[wo.fabricId!]) {
-            fabricStock[wo.fabricId!].quantity -= parseFloat(wo.quantity?.toString() || "0");
+            fabricStock[wo.fabricId!].quantity -= parseFloat(
+              wo.quantity?.toString() || "0"
+            );
           }
         }
 
         // Calculate component stock
-        const componentStock: Record<string, { quantity: number; lastPrice: number }> = {};
+        const componentStock: Record<
+          string,
+          { quantity: number; lastPrice: number }
+        > = {};
         for (const item of receiptItems.filter((i) => i.componentId)) {
           const componentId = item.componentId!;
           if (!componentStock[componentId]) {
@@ -3039,7 +3049,9 @@ export async function registerRoutes(
         // Subtract writeoffs
         for (const wo of writeoffs.filter((w) => w.componentId)) {
           if (componentStock[wo.componentId!]) {
-            componentStock[wo.componentId!].quantity -= parseFloat(wo.quantity?.toString() || "0");
+            componentStock[wo.componentId!].quantity -= parseFloat(
+              wo.quantity?.toString() || "0"
+            );
           }
         }
 
