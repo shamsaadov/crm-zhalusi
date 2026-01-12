@@ -378,8 +378,47 @@ export default function OrdersPage() {
       return;
     }
 
+    // Если включен ручной ввод цены, распределяем её по створкам пропорционально
+    let sashesWithDistributedPrice = data.sashes;
+    if (isManualSalePrice) {
+      const manualSalePrice = parseFloat(data.salePrice || "0");
+      
+      // Считаем автоматическую сумму цен створок (с учётом количества)
+      const autoTotalPrice = data.sashes.reduce((sum, sash) => {
+        const price = parseFloat(sash.sashPrice || "0");
+        const qty = parseFloat(sash.quantity || "1");
+        return sum + price * qty;
+      }, 0);
+
+      if (manualSalePrice > 0 && autoTotalPrice > 0) {
+        // Распределяем пропорционально автоматическим ценам
+        const ratio = manualSalePrice / autoTotalPrice;
+        sashesWithDistributedPrice = data.sashes.map((sash) => {
+          const autoPrice = parseFloat(sash.sashPrice || "0");
+          const newPrice = autoPrice * ratio;
+          return {
+            ...sash,
+            sashPrice: newPrice.toFixed(2),
+          };
+        });
+      } else if (manualSalePrice > 0) {
+        // Если нет автоматических цен, распределяем равномерно по количеству
+        const totalQuantity = data.sashes.reduce((sum, sash) => {
+          return sum + parseFloat(sash.quantity || "1");
+        }, 0);
+        
+        if (totalQuantity > 0) {
+          const pricePerUnit = manualSalePrice / totalQuantity;
+          sashesWithDistributedPrice = data.sashes.map((sash) => ({
+            ...sash,
+            sashPrice: pricePerUnit.toFixed(2),
+          }));
+        }
+      }
+    }
+
     // Размножаем створки с quantity > 1
-    const expandedSashes = data.sashes.flatMap((sash) => {
+    const expandedSashes = sashesWithDistributedPrice.flatMap((sash) => {
       const quantity = parseInt(sash.quantity || "1");
       // Создаем массив створок (quantity и coefficient не нужны в БД, но quantity нужен для типа)
       return Array(quantity)
