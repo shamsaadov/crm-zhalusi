@@ -52,6 +52,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
+import { useReportAccess } from "@/contexts/report-access-context";
 import {
   type FinanceOperation,
   type Dealer,
@@ -121,6 +122,7 @@ const typeColors: Record<string, string> = {
 export default function FinancePage() {
   const { toast } = useToast();
   const { user } = useAuth();
+  const { requestAccess, hasReportPassword } = useReportAccess();
   const [activeTab, setActiveTab] = useState("income");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingOperation, setEditingOperation] =
@@ -134,9 +136,6 @@ export default function FinancePage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [operationToDelete, setOperationToDelete] =
     useState<FinanceOperationWithRelations | null>(null);
-  const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false);
-  const [deletePassword, setDeletePassword] = useState("");
-  const [passwordError, setPasswordError] = useState("");
   const [isReceiptDialogOpen, setIsReceiptDialogOpen] = useState(false);
   const [receiptPreview, setReceiptPreview] = useState<{
     dealerName: string;
@@ -329,34 +328,20 @@ export default function FinancePage() {
   });
 
   const hardDeleteMutation = useMutation({
-    mutationFn: ({ id, password }: { id: string; password?: string }) =>
-      apiRequest(
-        "DELETE",
-        `/api/finance/${id}/hard`,
-        password ? { password } : undefined
-      ),
+    mutationFn: (id: string) =>
+      apiRequest("DELETE", `/api/finance/${id}/hard`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/finance"] });
       setIsDeleteDialogOpen(false);
-      setIsPasswordDialogOpen(false);
       setOperationToDelete(null);
-      setDeletePassword("");
-      setPasswordError("");
       toast({ title: "Успешно", description: "Операция удалена" });
     },
-    onError: async (error: Error & { requiresPassword?: boolean }) => {
-      if (error.message === "Требуется пароль") {
-        setIsDeleteDialogOpen(false);
-        setIsPasswordDialogOpen(true);
-      } else if (error.message === "Неверный пароль") {
-        setPasswordError("Неверный пароль");
-      } else {
-        toast({
-          title: "Ошибка",
-          description: error.message,
-          variant: "destructive",
-        });
-      }
+    onError: (error: Error) => {
+      toast({
+        title: "Ошибка",
+        description: error.message,
+        variant: "destructive",
+      });
     },
   });
 
@@ -501,20 +486,20 @@ export default function FinancePage() {
 
   const handleDelete = () => {
     if (!operationToDelete) return;
+
     if (operationToDelete.isDraft) {
-      hardDeleteMutation.mutate({ id: operationToDelete.id });
+      // Для удаления из черновиков требуется разблокировка (если пароль установлен)
+      if (hasReportPassword) {
+        requestAccess(
+          () => hardDeleteMutation.mutate(operationToDelete.id),
+          () => setIsDeleteDialogOpen(false)
+        );
+      } else {
+        hardDeleteMutation.mutate(operationToDelete.id);
+      }
     } else {
       softDeleteMutation.mutate(operationToDelete.id);
     }
-  };
-
-  const handlePasswordSubmit = () => {
-    if (!operationToDelete) return;
-    setPasswordError("");
-    hardDeleteMutation.mutate({
-      id: operationToDelete.id,
-      password: deletePassword,
-    });
   };
 
   const formatReceiptAmount = (value: string) => {
@@ -1430,59 +1415,6 @@ export default function FinancePage() {
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               )}
               {operationToDelete?.isDraft ? "Удалить" : "В черновики"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={isPasswordDialogOpen}
-        onOpenChange={(open) => {
-          setIsPasswordDialogOpen(open);
-          if (!open) {
-            setDeletePassword("");
-            setPasswordError("");
-            setOperationToDelete(null);
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Введите пароль</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground mb-4">
-            Для удаления операции из черновиков требуется пароль отчетов.
-          </p>
-          <div className="space-y-2">
-            <Input
-              type="password"
-              placeholder="Пароль"
-              value={deletePassword}
-              onChange={(e) => setDeletePassword(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handlePasswordSubmit()}
-              data-testid="input-delete-password"
-            />
-            {passwordError && (
-              <p className="text-sm text-destructive">{passwordError}</p>
-            )}
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsPasswordDialogOpen(false)}
-            >
-              Отмена
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handlePasswordSubmit}
-              disabled={hardDeleteMutation.isPending || !deletePassword}
-              data-testid="button-confirm-password"
-            >
-              {hardDeleteMutation.isPending && (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              )}
-              Удалить
             </Button>
           </DialogFooter>
         </DialogContent>

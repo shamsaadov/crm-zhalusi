@@ -41,6 +41,7 @@ interface AuthRequest extends Request {
 declare module "express-session" {
   interface SessionData {
     token?: string;
+    reportAccessGranted?: boolean;
   }
 }
 
@@ -2003,15 +2004,23 @@ export async function registerRoutes(
           return res.status(401).json({ message: "Пользователь не найден" });
         }
 
+        // Проверяем пароль отчётов если он установлен
         if (user.reportPassword) {
-          if (!password) {
-            return res
-              .status(403)
-              .json({ message: "Требуется пароль", requiresPassword: true });
-          }
-          const isValid = await bcrypt.compare(password, user.reportPassword);
-          if (!isValid) {
-            return res.status(403).json({ message: "Неверный пароль" });
+          // Если доступ уже разблокирован в сессии — пропускаем проверку
+          if (!req.session.reportAccessGranted) {
+            // Если передан пароль — проверяем его
+            if (password) {
+              const isValid = await bcrypt.compare(password, user.reportPassword);
+              if (!isValid) {
+                return res.status(403).json({ message: "Неверный пароль" });
+              }
+              // Разблокируем доступ в сессии
+              req.session.reportAccessGranted = true;
+            } else {
+              return res
+                .status(403)
+                .json({ message: "Требуется пароль", requiresPassword: true });
+            }
           }
         }
 
@@ -2915,9 +2924,13 @@ export async function registerRoutes(
           return res.status(404).json({ message: "Пользователь не найден" });
         }
         if (!user.reportPassword) {
+          req.session.reportAccessGranted = true;
           return res.json({ valid: true });
         }
         const valid = await bcrypt.compare(password, user.reportPassword);
+        if (valid) {
+          req.session.reportAccessGranted = true;
+        }
         res.json({ valid });
       } catch (error) {
         res.status(500).json({ message: "Ошибка сервера" });

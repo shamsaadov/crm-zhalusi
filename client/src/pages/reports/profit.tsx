@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
+import { ProtectedReport } from "@/components/protected-report";
 import { FilterBar } from "@/components/filter-bar";
 import { formatCurrency, StatusBadge, BalanceBadge } from "@/components/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -111,11 +112,12 @@ export default function ProfitReportPage() {
   ];
 
   return (
-    <Layout 
-      title="Валовая прибыль" 
-      breadcrumbs={[{ label: "Отчеты", href: "/reports/profit" }, { label: "Прибыль" }]}
-    >
-      <FilterBar
+    <ProtectedReport title="Валовая прибыль" fallbackUrl="/dashboard">
+      <Layout
+        title="Валовая прибыль"
+        breadcrumbs={[{ label: "Отчеты", href: "/reports/profit" }, { label: "Прибыль" }]}
+      >
+        <FilterBar
         search={search}
         onSearchChange={setSearch}
         searchPlaceholder="Поиск по номеру"
@@ -196,13 +198,14 @@ export default function ProfitReportPage() {
         </Card>
       </div>
 
-      <DataTable
-        columns={columns}
-        data={report?.orders || []}
-        isLoading={isLoading}
-        emptyMessage="Заказы не найдены"
-        getRowKey={(order) => order.id}
-      />
-    </Layout>
+        <DataTable
+          columns={columns}
+          data={report?.orders || []}
+          isLoading={isLoading}
+          emptyMessage="Заказы не найдены"
+          getRowKey={(order) => order.id}
+        />
+      </Layout>
+    </ProtectedReport>
   );
 }

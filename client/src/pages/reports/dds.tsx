@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
+import { ProtectedReport } from "@/components/protected-report";
 import { FilterBar } from "@/components/filter-bar";
 import { formatCurrency } from "@/components/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -121,11 +122,12 @@ export default function DDSReportPage() {
   ];
 
   return (
-    <Layout 
-      title="ДДС - Движение денежных средств" 
-      breadcrumbs={[{ label: "Отчеты", href: "/reports/dds" }, { label: "ДДС" }]}
-    >
-      <FilterBar
+    <ProtectedReport title="ДДС - Движение денежных средств" fallbackUrl="/dashboard">
+      <Layout
+        title="ДДС - Движение денежных средств"
+        breadcrumbs={[{ label: "Отчеты", href: "/reports/dds" }, { label: "ДДС" }]}
+      >
+        <FilterBar
         dateRange={dateRange}
         onDateRangeChange={setDateRange}
         showDateFilter
@@ -211,17 +213,18 @@ export default function DDSReportPage() {
         </div>
       )}
 
-      {/* All operations */}
-      <div>
-        <h3 className="text-lg font-semibold mb-4">Все операции</h3>
-        <DataTable
-          columns={operationColumns}
-          data={report?.operations || []}
-          isLoading={isLoading}
-          emptyMessage="Операции не найдены"
-          getRowKey={(op) => op.id}
-        />
-      </div>
-    </Layout>
+        {/* All operations */}
+        <div>
+          <h3 className="text-lg font-semibold mb-4">Все операции</h3>
+          <DataTable
+            columns={operationColumns}
+            data={report?.operations || []}
+            isLoading={isLoading}
+            emptyMessage="Операции не найдены"
+            getRowKey={(op) => op.id}
+          />
+        </div>
+      </Layout>
+    </ProtectedReport>
   );
 }
