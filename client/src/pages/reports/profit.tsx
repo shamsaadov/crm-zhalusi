@@ -92,6 +92,22 @@ export default function ProfitReportPage() {
       },
       className: "text-right",
     },
+    {
+      key: "margin",
+      header: "Маржа %",
+      cell: (order: Order) => {
+        const salePrice = parseFloat(order.salePrice?.toString() || "0");
+        const costPrice = parseFloat(order.costPrice?.toString() || "0");
+        const profit = salePrice - costPrice;
+        const margin = salePrice > 0 ? (profit / salePrice) * 100 : 0;
+        return (
+          <span className={`font-mono ${margin >= 0 ? "text-green-600" : "text-red-600"}`}>
+            {margin.toFixed(1)}%
+          </span>
+        );
+      },
+      className: "text-right",
+    },
   ];
 
   return (
