@@ -13,6 +13,7 @@ import {
   Moon,
   Sun,
   User,
+  Search,
 } from "lucide-react";
 import {
   Sidebar,
@@ -67,6 +68,21 @@ export function AppSidebar() {
             </span>
           </div>
         </div>
+
+        {/* Кнопка глобального поиска */}
+        <button
+          onClick={() => {
+            // Эмулируем Cmd+K
+            document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, ctrlKey: true }));
+          }}
+          className="mt-3 flex w-full items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+        >
+          <Search className="h-4 w-4" />
+          <span className="flex-1 text-left">Поиск...</span>
+          <kbd className="pointer-events-none hidden h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium sm:flex">
+            <span className="text-xs">⌘</span>K
+          </kbd>
+        </button>
       </SidebarHeader>
 
       <SidebarContent>

@@ -2938,6 +2938,65 @@ export async function registerRoutes(
     }
   );
 
+  // ===== GLOBAL SEARCH =====
+  app.get(
+    "/api/search",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const query = (req.query.q as string || "").trim().toLowerCase();
+
+        if (!query || query.length < 2) {
+          return res.json({ orders: [], dealers: [], suppliers: [] });
+        }
+
+        const [orders, dealers, suppliers] = await Promise.all([
+          storage.getOrders(req.userId!),
+          storage.getDealers(req.userId!),
+          storage.getSuppliers(req.userId!),
+        ]);
+
+        // Поиск по заказам (по номеру)
+        const filteredOrders = orders
+          .filter((o) =>
+            o.orderNumber?.toString().includes(query) ||
+            dealers.find(d => d.id === o.dealerId)?.fullName.toLowerCase().includes(query)
+          )
+          .slice(0, 10)
+          .map((o) => ({
+            ...o,
+            dealer: dealers.find((d) => d.id === o.dealerId),
+          }));
+
+        // Поиск по дилерам
+        const filteredDealers = dealers
+          .filter((d) =>
+            d.fullName.toLowerCase().includes(query) ||
+            d.city?.toLowerCase().includes(query) ||
+            d.phone?.includes(query)
+          )
+          .slice(0, 10);
+
+        // Поиск по поставщикам
+        const filteredSuppliers = suppliers
+          .filter((s) =>
+            s.name.toLowerCase().includes(query) ||
+            s.phone?.includes(query)
+          )
+          .slice(0, 10);
+
+        res.json({
+          orders: filteredOrders,
+          dealers: filteredDealers,
+          suppliers: filteredSuppliers,
+        });
+      } catch (error) {
+        console.error("Search error:", error);
+        res.status(500).json({ message: "Ошибка поиска" });
+      }
+    }
+  );
+
   // ===== DASHBOARD =====
   app.get(
     "/api/dashboard",

@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { ThemeProvider } from "@/lib/theme";
 import { ReportAccessProvider } from "@/contexts/report-access-context";
+import { CommandPalette } from "@/components/command-palette";
 import NotFound from "@/pages/not-found";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
@@ -36,7 +37,12 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
     return <Redirect to="/login" />;
   }
 
-  return <Component />;
+  return (
+    <>
+      <CommandPalette />
+      <Component />
+    </>
+  );
 }
 
 function PublicRoute({ component: Component }: { component: React.ComponentType }) {
