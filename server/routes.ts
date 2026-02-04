@@ -2812,6 +2812,7 @@ export async function registerRoutes(
           email: user.email,
           name: user.name,
           hasReportPassword: !!user.reportPassword,
+          createdAt: user.createdAt,
         });
       } catch (error) {
         res.status(500).json({ message: "Ошибка сервера" });
@@ -2831,7 +2832,19 @@ export async function registerRoutes(
         }
 
         const updateData: any = {};
-        if (email) updateData.email = email;
+        
+        // Проверка пароля при смене email
+        if (email && email !== user.email) {
+          if (!currentPassword) {
+            return res.status(400).json({ message: "Введите текущий пароль для смены email" });
+          }
+          const valid = await bcrypt.compare(currentPassword, user.password);
+          if (!valid) {
+            return res.status(400).json({ message: "Неверный текущий пароль" });
+          }
+          updateData.email = email;
+        }
+        
         if (name !== undefined) updateData.name = name;
 
         if (newPassword) {
@@ -2863,7 +2876,21 @@ export async function registerRoutes(
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
-        const { reportPassword } = req.body;
+        const { reportPassword, currentPassword } = req.body;
+        const user = await storage.getUser(req.userId!);
+        if (!user) {
+          return res.status(404).json({ message: "Пользователь не найден" });
+        }
+        
+        // Требуем пароль аккаунта для установки/изменения пароля отчётов
+        if (!currentPassword) {
+          return res.status(400).json({ message: "Введите текущий пароль" });
+        }
+        const valid = await bcrypt.compare(currentPassword, user.password);
+        if (!valid) {
+          return res.status(400).json({ message: "Неверный текущий пароль" });
+        }
+        
         const hashedPassword = reportPassword
           ? await bcrypt.hash(reportPassword, SALT_ROUNDS)
           : null;
