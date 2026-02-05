@@ -3242,5 +3242,98 @@ export async function registerRoutes(
     }
   );
 
+  // Dashboard Charts Data (last 6 months)
+  app.get(
+    "/api/dashboard/charts",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const allOrders = await storage.getOrders(req.userId!);
+        const financeOperations = await storage.getFinanceOperations(req.userId!, false);
+
+        const now = new Date();
+        const months: {
+          month: string;
+          sales: number;
+          profit: number;
+          orders: number;
+          income: number;
+          expense: number;
+        }[] = [];
+
+        const monthNames = ["Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"];
+
+        // Calculate stats for last 6 months
+        for (let i = 5; i >= 0; i--) {
+          const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+          const year = date.getFullYear();
+          const month = date.getMonth();
+          const startDate = `${year}-${String(month + 1).padStart(2, "0")}-01`;
+          const lastDay = new Date(year, month + 1, 0).getDate();
+          const endDate = `${year}-${String(month + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+
+          // Filter orders for this month
+          const monthOrders = allOrders.filter((o) => o.date >= startDate && o.date <= endDate);
+
+          // Sales and profit (only shipped orders)
+          const shippedOrders = monthOrders.filter((o) => o.status === "Отгружен");
+          const sales = shippedOrders.reduce((sum, o) => sum + parseFloat(o.salePrice?.toString() || "0"), 0);
+          const cost = shippedOrders.reduce((sum, o) => sum + parseFloat(o.costPrice?.toString() || "0"), 0);
+          const profit = sales - cost;
+
+          // Finance operations for this month
+          const monthOperations = financeOperations.filter((op) => op.date >= startDate && op.date <= endDate);
+          const income = monthOperations
+            .filter((op) => op.type === "income")
+            .reduce((sum, op) => sum + parseFloat(op.amount?.toString() || "0"), 0);
+          const expense = monthOperations
+            .filter((op) => op.type === "expense" || op.type === "supplier_payment")
+            .reduce((sum, op) => sum + parseFloat(op.amount?.toString() || "0"), 0);
+
+          months.push({
+            month: monthNames[month],
+            sales: Math.round(sales),
+            profit: Math.round(profit),
+            orders: monthOrders.length,
+            income: Math.round(income),
+            expense: Math.round(expense),
+          });
+        }
+
+        // Top dealers by sales (current month)
+        const currentMonthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+        const currentMonthOrders = allOrders.filter((o) => o.date >= currentMonthStart);
+
+        const dealerSales: Record<string, { name: string; sales: number; orders: number }> = {};
+        const dealers = await storage.getDealers(req.userId!);
+
+        for (const order of currentMonthOrders) {
+          if (order.dealerId) {
+            if (!dealerSales[order.dealerId]) {
+              const dealer = dealers.find((d) => d.id === order.dealerId);
+              dealerSales[order.dealerId] = {
+                name: dealer?.fullName || "Неизвестный",
+                sales: 0,
+                orders: 0,
+              };
+            }
+            dealerSales[order.dealerId].sales += parseFloat(order.salePrice?.toString() || "0");
+            dealerSales[order.dealerId].orders += 1;
+          }
+        }
+
+        const topDealers = Object.values(dealerSales)
+          .sort((a, b) => b.sales - a.sales)
+          .slice(0, 5)
+          .map((d) => ({ ...d, sales: Math.round(d.sales) }));
+
+        res.json({ months, topDealers });
+      } catch (error) {
+        console.error("Dashboard charts error:", error);
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
   return httpServer;
 }

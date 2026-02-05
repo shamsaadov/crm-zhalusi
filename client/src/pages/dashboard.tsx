@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -22,7 +22,21 @@ import {
   ChevronLeft,
   ChevronRight,
   Layers,
+  TrendingUp,
+  Users,
 } from "lucide-react";
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+} from "recharts";
 
 type LowStockItem = {
   name: string;
@@ -67,6 +81,22 @@ type DashboardData = {
     startDate: string;
     endDate: string;
   };
+};
+
+type ChartData = {
+  months: {
+    month: string;
+    sales: number;
+    profit: number;
+    orders: number;
+    income: number;
+    expense: number;
+  }[];
+  topDealers: {
+    name: string;
+    sales: number;
+    orders: number;
+  }[];
 };
 
 const MONTH_NAMES = [
@@ -137,6 +167,15 @@ export default function DashboardPage() {
       if (!response.ok) {
         throw new Error("Failed to fetch dashboard data");
       }
+      return response.json();
+    },
+  });
+
+  const { data: chartData, isLoading: chartsLoading } = useQuery<ChartData>({
+    queryKey: ["/api/dashboard/charts"],
+    queryFn: async () => {
+      const response = await fetch("/api/dashboard/charts", { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to fetch chart data");
       return response.json();
     },
   });
@@ -491,6 +530,136 @@ export default function DashboardPage() {
           </div>
           {renderOverdueOrders()}
         </section>
+      </div>
+
+      <Separator className="my-5" />
+
+      {/* Charts Section */}
+      <div className="grid gap-6 xl:grid-cols-2">
+        {/* Sales & Profit Chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5" />
+              Продажи и прибыль
+            </CardTitle>
+            <CardDescription>Динамика за последние 6 месяцев</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {chartsLoading ? (
+              <Skeleton className="h-[300px] w-full" />
+            ) : chartData?.months ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <AreaChart data={chartData.months}>
+                  <defs>
+                    <linearGradient id="salesGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="profitGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="hsl(142, 76%, 36%)" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="hsl(142, 76%, 36%)" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <XAxis dataKey="month" className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
+                  <YAxis
+                    className="text-xs"
+                    tick={{ fill: "hsl(var(--muted-foreground))" }}
+                    tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "hsl(var(--popover))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: "8px",
+                    }}
+                    labelStyle={{ color: "hsl(var(--foreground))" }}
+                    formatter={(value: number) => [formatCurrency(value), ""]}
+                  />
+                  <Legend />
+                  <Area
+                    type="monotone"
+                    dataKey="sales"
+                    name="Продажи"
+                    stroke="hsl(var(--primary))"
+                    fill="url(#salesGradient)"
+                    strokeWidth={2}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="profit"
+                    name="Прибыль"
+                    stroke="hsl(142, 76%, 36%)"
+                    fill="url(#profitGradient)"
+                    strokeWidth={2}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                Нет данных
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Top Dealers Chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Топ дилеров
+            </CardTitle>
+            <CardDescription>По продажам за текущий месяц</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {chartsLoading ? (
+              <Skeleton className="h-[300px] w-full" />
+            ) : chartData?.topDealers && chartData.topDealers.length > 0 ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={chartData.topDealers} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" horizontal={false} />
+                  <XAxis
+                    type="number"
+                    className="text-xs"
+                    tick={{ fill: "hsl(var(--muted-foreground))" }}
+                    tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    className="text-xs"
+                    tick={{ fill: "hsl(var(--muted-foreground))" }}
+                    width={100}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "hsl(var(--popover))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: "8px",
+                    }}
+                    labelStyle={{ color: "hsl(var(--foreground))" }}
+                    formatter={(value: number, name: string) => [
+                      name === "sales" ? formatCurrency(value) : value,
+                      name === "sales" ? "Продажи" : "Заказов"
+                    ]}
+                  />
+                  <Bar
+                    dataKey="sales"
+                    fill="hsl(var(--primary))"
+                    radius={[0, 4, 4, 0]}
+                    name="sales"
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                Нет данных за текущий месяц
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </Layout>
   );
