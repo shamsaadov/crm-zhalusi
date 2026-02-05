@@ -63,8 +63,6 @@ function PublicRoute({ component: Component }: { component: React.ComponentType 
   return <Component />;
 }
 
-console.log('Hello WOrld!')
-
 function Router() {
   return (
     <Switch>
