@@ -345,6 +345,55 @@ export async function registerRoutes(
     }
   );
 
+  // Dealer stats for quick view
+  app.get(
+    "/api/dealers/:id/stats",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const orders = await storage.getOrders(req.userId!);
+        const financeOps = await storage.getFinanceOperations(req.userId!, false);
+
+        const dealerOrders = orders.filter((o) => o.dealerId === req.params.id);
+        const dealerPayments = financeOps.filter(
+          (op) => op.type === "income" && op.dealerId === req.params.id
+        );
+
+        const totalOrders = dealerOrders.length;
+        const totalSales = dealerOrders.reduce(
+          (sum, o) => sum + parseFloat(o.salePrice?.toString() || "0"),
+          0
+        );
+        const totalPaid = dealerPayments.reduce(
+          (sum, op) => sum + parseFloat(op.amount?.toString() || "0"),
+          0
+        );
+
+        // Get dealer opening balance
+        const dealer = await storage.getDealer(req.params.id);
+        const openingBalance = parseFloat(dealer?.openingBalance?.toString() || "0");
+
+        // Balance = payments - sales + opening balance (negative = owes us)
+        const balance = totalPaid - totalSales + openingBalance;
+
+        // Find last order date
+        const lastOrderDate = dealerOrders.length > 0
+          ? dealerOrders.sort((a, b) => b.date.localeCompare(a.date))[0].date
+          : null;
+
+        res.json({
+          totalOrders,
+          totalSales,
+          balance,
+          lastOrderDate,
+        });
+      } catch (error) {
+        console.error("Dealer stats error:", error);
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
   // ===== CASHBOXES =====
   app.get(
     "/api/cashboxes",
@@ -866,6 +915,42 @@ export async function registerRoutes(
         await storage.deleteSupplier(req.params.id);
         res.json({ success: true });
       } catch (error) {
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // Supplier stats for quick view
+  app.get(
+    "/api/suppliers/:id/stats",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const financeOps = await storage.getFinanceOperations(req.userId!, false);
+
+        // Get payments to this supplier
+        const supplierPayments = financeOps.filter(
+          (op) => op.type === "supplier_payment" && op.supplierId === req.params.id
+        );
+
+        const totalPayments = supplierPayments.reduce(
+          (sum, op) => sum + parseFloat(op.amount?.toString() || "0"),
+          0
+        );
+
+        // Get supplier opening balance
+        const supplier = await storage.getSupplier(req.params.id);
+        const openingBalance = parseFloat(supplier?.openingBalance?.toString() || "0");
+
+        // Balance = opening balance - payments (negative = we owe them)
+        const balance = openingBalance - totalPayments;
+
+        res.json({
+          totalPayments,
+          balance,
+        });
+      } catch (error) {
+        console.error("Supplier stats error:", error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }

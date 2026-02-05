@@ -129,6 +129,7 @@ export interface IStorage {
 
   // Dealers
   getDealers(userId: string): Promise<(Dealer & { balance: number })[]>;
+  getDealer(id: string): Promise<Dealer | undefined>;
   createDealer(dealer: InsertDealer): Promise<Dealer>;
   updateDealer(
     id: string,
@@ -190,6 +191,7 @@ export interface IStorage {
 
   // Suppliers
   getSuppliers(userId: string): Promise<(Supplier & { balance: number })[]>;
+  getSupplier(id: string): Promise<Supplier | undefined>;
   createSupplier(supplier: InsertSupplier): Promise<Supplier>;
   updateSupplier(
     id: string,
@@ -418,6 +420,11 @@ export class DatabaseStorage implements IStorage {
     );
 
     return result;
+  }
+
+  async getDealer(id: string): Promise<Dealer | undefined> {
+    const [dealer] = await db.select().from(dealers).where(eq(dealers.id, id));
+    return dealer;
   }
 
   async createDealer(dealer: InsertDealer): Promise<Dealer> {
@@ -725,6 +732,11 @@ export class DatabaseStorage implements IStorage {
     );
 
     return result;
+  }
+
+  async getSupplier(id: string): Promise<Supplier | undefined> {
+    const [supplier] = await db.select().from(suppliers).where(eq(suppliers.id, id));
+    return supplier;
   }
 
   async createSupplier(supplier: InsertSupplier): Promise<Supplier> {
