@@ -20,6 +20,7 @@ import ARAPReportPage from "@/pages/reports/ar-ap";
 import CashTotalReportPage from "@/pages/reports/cash-total";
 import ProfilePage from "@/pages/profile";
 import DashboardPage from "@/pages/dashboard";
+import KanbanPage from "@/pages/kanban";
 import { Loader2 } from "lucide-react";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -77,6 +78,9 @@ function Router() {
       </Route>
       <Route path="/orders">
         <ProtectedRoute component={OrdersPage} />
+      </Route>
+      <Route path="/kanban">
+        <ProtectedRoute component={KanbanPage} />
       </Route>
       <Route path="/finance">
         <ProtectedRoute component={FinancePage} />

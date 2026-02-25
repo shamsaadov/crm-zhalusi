@@ -9,9 +9,9 @@ interface StatusBadgeProps {
 
 const statusStyles: Record<OrderStatus, string> = {
   "Новый": "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
-  "В работе": "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
+  "В производстве": "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
   "Готов": "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
-  "Выдан": "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300",
+  "Отгружен": "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300",
 };
 
 export function StatusBadge({ status, className }: StatusBadgeProps) {

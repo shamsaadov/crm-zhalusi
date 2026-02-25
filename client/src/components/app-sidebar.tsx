@@ -1,5 +1,6 @@
 import { Link, useLocation } from "wouter";
 import {
+  KanbanSquare,
   LayoutDashboard,
   ListTodo,
   ShoppingCart,
@@ -34,6 +35,7 @@ import { useTheme } from "@/lib/theme";
 
 const mainNavItems = [
   { title: "Заказы", url: "/orders", icon: ShoppingCart },
+  { title: "Канбан", url: "/kanban", icon: KanbanSquare },
   { title: "Финансы", url: "/finance", icon: Wallet },
   { title: "Склад", url: "/warehouse", icon: Warehouse },
   { title: "Справочники", url: "/lists", icon: ListTodo },
