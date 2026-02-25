@@ -22,6 +22,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Layers,
+  Scissors,
   TrendingUp,
   Users,
 } from "lucide-react";
@@ -96,6 +97,11 @@ type ChartData = {
     name: string;
     sales: number;
     orders: number;
+  }[];
+  topFabrics: {
+    name: string;
+    count: number;
+    sales: number;
   }[];
 };
 
@@ -650,6 +656,62 @@ export default function DashboardPage() {
                     fill="hsl(var(--primary))"
                     radius={[0, 4, 4, 0]}
                     name="sales"
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                Нет данных за текущий месяц
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Top Fabrics Chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Scissors className="h-5 w-5" />
+              Топ тканей
+            </CardTitle>
+            <CardDescription>По количеству створок за текущий месяц</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {chartsLoading ? (
+              <Skeleton className="h-[300px] w-full" />
+            ) : chartData?.topFabrics && chartData.topFabrics.length > 0 ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={chartData.topFabrics} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" horizontal={false} />
+                  <XAxis
+                    type="number"
+                    className="text-xs"
+                    tick={{ fill: "hsl(var(--muted-foreground))" }}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    className="text-xs"
+                    tick={{ fill: "hsl(var(--muted-foreground))" }}
+                    width={120}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "hsl(var(--popover))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: "8px",
+                    }}
+                    labelStyle={{ color: "hsl(var(--foreground))" }}
+                    formatter={(value: number, name: string) => [
+                      name === "count" ? `${value} шт` : formatCurrency(value),
+                      name === "count" ? "Створок" : "Продажи"
+                    ]}
+                  />
+                  <Bar
+                    dataKey="count"
+                    fill="hsl(262, 83%, 58%)"
+                    radius={[0, 4, 4, 0]}
+                    name="count"
                   />
                 </BarChart>
               </ResponsiveContainer>

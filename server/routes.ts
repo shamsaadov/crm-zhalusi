@@ -3412,7 +3412,34 @@ export async function registerRoutes(
           .slice(0, 5)
           .map((d) => ({ ...d, sales: Math.round(d.sales) }));
 
-        res.json({ months, topDealers });
+        // Top fabrics by usage (current month)
+        const fabricUsage: Record<string, { name: string; count: number; sales: number }> = {};
+        const fabricList = await storage.getFabrics(req.userId!);
+
+        for (const order of currentMonthOrders) {
+          const sashes = await storage.getOrderSashes(order.id);
+          for (const sash of sashes) {
+            if (sash.fabricId) {
+              if (!fabricUsage[sash.fabricId]) {
+                const fabric = fabricList.find((f) => f.id === sash.fabricId);
+                fabricUsage[sash.fabricId] = {
+                  name: fabric?.name || "Неизвестная",
+                  count: 0,
+                  sales: 0,
+                };
+              }
+              fabricUsage[sash.fabricId].count += 1;
+              fabricUsage[sash.fabricId].sales += parseFloat(sash.sashPrice?.toString() || "0");
+            }
+          }
+        }
+
+        const topFabrics = Object.values(fabricUsage)
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 5)
+          .map((f) => ({ ...f, sales: Math.round(f.sales) }));
+
+        res.json({ months, topDealers, topFabrics });
       } catch (error) {
         console.error("Dashboard charts error:", error);
         res.status(500).json({ message: "Ошибка сервера" });
