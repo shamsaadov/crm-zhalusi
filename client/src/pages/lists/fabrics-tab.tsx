@@ -80,6 +80,7 @@ export function FabricsTab({ search }: { search: string }) {
       apiRequest("POST", "/api/fabrics", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/fabrics"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stock"] });
       setIsDialogOpen(false);
       form.reset();
       toast({ title: "Ткань добавлена" });
@@ -97,6 +98,9 @@ export function FabricsTab({ search }: { search: string }) {
       apiRequest("PATCH", `/api/fabrics/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/fabrics"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stock"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/charts"] });
       setIsDialogOpen(false);
       setEditing(null);
       form.reset();
@@ -114,6 +118,9 @@ export function FabricsTab({ search }: { search: string }) {
     mutationFn: (id: string) => apiRequest("DELETE", `/api/fabrics/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/fabrics"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stock"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/charts"] });
       toast({ title: "Ткань удалена" });
     },
     onError: (e: Error) =>

@@ -75,6 +75,9 @@ export function ColorsTab({ search }: { search: string }) {
       apiRequest("PATCH", `/api/colors/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/colors"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/fabrics"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/systems"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/components"] });
       setIsDialogOpen(false);
       setEditing(null);
       form.reset();
@@ -92,6 +95,9 @@ export function ColorsTab({ search }: { search: string }) {
     mutationFn: (id: string) => apiRequest("DELETE", `/api/colors/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/colors"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/fabrics"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/systems"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/components"] });
       toast({ title: "Цвет удален" });
     },
     onError: (e: Error) =>

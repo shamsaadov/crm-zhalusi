@@ -63,6 +63,9 @@ export function DealersTab({ search }: { search: string }) {
       apiRequest("POST", "/api/dealers", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dealers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/charts"] });
       setIsDialogOpen(false);
       form.reset();
       toast({ title: "Дилер добавлен" });
@@ -80,6 +83,10 @@ export function DealersTab({ search }: { search: string }) {
       apiRequest("PATCH", `/api/dealers/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dealers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/finance"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/charts"] });
       setIsDialogOpen(false);
       setEditing(null);
       form.reset();
@@ -97,6 +104,10 @@ export function DealersTab({ search }: { search: string }) {
     mutationFn: (id: string) => apiRequest("DELETE", `/api/dealers/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dealers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/finance"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/charts"] });
       toast({ title: "Дилер удален" });
     },
     onError: (e: Error) =>

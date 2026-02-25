@@ -74,6 +74,7 @@ export function MultipliersTab({ search }: { search: string }) {
       apiRequest("PATCH", `/api/multipliers/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/multipliers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/systems"] });
       setIsDialogOpen(false);
       setEditing(null);
       form.reset();
@@ -91,6 +92,7 @@ export function MultipliersTab({ search }: { search: string }) {
     mutationFn: (id: string) => apiRequest("DELETE", `/api/multipliers/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/multipliers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/systems"] });
       toast({ title: "Множитель удален" });
     },
     onError: (e: Error) =>

@@ -71,6 +71,7 @@ export function ComponentsTab({ search }: { search: string }) {
       apiRequest("POST", "/api/components", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/components"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stock"] });
       setIsDialogOpen(false);
       form.reset();
       toast({ title: "Комплектующие добавлены" });
@@ -88,6 +89,8 @@ export function ComponentsTab({ search }: { search: string }) {
       apiRequest("PATCH", `/api/components/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/components"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stock"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/systems"] });
       setIsDialogOpen(false);
       setEditing(null);
       form.reset();
@@ -105,6 +108,8 @@ export function ComponentsTab({ search }: { search: string }) {
     mutationFn: (id: string) => apiRequest("DELETE", `/api/components/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/components"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stock"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/systems"] });
       toast({ title: "Комплектующие удалены" });
     },
     onError: (e: Error) =>

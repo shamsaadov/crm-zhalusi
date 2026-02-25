@@ -219,7 +219,9 @@ export default function OrdersPage() {
       apiRequest("POST", "/api/orders", data),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
-      // Invalidate finance queries if order was paid
+      queryClient.invalidateQueries({ queryKey: ["/api/stock"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/charts"] });
       if (variables.isPaid) {
         queryClient.invalidateQueries({ queryKey: ["/api/finance"] });
         queryClient.invalidateQueries({ queryKey: ["/api/cashboxes"] });
@@ -231,7 +233,6 @@ export default function OrdersPage() {
     },
     onError: (error: Error | ApiError) => {
       if (error instanceof ApiError && error.stockError && error.errors) {
-        // Show detailed stock errors
         toast({
           title: "Недостаточно материалов на складе",
           description: error.errors.join("\n"),
@@ -253,6 +254,12 @@ export default function OrdersPage() {
       apiRequest("PATCH", `/api/orders/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stock"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/finance"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cashboxes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dealers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/charts"] });
       setIsDialogOpen(false);
       setEditingOrder(null);
       form.reset();
@@ -280,6 +287,12 @@ export default function OrdersPage() {
     mutationFn: (id: string) => apiRequest("DELETE", `/api/orders/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stock"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/finance"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cashboxes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dealers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/charts"] });
       setIsDeleteDialogOpen(false);
       setOrderToDelete(null);
       toast({ title: "Успешно", description: "Заказ удален" });
@@ -298,6 +311,9 @@ export default function OrdersPage() {
       apiRequest("PATCH", `/api/orders/${id}/status`, { status }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stock"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/charts"] });
       toast({ title: "Статус обновлен" });
     },
     onError: (error: Error) => {
@@ -314,7 +330,9 @@ export default function OrdersPage() {
       apiRequest("POST", "/api/orders/product", data),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
-      // Invalidate finance queries if order was paid
+      queryClient.invalidateQueries({ queryKey: ["/api/stock"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/charts"] });
       if (variables.isPaid) {
         queryClient.invalidateQueries({ queryKey: ["/api/finance"] });
         queryClient.invalidateQueries({ queryKey: ["/api/cashboxes"] });
@@ -327,7 +345,6 @@ export default function OrdersPage() {
     },
     onError: (error: Error | ApiError) => {
       if (error instanceof ApiError && error.stockError && error.errors) {
-        // Show detailed stock errors
         toast({
           title: "Недостаточно товара на складе",
           description: error.errors.join("\n"),

@@ -330,6 +330,7 @@ export default function WarehousePage() {
       queryClient.invalidateQueries({ queryKey: ["/api/fabrics"] });
       queryClient.invalidateQueries({ queryKey: ["/api/components"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stock"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
       setIsDialogOpen(false);
       form.reset({
         supplierId: "",
@@ -379,6 +380,7 @@ export default function WarehousePage() {
       queryClient.invalidateQueries({ queryKey: ["/api/fabrics"] });
       queryClient.invalidateQueries({ queryKey: ["/api/components"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stock"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
       setIsDialogOpen(false);
       setEditingReceipt(null);
       form.reset({
@@ -412,7 +414,10 @@ export default function WarehousePage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/warehouse"] });
       queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/fabrics"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/components"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stock"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
       setIsDeleteDialogOpen(false);
       setReceiptToDelete(null);
       toast({ title: "Успешно", description: "Поступление удалено" });
@@ -440,6 +445,7 @@ export default function WarehousePage() {
       queryClient.invalidateQueries({ queryKey: ["/api/stock"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stock/adjustments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/warehouse"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
       setIsAdjustmentDialogOpen(false);
       setAdjustmentItem(null);
       adjustmentForm.reset();

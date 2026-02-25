@@ -61,6 +61,7 @@ export function CashboxesTab({ search }: { search: string }) {
       apiRequest("POST", "/api/cashboxes", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/cashboxes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/finance"] });
       setIsDialogOpen(false);
       form.reset();
       toast({ title: "Касса добавлена" });
@@ -78,6 +79,7 @@ export function CashboxesTab({ search }: { search: string }) {
       apiRequest("PATCH", `/api/cashboxes/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/cashboxes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/finance"] });
       setIsDialogOpen(false);
       setEditing(null);
       form.reset();
@@ -95,6 +97,7 @@ export function CashboxesTab({ search }: { search: string }) {
     mutationFn: (id: string) => apiRequest("DELETE", `/api/cashboxes/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/cashboxes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/finance"] });
       toast({ title: "Касса удалена" });
     },
     onError: (e: Error) =>

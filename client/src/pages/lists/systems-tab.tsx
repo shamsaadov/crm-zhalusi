@@ -110,6 +110,7 @@ export function SystemsTab({ search }: { search: string }) {
         }
       }
       queryClient.invalidateQueries({ queryKey: ["/api/systems"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
       setIsDialogOpen(false);
       form.reset();
       setSystemComponentsList([]);
@@ -147,6 +148,8 @@ export function SystemsTab({ search }: { search: string }) {
         }
       }
       queryClient.invalidateQueries({ queryKey: ["/api/systems"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stock"] });
       setIsDialogOpen(false);
       setEditing(null);
       form.reset();
@@ -165,6 +168,8 @@ export function SystemsTab({ search }: { search: string }) {
     mutationFn: (id: string) => apiRequest("DELETE", `/api/systems/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/systems"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stock"] });
       toast({ title: "Система удалена" });
     },
     onError: (e: Error) =>

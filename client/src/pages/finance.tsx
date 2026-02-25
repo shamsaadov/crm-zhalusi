@@ -273,6 +273,8 @@ export default function FinancePage() {
       queryClient.invalidateQueries({ queryKey: ["/api/cashboxes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dealers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/charts"] });
       setIsDialogOpen(false);
       resetForms();
       toast({ title: "Успешно", description: "Операция создана" });
@@ -292,6 +294,10 @@ export default function FinancePage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/finance"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cashboxes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dealers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/charts"] });
       setIsDialogOpen(false);
       setEditingOperation(null);
       resetForms();
@@ -311,6 +317,9 @@ export default function FinancePage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/finance"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cashboxes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dealers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
       setIsDeleteDialogOpen(false);
       setOperationToDelete(null);
       toast({
@@ -332,6 +341,10 @@ export default function FinancePage() {
       apiRequest("DELETE", `/api/finance/${id}/hard`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/finance"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cashboxes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dealers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
       setIsDeleteDialogOpen(false);
       setOperationToDelete(null);
       toast({ title: "Успешно", description: "Операция удалена" });
@@ -351,6 +364,9 @@ export default function FinancePage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/finance"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cashboxes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dealers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
       toast({ title: "Успешно", description: "Операция восстановлена" });
     },
     onError: (error: Error) => {

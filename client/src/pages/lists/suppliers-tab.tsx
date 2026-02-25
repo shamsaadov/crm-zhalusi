@@ -78,6 +78,8 @@ export function SuppliersTab({ search }: { search: string }) {
       apiRequest("PATCH", `/api/suppliers/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/warehouse"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/finance"] });
       setIsDialogOpen(false);
       setEditing(null);
       form.reset();
@@ -95,6 +97,8 @@ export function SuppliersTab({ search }: { search: string }) {
     mutationFn: (id: string) => apiRequest("DELETE", `/api/suppliers/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/warehouse"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/finance"] });
       toast({ title: "Поставщик удален" });
     },
     onError: (e: Error) =>
