@@ -3499,6 +3499,102 @@ export async function registerRoutes(
     return gigaChatToken;
   }
 
+  async function buildDbContext(userId: string): Promise<string> {
+    const [
+      userFabrics,
+      userColors,
+      userDealers,
+      userOrders,
+      userCashboxes,
+      userSuppliers,
+      userComponents,
+      userSystems,
+      userFinOps,
+    ] = await Promise.all([
+      db.select().from(fabrics).where(eq(fabrics.userId, userId)),
+      db.select().from(colors).where(eq(colors.userId, userId)),
+      db.select().from(dealers).where(eq(dealers.userId, userId)),
+      db.select().from(orders).where(eq(orders.userId, userId)),
+      db.select().from(cashboxes).where(eq(cashboxes.userId, userId)),
+      db.select().from(suppliers).where(eq(suppliers.userId, userId)),
+      db.select().from(components).where(eq(components.userId, userId)),
+      db.select().from(systems).where(eq(systems.userId, userId)),
+      db.select().from(financeOperations).where(
+        and(eq(financeOperations.userId, userId), sql`${financeOperations.deletedAt} IS NULL`)
+      ),
+    ]);
+
+    const colorMap = Object.fromEntries(userColors.map(c => [c.id, c.name]));
+
+    const lines: string[] = [];
+    lines.push("=== ДАННЫЕ CRM ПОЛЬЗОВАТЕЛЯ ===");
+
+    if (userFabrics.length) {
+      lines.push("\n## Ткани:");
+      for (const f of userFabrics) {
+        const color = f.colorId ? colorMap[f.colorId] || "" : "";
+        lines.push(`- ${f.name}${color ? ` (цвет: ${color})` : ""}, тип: ${f.fabricType || "—"}, ширина: ${f.width || "—"}, категория: ${f.category || "—"}`);
+      }
+    }
+
+    if (userDealers.length) {
+      lines.push("\n## Дилеры:");
+      for (const d of userDealers) {
+        lines.push(`- ${d.fullName}${d.city ? `, г.${d.city}` : ""}${d.phone ? `, тел: ${d.phone}` : ""}, нач.баланс: ${d.openingBalance || "0"}`);
+      }
+    }
+
+    if (userOrders.length) {
+      lines.push(`\n## Заказы (всего: ${userOrders.length}):`);
+      const recent = userOrders.slice(-20);
+      for (const o of recent) {
+        const dealer = userDealers.find(d => d.id === o.dealerId);
+        lines.push(`- №${o.orderNumber} от ${o.date}, статус: ${o.status}, цена продажи: ${o.salePrice || "0"}, себестоимость: ${o.costPrice || "0"}, дилер: ${dealer?.fullName || "—"}`);
+      }
+      if (userOrders.length > 20) lines.push(`... и ещё ${userOrders.length - 20} заказов`);
+    }
+
+    if (userCashboxes.length) {
+      lines.push("\n## Кассы:");
+      for (const c of userCashboxes) {
+        lines.push(`- ${c.name}, нач.баланс: ${c.openingBalance || "0"}`);
+      }
+    }
+
+    if (userSuppliers.length) {
+      lines.push("\n## Поставщики:");
+      for (const s of userSuppliers) {
+        lines.push(`- ${s.name}, нач.баланс: ${s.openingBalance || "0"}`);
+      }
+    }
+
+    if (userComponents.length) {
+      lines.push("\n## Комплектующие:");
+      for (const c of userComponents) {
+        const color = c.colorId ? colorMap[c.colorId] || "" : "";
+        lines.push(`- ${c.name}${color ? ` (${color})` : ""}, ед: ${c.unit || "—"}`);
+      }
+    }
+
+    if (userSystems.length) {
+      lines.push("\n## Системы:");
+      for (const s of userSystems) {
+        const color = s.colorId ? colorMap[s.colorId] || "" : "";
+        lines.push(`- ${s.name}${color ? ` (${color})` : ""}, формула: ${s.formula || "—"}`);
+      }
+    }
+
+    if (userFinOps.length) {
+      const totalIncome = userFinOps.filter(f => f.type === "income").reduce((s, f) => s + Number(f.amount), 0);
+      const totalExpense = userFinOps.filter(f => f.type === "expense").reduce((s, f) => s + Number(f.amount), 0);
+      lines.push(`\n## Финансы (операций: ${userFinOps.length}):`);
+      lines.push(`- Общий приход: ${totalIncome}`);
+      lines.push(`- Общий расход: ${totalExpense}`);
+    }
+
+    return lines.join("\n");
+  }
+
   app.post(
     "/api/chat",
     authMiddleware,
@@ -3509,13 +3605,20 @@ export async function registerRoutes(
           return res.status(400).json({ message: "messages is required" });
         }
 
+        const dbContext = await buildDbContext(req.userId!);
+
+        const systemMessage = {
+          role: "system",
+          content: `Ты — ИИ-ассистент CRM-системы для производства жалюзи. У тебя есть доступ к данным пользователя. Отвечай на русском, кратко и по делу. Используй данные ниже для ответов на вопросы.\n\n${dbContext}`,
+        };
+
         const token = await getGigaChatToken();
         const agent = new https.Agent({ rejectUnauthorized: false });
 
         const chatResponse = await new Promise<any>((resolve, reject) => {
           const postData = JSON.stringify({
             model: "GigaChat",
-            messages,
+            messages: [systemMessage, ...messages],
           });
 
           const req = https.request(
