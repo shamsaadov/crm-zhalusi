@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from "@/lib/auth";
 import { ThemeProvider } from "@/lib/theme";
 import { ReportAccessProvider } from "@/contexts/report-access-context";
 import { CommandPalette } from "@/components/command-palette";
+import { ChatWidget } from "@/components/chat-widget";
 import NotFound from "@/pages/not-found";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
@@ -41,6 +42,7 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   return (
     <>
       <CommandPalette />
+      <ChatWidget />
       <Component />
     </>
   );

@@ -1,5 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
+import https from "https";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import bcrypt from "bcrypt";
@@ -3443,6 +3444,117 @@ export async function registerRoutes(
       } catch (error) {
         console.error("Dashboard charts error:", error);
         res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // ===== GIGACHAT PROXY =====
+  let gigaChatToken: string | null = null;
+  let gigaChatTokenExpiresAt = 0;
+
+  async function getGigaChatToken(): Promise<string> {
+    if (gigaChatToken && Date.now() < gigaChatTokenExpiresAt) {
+      return gigaChatToken;
+    }
+
+    const authKey = process.env.GIGACHAT_API_KEY;
+    if (!authKey) {
+      throw new Error("GIGACHAT_API_KEY is not set");
+    }
+
+    const agent = new https.Agent({ rejectUnauthorized: false });
+
+    const tokenData = await new Promise<{ access_token: string; expires_at: number }>((resolve, reject) => {
+      const postData = "scope=GIGACHAT_API_PERS";
+      const req = https.request(
+        "https://ngw.devices.sberbank.ru:9443/api/v2/oauth",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            Accept: "application/json",
+            Authorization: `Basic ${authKey}`,
+            RqUID: crypto.randomUUID(),
+          },
+          rejectAuthorized: false,
+          agent,
+        } as any,
+        (res) => {
+          let data = "";
+          res.on("data", (chunk: string) => (data += chunk));
+          res.on("end", () => {
+            try {
+              resolve(JSON.parse(data));
+            } catch (e) {
+              reject(new Error(`Failed to parse OAuth response: ${data}`));
+            }
+          });
+        }
+      );
+      req.on("error", reject);
+      req.write(postData);
+      req.end();
+    });
+
+    gigaChatToken = tokenData.access_token;
+    // expires_at is in milliseconds from GigaChat, subtract 60s buffer
+    gigaChatTokenExpiresAt = tokenData.expires_at - 60_000;
+    return gigaChatToken;
+  }
+
+  app.post(
+    "/api/chat",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const { messages } = req.body;
+        if (!messages || !Array.isArray(messages)) {
+          return res.status(400).json({ message: "messages is required" });
+        }
+
+        const token = await getGigaChatToken();
+        const agent = new https.Agent({ rejectUnauthorized: false });
+
+        const chatResponse = await new Promise<any>((resolve, reject) => {
+          const postData = JSON.stringify({
+            model: "GigaChat",
+            messages,
+          });
+
+          const req = https.request(
+            "https://gigachat.devices.sberbank.ru/api/v1/chat/completions",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Accept: "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              agent,
+            },
+            (response) => {
+              let data = "";
+              response.on("data", (chunk: string) => (data += chunk));
+              response.on("end", () => {
+                try {
+                  resolve(JSON.parse(data));
+                } catch (e) {
+                  reject(new Error(`Failed to parse GigaChat response: ${data}`));
+                }
+              });
+            }
+          );
+          req.on("error", reject);
+          req.write(postData);
+          req.end();
+        });
+
+        const reply =
+          chatResponse.choices?.[0]?.message?.content || "Нет ответа";
+        res.json({ reply });
+      } catch (error: any) {
+        console.error("GigaChat error:", error);
+        res.status(500).json({ message: "Ошибка чата: " + error.message });
       }
     }
   );
