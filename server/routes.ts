@@ -3457,10 +3457,7 @@ export async function registerRoutes(
       return gigaChatToken;
     }
 
-    const authKey = process.env.GIGACHAT_API_KEY;
-    if (!authKey) {
-      throw new Error("GIGACHAT_API_KEY is not set");
-    }
+    const authKey = "MDE5Yzk4YjAtZTAxNi03MWJjLTgxYTctYTgyZGUzZTY2MTQ1OjU5OWRjNzEyLWQwZWMtNDBlYy1iYTE3LWNlZTZiZGM0YjdlMA==";
 
     const agent = new https.Agent({ rejectUnauthorized: false });
 
