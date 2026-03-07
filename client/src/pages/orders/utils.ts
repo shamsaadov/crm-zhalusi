@@ -182,10 +182,7 @@ const CONTROL_SIDE_LABELS: Record<string, string> = {
 
 const formatDimension = (value?: number | null) => {
   if (value === null || value === undefined || Number.isNaN(value)) return "—";
-  return `${value.toLocaleString("ru-RU", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  })} см`;
+  return `${parseFloat(value.toString())} см`;
 };
 
 const mapControlSide = (value?: string | null) => {

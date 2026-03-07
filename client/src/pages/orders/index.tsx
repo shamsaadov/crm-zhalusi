@@ -528,8 +528,8 @@ export default function OrdersPage() {
           acc.push({
             key,
             quantity: 1,
-            width: s.width?.toString() || "",
-            height: s.height?.toString() || "",
+            width: s.width != null ? parseFloat(s.width.toString()).toString() : "",
+            height: s.height != null ? parseFloat(s.height.toString()).toString() : "",
             systemId: s.systemId || "",
             controlSide: s.controlSide || "",
             fabricId: s.fabricId || "",
