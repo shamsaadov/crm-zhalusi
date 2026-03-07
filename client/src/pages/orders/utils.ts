@@ -409,6 +409,27 @@ export async function printInvoice(order: OrderWithRelations): Promise<void> {
     return;
   }
 
+  // Загружаем системы с множителями для расчёта коэффициентов
+  let systemsWithMultipliers: Array<{
+    id: string;
+    multiplier?: { value: string | number | null } | null;
+  }> = [];
+  try {
+    const sysRes = await fetch("/api/systems", { credentials: "include" });
+    if (sysRes.ok) {
+      systemsWithMultipliers = await sysRes.json();
+    }
+  } catch {
+    // Если не удалось загрузить — коэффициенты не покажем
+  }
+
+  const getMultiplierValue = (systemId?: string | null): number => {
+    if (!systemId) return 1;
+    const sys = systemsWithMultipliers.find((s) => s.id === systemId);
+    const val = parseFloat(sys?.multiplier?.value?.toString() || "1");
+    return val > 0 ? val : 1;
+  };
+
   // Заказы со створками — технологическая карта
   type GroupedSash = {
     width: number | null;
@@ -417,6 +438,7 @@ export async function printInvoice(order: OrderWithRelations): Promise<void> {
     fabric: string;
     control: string;
     quantity: number;
+    coefficient: number;
   };
 
   const grouped = new Map<string, GroupedSash>();
@@ -447,6 +469,11 @@ export async function printInvoice(order: OrderWithRelations): Promise<void> {
     const fabricText = fabricParts.join(" ").trim() || "—";
     const controlText = mapControlSide(sash.controlSide);
 
+    // Вычисляем коэффициент: sashPrice / multiplier
+    const sashPrice = parseFloat(sash.sashPrice?.toString() || "0");
+    const multiplierValue = getMultiplierValue(sash.systemId);
+    const coefficient = multiplierValue > 0 ? sashPrice / multiplierValue : 0;
+
     const key = [
       widthNum ?? 0,
       heightNum ?? 0,
@@ -466,8 +493,15 @@ export async function printInvoice(order: OrderWithRelations): Promise<void> {
         fabric: fabricText,
         control: controlText,
         quantity: 1,
+        coefficient,
       });
     }
+  });
+
+  // Общий коэффициент (сумма коэфф × кол-во)
+  let totalCoefficient = 0;
+  grouped.forEach((item) => {
+    totalCoefficient += item.coefficient * item.quantity;
   });
 
   const rows =
@@ -482,11 +516,12 @@ export async function printInvoice(order: OrderWithRelations): Promise<void> {
               <td class="left">${item.fabric}</td>
               <td class="center">${item.control}</td>
               <td class="center">${item.quantity} шт.</td>
+              <td class="center">${item.coefficient > 0 ? item.coefficient.toFixed(2) : "—"}</td>
             </tr>
           `;
         })
       : [
-          `<tr><td class="center">1</td><td colspan="6" class="left">Позиции заказа отсутствуют</td></tr>`,
+          `<tr><td class="center">1</td><td colspan="7" class="left">Позиции заказа отсутствуют</td></tr>`,
         ];
 
   win.document.write(`
@@ -510,6 +545,7 @@ export async function printInvoice(order: OrderWithRelations): Promise<void> {
         <p>Диллер <strong>${dealerName}</strong></p>
         <p>Технологическая карта заказа № <strong>${orderNumber}</strong></p>
         <p>Дата заказа <strong>${orderDate}</strong></p>
+        ${totalCoefficient > 0 ? `<p>Общий коэффициент: <strong>${totalCoefficient.toFixed(2)}</strong></p>` : ""}
 
         <table>
           <thead>
@@ -520,7 +556,8 @@ export async function printInvoice(order: OrderWithRelations): Promise<void> {
               <th>Система</th>
               <th>Ткань</th>
               <th style="width: 90px;">Управление</th>
-              <th style="width: 90px;">количество</th>
+              <th style="width: 90px;">Количество</th>
+              <th style="width: 80px;">Коэфф.</th>
             </tr>
           </thead>
           <tbody>

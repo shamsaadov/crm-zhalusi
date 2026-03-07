@@ -734,10 +734,25 @@ export default function OrdersPage() {
           shouldValidate: false,
         });
       }
+
+      // При изменении количества пересчитываем цену продажи (без повторного запроса коэффициента)
+      if (name.includes("quantity") && !isManualSalePrice) {
+        const totalPrice = sashes.reduce((sum: number, s: any) => {
+          const price = parseFloat(s?.sashPrice || "0");
+          const qty = parseFloat(s?.quantity || "1");
+          return sum + price * qty;
+        }, 0);
+
+        if (totalPrice > 0) {
+          form.setValue("salePrice", totalPrice.toFixed(2), {
+            shouldValidate: false,
+          });
+        }
+      }
     });
 
     return () => subscription.unsubscribe();
-  }, [form, fabricStock, componentStock, systems]);
+  }, [form, fabricStock, componentStock, systems, isManualSalePrice]);
 
   // Auto-calculate product cost price effect
   useEffect(() => {
