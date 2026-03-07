@@ -1361,8 +1361,17 @@ export async function registerRoutes(
         const { sashes, skipStockValidation, isPaid, cashboxId, ...orderData } =
           req.body;
 
-        // Проверка остатков убрана - теперь можно создавать заказ без материалов
-        // Проверка будет только при смене статуса на "Готов"
+        // Проверка остатков при создании заказа
+        if (sashes && Array.isArray(sashes) && sashes.length > 0 && !skipStockValidation) {
+          const validation = await validateSashOrderStock(req.userId!, sashes);
+          if (!validation.valid) {
+            return res.status(400).json({
+              message: "Недостаточно материалов на складе",
+              errors: validation.errors,
+              stockError: true,
+            });
+          }
+        }
 
         const orderNumber = await storage.getNextOrderNumber(req.userId!);
 
@@ -1433,6 +1442,18 @@ export async function registerRoutes(
           cashboxId,
           ...orderData
         } = req.body;
+
+        // Проверка остатков при создании заказа товара
+        if (components && Array.isArray(components) && components.length > 0 && !skipStockValidation) {
+          const validation = await validateProductOrderStock(req.userId!, components);
+          if (!validation.valid) {
+            return res.status(400).json({
+              message: "Недостаточно товара на складе",
+              errors: validation.errors,
+              stockError: true,
+            });
+          }
+        }
 
         const orderNumber = await storage.getNextOrderNumber(req.userId!);
 
@@ -1519,8 +1540,17 @@ export async function registerRoutes(
         // Получаем существующий заказ
         const existingOrder = await storage.getOrder(req.params.id);
 
-        // Проверка остатков убрана - теперь можно редактировать заказ без материалов
-        // Проверка будет только при смене статуса на "Готов"
+        // Проверка остатков при редактировании заказа
+        if (sashes && Array.isArray(sashes) && sashes.length > 0 && !skipStockValidation) {
+          const validation = await validateSashOrderStock(req.userId!, sashes);
+          if (!validation.valid) {
+            return res.status(400).json({
+              message: "Недостаточно материалов на складе",
+              errors: validation.errors,
+              stockError: true,
+            });
+          }
+        }
 
         const order = await storage.updateOrder(req.params.id, orderData);
 
