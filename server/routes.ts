@@ -1864,9 +1864,238 @@ export async function registerRoutes(
           }
         }
 
-        // 4. Отгружен → валовая прибыль учитывается автоматически в отчётах
-        // (salePrice - costPrice уже хранятся в заказе)
-        if (status === "Отгружен") {
+        // 4. Отгружен → если материалы ещё не были списаны (пропустили "Готов"), списываем
+        if (status === "Отгружен" && oldStatus !== "Отгружен") {
+          const existingWriteoffs =
+            await storage.getWarehouseWriteoffsByOrderId(req.params.id);
+
+          if (existingWriteoffs.length === 0) {
+            // Материалы не списаны — выполняем списание как при "Готов"
+            const sashes = await storage.getOrderSashes(req.params.id);
+
+            const validation = await validateSashOrderStock(
+              req.userId!,
+              sashes
+            );
+            if (!validation.valid) {
+              return res.status(400).json({
+                message:
+                  "Невозможно изменить статус на 'Отгружен'. Недостаточно материалов на складе",
+                errors: validation.errors,
+                stockError: true,
+              });
+            }
+
+            const allFabrics = await storage.getFabrics(req.userId!);
+            const allSystems = await storage.getSystems(req.userId!);
+            const allComponents = await storage.getComponents(req.userId!);
+
+            const receipts = await storage.getWarehouseReceipts(req.userId!);
+            const writeoffs = await storage.getWarehouseWriteoffs(req.userId!);
+
+            // Рассчитываем текущие остатки тканей
+            const fabricStock: Record<
+              string,
+              {
+                quantity: number;
+                totalReceived: number;
+                avgPrice: number;
+                totalValue: number;
+                lastPrice: number;
+              }
+            > = {};
+            for (const receipt of receipts) {
+              const items = await storage.getWarehouseReceiptItems(receipt.id);
+              for (const item of items.filter((i) => i.fabricId)) {
+                if (!fabricStock[item.fabricId!]) {
+                  fabricStock[item.fabricId!] = {
+                    quantity: 0,
+                    totalReceived: 0,
+                    avgPrice: 0,
+                    totalValue: 0,
+                    lastPrice: 0,
+                  };
+                }
+                const qty = parseFloat(item.quantity?.toString() || "0");
+                const price = parseFloat(item.price?.toString() || "0");
+                fabricStock[item.fabricId!].quantity += qty;
+                fabricStock[item.fabricId!].totalReceived += qty;
+                fabricStock[item.fabricId!].totalValue += qty * price;
+                fabricStock[item.fabricId!].lastPrice = price;
+              }
+            }
+            for (const wo of writeoffs) {
+              if (wo.fabricId && fabricStock[wo.fabricId]) {
+                fabricStock[wo.fabricId].quantity -= parseFloat(
+                  wo.quantity?.toString() || "0"
+                );
+              }
+            }
+            for (const id of Object.keys(fabricStock)) {
+              if (fabricStock[id].totalReceived > 0) {
+                fabricStock[id].avgPrice =
+                  fabricStock[id].totalValue / fabricStock[id].totalReceived;
+              }
+            }
+
+            // Рассчитываем текущие остатки комплектующих
+            const componentStock: Record<
+              string,
+              {
+                quantity: number;
+                totalReceived: number;
+                avgPrice: number;
+                totalValue: number;
+                lastPrice: number;
+              }
+            > = {};
+            for (const receipt of receipts) {
+              const items = await storage.getWarehouseReceiptItems(receipt.id);
+              for (const item of items.filter((i) => i.componentId)) {
+                if (!componentStock[item.componentId!]) {
+                  componentStock[item.componentId!] = {
+                    quantity: 0,
+                    totalReceived: 0,
+                    avgPrice: 0,
+                    totalValue: 0,
+                    lastPrice: 0,
+                  };
+                }
+                const qty = parseFloat(item.quantity?.toString() || "0");
+                const price = parseFloat(item.price?.toString() || "0");
+                componentStock[item.componentId!].quantity += qty;
+                componentStock[item.componentId!].totalReceived += qty;
+                componentStock[item.componentId!].totalValue += qty * price;
+                componentStock[item.componentId!].lastPrice = price;
+              }
+            }
+            for (const wo of writeoffs) {
+              if (wo.componentId && componentStock[wo.componentId]) {
+                componentStock[wo.componentId].quantity -= parseFloat(
+                  wo.quantity?.toString() || "0"
+                );
+              }
+            }
+            for (const id of Object.keys(componentStock)) {
+              if (componentStock[id].totalReceived > 0) {
+                componentStock[id].avgPrice =
+                  componentStock[id].totalValue /
+                  componentStock[id].totalReceived;
+              }
+            }
+
+            const today = new Date().toISOString().split("T")[0];
+
+            for (const sash of sashes) {
+              const width = parseFloat(sash.width?.toString() || "0");
+              const height = parseFloat(sash.height?.toString() || "0");
+              const widthM = width / 1000;
+              const heightM = height / 1000;
+              const areaM2 = widthM * heightM;
+              const quantity = 1;
+
+              if (sash.fabricId) {
+                const fabric = allFabrics.find((f) => f.id === sash.fabricId);
+                const stock = fabricStock[sash.fabricId];
+
+                if (fabric) {
+                  const fabricMultiplier =
+                    fabric.fabricType === "zebra" ? 2 : 1;
+                  const fabricQty = areaM2 * fabricMultiplier * quantity;
+                  const price = stock?.lastPrice || stock?.avgPrice || 0;
+
+                  await storage.createWarehouseWriteoff({
+                    orderId: req.params.id,
+                    itemType: "fabric",
+                    fabricId: sash.fabricId,
+                    quantity: fabricQty.toFixed(4),
+                    price: price.toFixed(2),
+                    total: (fabricQty * price).toFixed(2),
+                    date: today,
+                    userId: req.userId!,
+                  });
+                }
+              }
+
+              if (sash.systemId) {
+                const system = allSystems.find((s) => s.id === sash.systemId);
+                if (system) {
+                  const systemComps = await storage.getSystemComponents(
+                    system.id
+                  );
+
+                  for (const sc of systemComps) {
+                    const component = allComponents.find(
+                      (c) => c.id === sc.componentId
+                    );
+                    const stock = componentStock[sc.componentId];
+
+                    if (component) {
+                      const compQuantity = parseFloat(
+                        sc.quantity?.toString() || "1"
+                      );
+                      const sizeSource = sc.sizeSource || null;
+                      const sizeMultiplier = parseFloat(
+                        sc.sizeMultiplier?.toString() || "1"
+                      );
+                      const unit = component.unit || "шт";
+
+                      let componentQty = compQuantity;
+                      const isMetric = ["м", "пм", "п.м.", "м.п."].includes(
+                        unit.toLowerCase()
+                      );
+
+                      if (isMetric) {
+                        if (sizeSource === "width") {
+                          componentQty = widthM * sizeMultiplier * compQuantity;
+                        } else if (sizeSource === "height") {
+                          componentQty =
+                            heightM * sizeMultiplier * compQuantity;
+                        } else {
+                          componentQty = widthM * sizeMultiplier * compQuantity;
+                        }
+                      }
+
+                      const price = stock?.lastPrice || stock?.avgPrice || 0;
+
+                      await storage.createWarehouseWriteoff({
+                        orderId: req.params.id,
+                        itemType: "component",
+                        componentId: sc.componentId,
+                        quantity: componentQty.toFixed(4),
+                        price: price.toFixed(2),
+                        total: (componentQty * price).toFixed(2),
+                        date: today,
+                        userId: req.userId!,
+                      });
+                    }
+                  }
+                }
+              }
+
+              if (sash.componentId && !sash.systemId) {
+                const component = allComponents.find(
+                  (c) => c.id === sash.componentId
+                );
+                const stock = componentStock[sash.componentId];
+
+                if (component) {
+                  const price = stock?.lastPrice || stock?.avgPrice || 0;
+
+                  await storage.createWarehouseWriteoff({
+                    orderId: req.params.id,
+                    itemType: "component",
+                    componentId: sash.componentId,
+                    quantity: quantity.toFixed(4),
+                    price: price.toFixed(2),
+                    total: (quantity * price).toFixed(2),
+                    date: today,
+                    userId: req.userId!,
+                  });
+                }
+              }
+            }
+          }
         }
 
         const updated = await storage.updateOrder(req.params.id, {
