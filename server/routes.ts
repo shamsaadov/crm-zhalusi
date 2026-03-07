@@ -25,6 +25,8 @@ import {
 import { db } from "./db";
 import { eq, and, gte, lte, sql, sum, desc } from "drizzle-orm";
 import pg from "pg";
+import { logAudit } from "./audit";
+import { notify, generatePeriodicNotifications } from "./notifications";
 
 const JWT_SECRET =
   process.env.SESSION_SECRET || "fallback-secret-key-change-in-production";
@@ -1426,6 +1428,15 @@ export async function registerRoutes(
           }
         }
 
+        logAudit({
+          userId: req.userId!,
+          action: "create",
+          entityType: "order",
+          entityId: order.id,
+          after: order,
+          metadata: { orderNumber },
+        });
+
         res.json(order);
       } catch (error) {
         console.error("Create order error:", error);
@@ -1623,6 +1634,16 @@ export async function registerRoutes(
             }
           }
         }
+
+        logAudit({
+          userId: req.userId!,
+          action: "update",
+          entityType: "order",
+          entityId: req.params.id,
+          before: existingOrder,
+          after: order,
+          metadata: { orderNumber: existingOrder?.orderNumber || order?.orderNumber },
+        });
 
         res.json(order);
       } catch (error) {
@@ -2147,6 +2168,26 @@ export async function registerRoutes(
           status,
           dealerDebt: dealerDebt.toString(),
         });
+
+        logAudit({
+          userId: req.userId!,
+          action: "status_change",
+          entityType: "order",
+          entityId: req.params.id,
+          before: { status: oldStatus },
+          after: { status },
+          metadata: { orderNumber: order.orderNumber },
+        });
+
+        notify({
+          userId: req.userId!,
+          type: "order_status",
+          title: "Статус заказа изменен",
+          message: `Заказ №${order.orderNumber}: ${oldStatus} -> ${status}`,
+          entityType: "order",
+          entityId: order.id,
+        });
+
         res.json(updated);
       } catch (error) {
         console.error("Update order status error:", error);
@@ -2160,7 +2201,20 @@ export async function registerRoutes(
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
+        const orderToDelete = await storage.getOrder(req.params.id);
         await storage.deleteOrder(req.params.id);
+
+        if (orderToDelete) {
+          logAudit({
+            userId: req.userId!,
+            action: "delete",
+            entityType: "order",
+            entityId: req.params.id,
+            before: orderToDelete,
+            metadata: { orderNumber: orderToDelete.orderNumber },
+          });
+        }
+
         res.json({ success: true });
       } catch (error) {
         res.status(500).json({ message: "Ошибка сервера" });
@@ -2302,6 +2356,15 @@ export async function registerRoutes(
           ...req.body,
           userId: req.userId,
         });
+
+        logAudit({
+          userId: req.userId!,
+          action: "create",
+          entityType: "finance",
+          entityId: operation.id,
+          after: operation,
+        });
+
         res.json(operation);
       } catch (error) {
         console.error("Create finance error:", error);
@@ -2315,10 +2378,21 @@ export async function registerRoutes(
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
+        const before = await storage.getFinanceOperation(req.params.id);
         const operation = await storage.updateFinanceOperation(
           req.params.id,
           req.body
         );
+
+        logAudit({
+          userId: req.userId!,
+          action: "update",
+          entityType: "finance",
+          entityId: req.params.id,
+          before,
+          after: operation,
+        });
+
         res.json(operation);
       } catch (error) {
         res.status(500).json({ message: "Ошибка сервера" });
@@ -2331,7 +2405,17 @@ export async function registerRoutes(
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
+        const before = await storage.getFinanceOperation(req.params.id);
         await storage.softDeleteFinanceOperation(req.params.id);
+
+        logAudit({
+          userId: req.userId!,
+          action: "delete",
+          entityType: "finance",
+          entityId: req.params.id,
+          before,
+        });
+
         res.json({ success: true });
       } catch (error) {
         res.status(500).json({ message: "Ошибка сервера" });
@@ -2545,6 +2629,14 @@ export async function registerRoutes(
           }
         }
 
+        logAudit({
+          userId: req.userId!,
+          action: "create",
+          entityType: "warehouse_receipt",
+          entityId: receipt.id,
+          after: receipt,
+        });
+
         res.json(receipt);
       } catch (error) {
         console.error("Create warehouse error:", error);
@@ -2601,7 +2693,19 @@ export async function registerRoutes(
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
+        const before = await storage.getWarehouseReceipt(req.params.id);
         await storage.deleteWarehouseReceipt(req.params.id);
+
+        if (before) {
+          logAudit({
+            userId: req.userId!,
+            action: "delete",
+            entityType: "warehouse_receipt",
+            entityId: req.params.id,
+            before,
+          });
+        }
+
         res.json({ success: true });
       } catch (error) {
         res.status(500).json({ message: "Ошибка сервера" });
@@ -3932,6 +4036,107 @@ export async function registerRoutes(
       }
     }
   );
+
+  // ===== AUDIT LOGS =====
+  app.get(
+    "/api/audit-logs",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const limit = parseInt(req.query.limit as string) || 20;
+        const cursor = req.query.cursor as string | undefined;
+        const entityType =
+          typeof req.query.entityType === "string" &&
+          req.query.entityType !== "all"
+            ? req.query.entityType
+            : undefined;
+        const action =
+          typeof req.query.action === "string" && req.query.action !== "all"
+            ? req.query.action
+            : undefined;
+        const from =
+          typeof req.query.from === "string" && req.query.from.length > 0
+            ? req.query.from
+            : undefined;
+        const to =
+          typeof req.query.to === "string" && req.query.to.length > 0
+            ? req.query.to
+            : undefined;
+
+        const result = await storage.getAuditLogsPaginated(
+          req.userId!,
+          { limit, cursor },
+          { entityType, action, from, to }
+        );
+
+        res.json(result);
+      } catch (error) {
+        console.error("Audit logs error:", error);
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // ===== NOTIFICATIONS =====
+  app.get(
+    "/api/notifications",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const limit = parseInt(req.query.limit as string) || 50;
+        const data = await storage.getNotifications(req.userId!, limit);
+        res.json(data);
+      } catch (error) {
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  app.get(
+    "/api/notifications/unread-count",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const count = await storage.getUnreadNotificationCount(req.userId!);
+        res.json({ count });
+      } catch (error) {
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  app.patch(
+    "/api/notifications/read-all",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        await storage.markAllNotificationsRead(req.userId!);
+        res.json({ success: true });
+      } catch (error) {
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  app.patch(
+    "/api/notifications/:id/read",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const notification = await storage.markNotificationRead(req.params.id);
+        res.json(notification);
+      } catch (error) {
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // Periodic notification generation (every 30 minutes)
+  setInterval(() => {
+    generatePeriodicNotifications().catch((err) =>
+      console.error("Periodic notifications error:", err)
+    );
+  }, 30 * 60 * 1000);
 
   return httpServer;
 }

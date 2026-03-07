@@ -9,6 +9,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import { NotificationBell } from "@/components/notification-bell";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -49,6 +50,9 @@ export function Layout({ children, title, breadcrumbs = [] }: LayoutProps) {
                 )}
               </BreadcrumbList>
             </Breadcrumb>
+            <div className="ml-auto">
+              <NotificationBell />
+            </div>
           </header>
           <main className="flex-1 overflow-auto p-6">
             <div className="max-w-7xl mx-auto">

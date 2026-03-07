@@ -15,6 +15,7 @@ import {
   Sun,
   User,
   Search,
+  History,
 } from "lucide-react";
 import {
   Sidebar,
@@ -39,6 +40,7 @@ const mainNavItems = [
   { title: "Финансы", url: "/finance", icon: Wallet },
   { title: "Склад", url: "/warehouse", icon: Warehouse },
   { title: "Справочники", url: "/lists", icon: ListTodo },
+  { title: "История действий", url: "/audit-log", icon: History },
 ];
 
 const reportNavItems = [

@@ -22,6 +22,8 @@ import CashTotalReportPage from "@/pages/reports/cash-total";
 import ProfilePage from "@/pages/profile";
 import DashboardPage from "@/pages/dashboard";
 import KanbanPage from "@/pages/kanban";
+import AuditLogPage from "@/pages/audit-log";
+import NotificationsPage from "@/pages/notifications";
 import { Loader2 } from "lucide-react";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -104,6 +106,12 @@ function Router() {
       </Route>
       <Route path="/reports/cash-total">
         <ProtectedRoute component={CashTotalReportPage} />
+      </Route>
+      <Route path="/audit-log">
+        <ProtectedRoute component={AuditLogPage} />
+      </Route>
+      <Route path="/notifications">
+        <ProtectedRoute component={NotificationsPage} />
       </Route>
       <Route path="/profile">
         <ProtectedRoute component={ProfilePage} />

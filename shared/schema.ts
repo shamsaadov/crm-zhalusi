@@ -575,6 +575,62 @@ export type InsertWarehouseWriteoff = z.infer<
 >;
 export type WarehouseWriteoff = typeof warehouseWriteoffs.$inferSelect;
 
+// Audit Logs table
+export const auditLogs = pgTable("audit_logs", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id")
+    .notNull()
+    .references(() => users.id),
+  action: text("action").notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: varchar("entity_id").notNull(),
+  changes: text("changes"),
+  metadata: text("metadata"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
+  user: one(users, { fields: [auditLogs.userId], references: [users.id] }),
+}));
+
+export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({
+  id: true,
+});
+export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
+export type AuditLog = typeof auditLogs.$inferSelect;
+
+// Notifications table
+export const notifications = pgTable("notifications", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id")
+    .notNull()
+    .references(() => users.id),
+  type: text("type").notNull(),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  entityType: text("entity_type"),
+  entityId: varchar("entity_id"),
+  isRead: boolean("is_read").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const notificationsRelations = relations(notifications, ({ one }) => ({
+  user: one(users, {
+    fields: [notifications.userId],
+    references: [users.id],
+  }),
+}));
+
+export const insertNotificationSchema = createInsertSchema(notifications).omit({
+  id: true,
+});
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+export type Notification = typeof notifications.$inferSelect;
+
 // Auth schemas for validation
 export const loginSchema = z.object({
   email: z.string().email("Некорректный email"),
@@ -619,3 +675,38 @@ export type FinanceType = (typeof FINANCE_TYPES)[number];
 // Direction types for expense types
 export const EXPENSE_DIRECTIONS = ["expense", "income"] as const;
 export type ExpenseDirection = (typeof EXPENSE_DIRECTIONS)[number];
+
+// Audit log actions
+export const AUDIT_ACTIONS = [
+  "create",
+  "update",
+  "delete",
+  "status_change",
+] as const;
+export type AuditAction = (typeof AUDIT_ACTIONS)[number];
+
+// Audit log entity types
+export const AUDIT_ENTITY_TYPES = [
+  "order",
+  "finance",
+  "warehouse_receipt",
+  "dealer",
+  "supplier",
+  "color",
+  "fabric",
+  "component",
+  "system",
+  "cashbox",
+  "expense_type",
+  "multiplier",
+] as const;
+export type AuditEntityType = (typeof AUDIT_ENTITY_TYPES)[number];
+
+// Notification types
+export const NOTIFICATION_TYPES = [
+  "order_status",
+  "low_stock",
+  "overdue_order",
+  "overdue_payment",
+] as const;
+export type NotificationType = (typeof NOTIFICATION_TYPES)[number];

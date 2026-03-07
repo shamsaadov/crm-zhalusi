@@ -30,6 +30,8 @@ import {
   warehouseReceipts,
   warehouseReceiptItems,
   warehouseWriteoffs,
+  auditLogs,
+  notifications,
   type User,
   type InsertUser,
   type Color,
@@ -64,6 +66,10 @@ import {
   type InsertWarehouseReceiptItem,
   type WarehouseWriteoff,
   type InsertWarehouseWriteoff,
+  type AuditLog,
+  type InsertAuditLog,
+  type Notification,
+  type InsertNotification,
 } from "@shared/schema";
 
 // Pagination types
@@ -100,6 +106,13 @@ export interface WarehouseFilters {
   from?: string;
   to?: string;
   search?: string;
+}
+
+export interface AuditLogFilters {
+  entityType?: string;
+  action?: string;
+  from?: string;
+  to?: string;
 }
 
 export interface IStorage {
@@ -281,6 +294,21 @@ export interface IStorage {
     writeoff: InsertWarehouseWriteoff
   ): Promise<WarehouseWriteoff>;
   deleteWarehouseWriteoffsByOrderId(orderId: string): Promise<void>;
+
+  // Audit Logs
+  createAuditLog(data: InsertAuditLog): Promise<AuditLog>;
+  getAuditLogsPaginated(
+    userId: string,
+    params: PaginationParams,
+    filters?: AuditLogFilters
+  ): Promise<PaginatedResult<AuditLog>>;
+
+  // Notifications
+  createNotification(data: InsertNotification): Promise<Notification>;
+  getNotifications(userId: string, limit?: number): Promise<Notification[]>;
+  getUnreadNotificationCount(userId: string): Promise<number>;
+  markNotificationRead(id: string): Promise<Notification | undefined>;
+  markAllNotificationsRead(userId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1263,6 +1291,122 @@ export class DatabaseStorage implements IStorage {
     await db
       .delete(warehouseWriteoffs)
       .where(eq(warehouseWriteoffs.orderId, orderId));
+  }
+
+  // Audit Logs
+  async createAuditLog(data: InsertAuditLog): Promise<AuditLog> {
+    const [created] = await db.insert(auditLogs).values(data).returning();
+    return created;
+  }
+
+  async getAuditLogsPaginated(
+    userId: string,
+    params: PaginationParams,
+    filters?: AuditLogFilters
+  ): Promise<PaginatedResult<AuditLog>> {
+    const limit = params.limit || 20;
+    const cursor = params.cursor;
+
+    const conditions = [eq(auditLogs.userId, userId)];
+
+    if (filters?.entityType && filters.entityType !== "all") {
+      conditions.push(eq(auditLogs.entityType, filters.entityType));
+    }
+    if (filters?.action && filters.action !== "all") {
+      conditions.push(eq(auditLogs.action, filters.action));
+    }
+    if (filters?.from) {
+      conditions.push(gte(auditLogs.createdAt, new Date(filters.from)));
+    }
+    if (filters?.to) {
+      const toDate = new Date(filters.to);
+      toDate.setHours(23, 59, 59, 999);
+      conditions.push(lte(auditLogs.createdAt, toDate));
+    }
+
+    const baseWhere =
+      conditions.length > 1 ? and(...conditions) : conditions[0];
+
+    let query;
+    if (cursor) {
+      query = db
+        .select()
+        .from(auditLogs)
+        .where(
+          and(baseWhere, sql`${auditLogs.id} < ${cursor}`)
+        );
+    } else {
+      query = db.select().from(auditLogs).where(baseWhere);
+    }
+
+    const data = await query
+      .orderBy(desc(auditLogs.createdAt), desc(auditLogs.id))
+      .limit(limit + 1);
+
+    const hasMore = data.length > limit;
+    const results = hasMore ? data.slice(0, limit) : data;
+
+    const lastItem = results[results.length - 1];
+    const nextCursor = hasMore && lastItem ? lastItem.id : null;
+
+    return { data: results, nextCursor, hasMore };
+  }
+
+  // Notifications
+  async createNotification(data: InsertNotification): Promise<Notification> {
+    const [created] = await db
+      .insert(notifications)
+      .values(data)
+      .returning();
+    return created;
+  }
+
+  async getNotifications(
+    userId: string,
+    limit: number = 50
+  ): Promise<Notification[]> {
+    return db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.userId, userId))
+      .orderBy(desc(notifications.createdAt))
+      .limit(limit);
+  }
+
+  async getUnreadNotificationCount(userId: string): Promise<number> {
+    const result = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(notifications)
+      .where(
+        and(
+          eq(notifications.userId, userId),
+          eq(notifications.isRead, false)
+        )
+      );
+    return Number(result[0]?.count || 0);
+  }
+
+  async markNotificationRead(
+    id: string
+  ): Promise<Notification | undefined> {
+    const [updated] = await db
+      .update(notifications)
+      .set({ isRead: true })
+      .where(eq(notifications.id, id))
+      .returning();
+    return updated;
+  }
+
+  async markAllNotificationsRead(userId: string): Promise<void> {
+    await db
+      .update(notifications)
+      .set({ isRead: true })
+      .where(
+        and(
+          eq(notifications.userId, userId),
+          eq(notifications.isRead, false)
+        )
+      );
   }
 }
 
