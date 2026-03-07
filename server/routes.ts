@@ -1361,8 +1361,13 @@ export async function registerRoutes(
         const { sashes, skipStockValidation, isPaid, cashboxId, ...orderData } =
           req.body;
 
-        // Проверка остатков при создании заказа
-        if (sashes && Array.isArray(sashes) && sashes.length > 0 && !skipStockValidation) {
+        // Проверка остатков при создании заказа (только если статус НЕ "Новый" и НЕ "В производстве")
+        const createStatus = orderData.status || "Новый";
+        if (
+          createStatus !== "Новый" &&
+          createStatus !== "В производстве" &&
+          sashes && Array.isArray(sashes) && sashes.length > 0 && !skipStockValidation
+        ) {
           const validation = await validateSashOrderStock(req.userId!, sashes);
           if (!validation.valid) {
             return res.status(400).json({
@@ -1443,8 +1448,13 @@ export async function registerRoutes(
           ...orderData
         } = req.body;
 
-        // Проверка остатков при создании заказа товара
-        if (components && Array.isArray(components) && components.length > 0 && !skipStockValidation) {
+        // Проверка остатков при создании заказа товара (только если статус НЕ "Новый" и НЕ "В производстве")
+        const productStatus = orderData.status || "Новый";
+        if (
+          productStatus !== "Новый" &&
+          productStatus !== "В производстве" &&
+          components && Array.isArray(components) && components.length > 0 && !skipStockValidation
+        ) {
           const validation = await validateProductOrderStock(req.userId!, components);
           if (!validation.valid) {
             return res.status(400).json({
@@ -1540,8 +1550,13 @@ export async function registerRoutes(
         // Получаем существующий заказ
         const existingOrder = await storage.getOrder(req.params.id);
 
-        // Проверка остатков при редактировании заказа
-        if (sashes && Array.isArray(sashes) && sashes.length > 0 && !skipStockValidation) {
+        // Проверка остатков при редактировании заказа (только если статус НЕ "Новый" и НЕ "В производстве")
+        const editStatus = orderData.status || existingOrder?.status || "Новый";
+        if (
+          editStatus !== "Новый" &&
+          editStatus !== "В производстве" &&
+          sashes && Array.isArray(sashes) && sashes.length > 0 && !skipStockValidation
+        ) {
           const validation = await validateSashOrderStock(req.userId!, sashes);
           if (!validation.valid) {
             return res.status(400).json({
