@@ -85,7 +85,7 @@ export function SashFields({
             <FormControl>
               <Input
                 type="number"
-                step="0.01"
+                step="any"
                 placeholder="см"
                 className="h-9"
                 {...field}
@@ -104,7 +104,7 @@ export function SashFields({
             <FormControl>
               <Input
                 type="number"
-                step="0.01"
+                step="any"
                 placeholder="см"
                 className="h-9"
                 {...field}
