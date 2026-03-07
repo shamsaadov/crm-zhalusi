@@ -174,8 +174,8 @@ GET /api/coefficients/ranges?systemKey=uni1_zebra&category=E
 const coefficient = await getCoefficient(
   system.systemKey,
   fabric.category,
-  order.width / 1000, // перевод мм в метры
-  order.height / 1000
+  order.width / 100, // перевод см в метры
+  order.height / 100
 );
 
 const price = coefficient * multiplier + additionalCosts;

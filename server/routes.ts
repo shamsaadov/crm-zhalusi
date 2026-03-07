@@ -1212,8 +1212,8 @@ export async function registerRoutes(
     for (const sash of sashes) {
       const width = parseFloat(sash.width || "0");
       const height = parseFloat(sash.height || "0");
-      const widthM = width / 1000;
-      const heightM = height / 1000;
+      const widthM = width / 100;
+      const heightM = height / 100;
       const areaM2 = widthM * heightM;
       const quantity = parseInt(sash.quantity || "1");
 
@@ -1786,8 +1786,8 @@ export async function registerRoutes(
             for (const sash of sashes) {
               const width = parseFloat(sash.width?.toString() || "0");
               const height = parseFloat(sash.height?.toString() || "0");
-              const widthM = width / 1000;
-              const heightM = height / 1000;
+              const widthM = width / 100;
+              const heightM = height / 100;
               const areaM2 = widthM * heightM;
               // Свойство quantity отсутствует у sash, использовать 1 по умолчанию
               const quantity = 1;
@@ -2034,8 +2034,8 @@ export async function registerRoutes(
             for (const sash of sashes) {
               const width = parseFloat(sash.width?.toString() || "0");
               const height = parseFloat(sash.height?.toString() || "0");
-              const widthM = width / 1000;
-              const heightM = height / 1000;
+              const widthM = width / 100;
+              const heightM = height / 100;
               const areaM2 = widthM * heightM;
               const quantity = 1;
 

@@ -597,8 +597,8 @@ export default function OrdersPage() {
                 {
                   systemKey: system.systemKey,
                   category: fabric.category,
-                  width: width / 1000,
-                  height: height / 1000,
+                  width: width / 100,
+                  height: height / 100,
                 },
                 (data) => {
                   // Только обновляем коэффициент для отображения
@@ -872,8 +872,8 @@ export default function OrdersPage() {
             {
               systemKey: system.systemKey,
               category: fabric.category,
-              width: width / 1000,
-              height: height / 1000,
+              width: width / 100,
+              height: height / 100,
             },
             (data) => {
               // Проверяем, что створка ещё существует

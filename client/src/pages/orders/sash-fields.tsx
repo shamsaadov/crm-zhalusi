@@ -49,8 +49,8 @@ export function SashFields({
   const currentFabricId = form.watch(`sashes.${index}.fabricId`);
   const currentSashPrice = form.watch(`sashes.${index}.sashPrice`);
 
-  const widthM = parseFloat(currentWidth || "0") / 1000;
-  const heightM = parseFloat(currentHeight || "0") / 1000;
+  const widthM = parseFloat(currentWidth || "0") / 100;
+  const heightM = parseFloat(currentHeight || "0") / 100;
   const sashPriceNum = parseFloat(currentSashPrice || "0");
 
   // Проверяем, есть ли все данные для расчета, но цена равна 0 (система не найдена)
@@ -86,7 +86,7 @@ export function SashFields({
               <Input
                 type="number"
                 step="0.01"
-                placeholder="мм"
+                placeholder="см"
                 className="h-9"
                 {...field}
                 data-testid={`input-sash-width-${index}`}
@@ -105,7 +105,7 @@ export function SashFields({
               <Input
                 type="number"
                 step="0.01"
-                placeholder="мм"
+                placeholder="см"
                 className="h-9"
                 {...field}
                 data-testid={`input-sash-height-${index}`}

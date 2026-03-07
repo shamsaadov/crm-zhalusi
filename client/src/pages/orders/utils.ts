@@ -47,8 +47,8 @@ export function calculateCostPrice(
     let fabricAvgPrice = 0;
 
     if (width > 0 && height > 0) {
-      const widthM = width / 1000;
-      const heightM = height / 1000;
+      const widthM = width / 100;
+      const heightM = height / 100;
       const areaM2 = widthM * heightM;
 
       if (fabricId) {
@@ -185,7 +185,7 @@ const formatDimension = (value?: number | null) => {
   return `${value.toLocaleString("ru-RU", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  })} мм`;
+  })} см`;
 };
 
 const mapControlSide = (value?: string | null) => {

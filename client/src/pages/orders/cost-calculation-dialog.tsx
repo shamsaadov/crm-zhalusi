@@ -27,7 +27,7 @@ export function CostCalculationDialog({
     details?.sashDetails.reduce((sum, s) => sum + s.quantity, 0) || 0;
   const totalArea =
     details?.sashDetails.reduce((sum, s) => {
-      const area = (s.width / 1000) * (s.height / 1000) * s.quantity;
+      const area = (s.width / 100) * (s.height / 100) * s.quantity;
       return sum + area;
     }, 0) || 0;
 
@@ -71,7 +71,7 @@ export function CostCalculationDialog({
       const key = `${sash.fabricName}-${sash.fabricType}`;
       // Для зебры требуется двойная площадь ткани (fabricMultiplier = 2)
       const baseArea =
-        (sash.width / 1000) * (sash.height / 1000) * sash.quantity;
+        (sash.width / 100) * (sash.height / 100) * sash.quantity;
       const area = baseArea * (sash.fabricMultiplier || 1);
       const existing = allFabrics.get(key);
       if (existing) {
