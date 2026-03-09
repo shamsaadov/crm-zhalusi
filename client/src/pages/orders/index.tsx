@@ -466,6 +466,7 @@ export default function OrdersPage() {
           sashPrice: sash.sashPrice,
           sashCost: sash.sashCost,
           room: sash.room || 1,
+          roomName: sash.roomName || undefined,
         }));
     });
 
@@ -519,6 +520,7 @@ export default function OrdersPage() {
       // Группируем одинаковые створки и подсчитываем quantity (с учётом комнаты)
       const groupedSashes = (fullOrder.sashes || []).reduce((acc, s) => {
         const room = (s as any).room || 1;
+        const roomName = (s as any).roomName || "";
         const key = `${s.width}_${s.height}_${s.systemId}_${s.controlSide}_${s.fabricId}_${s.sashPrice}_${s.sashCost}_${room}`;
         const existing = acc.find((item) => item.key === key);
 
@@ -538,10 +540,11 @@ export default function OrdersPage() {
             coefficient: "",
             isCalculating: false,
             room,
+            roomName,
           });
         }
         return acc;
-      }, [] as Array<{ key: string; quantity: number; width: string; height: string; systemId: string; controlSide: string; fabricId: string; sashPrice: string; sashCost: string; coefficient: string; isCalculating: boolean; room: number }>);
+      }, [] as Array<{ key: string; quantity: number; width: string; height: string; systemId: string; controlSide: string; fabricId: string; sashPrice: string; sashCost: string; coefficient: string; isCalculating: boolean; room: number; roomName: string }>);
 
       const sashesData = groupedSashes.map(({ key, ...sash }) => ({
         ...sash,

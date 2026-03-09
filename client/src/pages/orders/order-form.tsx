@@ -346,19 +346,32 @@ export function OrderForm({
 
           {(() => {
             const sashValues = form.watch("sashes") || [];
-            let lastRoom = 1;
+            let lastRoom = 0;
             return fields.map((field, index) => {
               const currentRoom = sashValues[index]?.room || 1;
-              const showRoomHeader = currentRoom !== lastRoom || index === 0;
+              const currentRoomName = sashValues[index]?.roomName || "";
+              const showRoomHeader = currentRoom !== lastRoom;
               lastRoom = currentRoom;
               return (
                 <div key={field.id}>
                   {showRoomHeader && (
-                    <div className="flex items-center gap-2 mt-1 mb-1">
-                      <Home className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm font-medium text-muted-foreground">
-                        Комната {currentRoom}
-                      </span>
+                    <div className="flex items-center gap-2 mt-2 mb-1">
+                      <Home className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <input
+                        type="text"
+                        className="text-sm font-medium text-muted-foreground bg-transparent border-none outline-none placeholder:text-muted-foreground/60 min-w-[80px] max-w-[200px]"
+                        placeholder={`Комната ${currentRoom}`}
+                        value={currentRoomName}
+                        onChange={(e) => {
+                          // Обновляем roomName для всех створок этой комнаты
+                          const allSashes = form.getValues("sashes");
+                          allSashes.forEach((s, i) => {
+                            if ((s.room || 1) === currentRoom) {
+                              form.setValue(`sashes.${i}.roomName`, e.target.value, { shouldValidate: false });
+                            }
+                          });
+                        }}
+                      />
                       <div className="flex-1 border-t border-dashed" />
                     </div>
                   )}

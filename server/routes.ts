@@ -1144,6 +1144,7 @@ export async function registerRoutes(
     sashPrice?: string;
     sashCost?: string;
     room?: number;
+    roomName?: string;
   }) => ({
     width: sash.width,
     height: sash.height,
@@ -1155,6 +1156,7 @@ export async function registerRoutes(
     sashPrice: sash.sashPrice || "0",
     sashCost: sash.sashCost || "0",
     room: sash.room || 1,
+    roomName: sash.roomName || null,
   });
 
   // Helper function to calculate current stock levels

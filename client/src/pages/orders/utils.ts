@@ -415,6 +415,7 @@ export async function printInvoice(order: OrderWithRelations): Promise<void> {
     control: string;
     quantity: number;
     room: number;
+    roomName: string;
   };
 
   const grouped = new Map<string, GroupedSash>();
@@ -445,6 +446,7 @@ export async function printInvoice(order: OrderWithRelations): Promise<void> {
     const fabricText = fabricParts.join(" ").trim() || "—";
     const controlText = mapControlSide(sash.controlSide);
     const room = sash.room || 1;
+    const roomName = sash.roomName || "";
 
     const key = [
       widthNum ?? 0,
@@ -467,16 +469,20 @@ export async function printInvoice(order: OrderWithRelations): Promise<void> {
         control: controlText,
         quantity: 1,
         room,
+        roomName,
       });
     }
   });
 
   // Группируем по комнатам
-  const rooms = new Map<number, GroupedSash[]>();
+  const rooms = new Map<number, { items: GroupedSash[]; name: string }>();
   Array.from(grouped.values()).forEach((item) => {
-    const roomItems = rooms.get(item.room) || [];
-    roomItems.push(item);
-    rooms.set(item.room, roomItems);
+    const existing = rooms.get(item.room);
+    if (existing) {
+      existing.items.push(item);
+    } else {
+      rooms.set(item.room, { items: [item], name: item.roomName });
+    }
   });
 
   const sortedRooms = Array.from(rooms.entries()).sort(([a], [b]) => a - b);
@@ -484,9 +490,10 @@ export async function printInvoice(order: OrderWithRelations): Promise<void> {
 
   let globalIndex = 0;
   const tableBody = sortedRooms
-    .map(([roomNum, items]) => {
+    .map(([roomNum, { items, name: roomName }]) => {
+      const displayName = roomName || `Комната ${roomNum}`;
       const roomHeader = hasMultipleRooms
-        ? `<tr><td colspan="7" class="room-header">Комната ${roomNum}</td></tr>`
+        ? `<tr><td colspan="7" class="room-header">${displayName}</td></tr>`
         : "";
       const itemRows = items.map((item) => {
         globalIndex++;
@@ -766,7 +773,7 @@ export async function printCustomerInvoice(
   const totalSashes = sashes.length || 1;
   const unitFallback = totalSashes > 0 ? totalAmountNum / totalSashes : 0;
 
-  type GroupedSash = {
+  type GroupedSashCustomer = {
     width: number | null;
     height: number | null;
     system: string;
@@ -776,9 +783,11 @@ export async function printCustomerInvoice(
     unitPrice: number;
     lineTotal: number;
     coefficient: number;
+    room: number;
+    roomName: string;
   };
 
-  const grouped = new Map<string, GroupedSash>();
+  const grouped = new Map<string, GroupedSashCustomer>();
 
   sashes.forEach((sash) => {
     const widthNum =
@@ -805,6 +814,8 @@ export async function printCustomerInvoice(
     const systemText = systemParts.join(" ").trim() || "—";
     const fabricText = fabricParts.join(" ").trim() || "—";
     const controlText = mapControlSide(sash.controlSide);
+    const room = (sash as any).room || 1;
+    const roomName = (sash as any).roomName || "";
 
     const qtyRaw = parseFloat((sash as any).quantity || "NaN");
     const quantity = !Number.isNaN(qtyRaw) && qtyRaw > 0 ? qtyRaw : 1;
@@ -825,6 +836,7 @@ export async function printCustomerInvoice(
       fabricText,
       controlText,
       unitPrice.toFixed(4),
+      room,
     ].join("|");
 
     const existing = grouped.get(key);
@@ -842,6 +854,8 @@ export async function printCustomerInvoice(
         unitPrice,
         lineTotal: quantity * unitPrice,
         coefficient,
+        room,
+        roomName,
       });
     }
   });
@@ -852,27 +866,52 @@ export async function printCustomerInvoice(
     totalCoefficient += item.coefficient * item.quantity;
   });
 
+  // Группируем по комнатам
+  const customerRooms = new Map<number, { items: GroupedSashCustomer[]; name: string }>();
+  Array.from(grouped.values()).forEach((item) => {
+    const existing = customerRooms.get(item.room);
+    if (existing) {
+      existing.items.push(item);
+    } else {
+      customerRooms.set(item.room, { items: [item], name: item.roomName });
+    }
+  });
+
+  const sortedCustomerRooms = Array.from(customerRooms.entries()).sort(([a], [b]) => a - b);
+  const hasMultipleCustomerRooms = sortedCustomerRooms.length > 1;
+
+  let customerGlobalIndex = 0;
+  const customerTableBody = sortedCustomerRooms
+    .map(([roomNum, { items, name: rName }]) => {
+      const displayName = rName || `Комната ${roomNum}`;
+      const roomHeader = hasMultipleCustomerRooms
+        ? `<tr><td colspan="10" class="room-header">${displayName}</td></tr>`
+        : "";
+      const itemRows = items.map((item) => {
+        customerGlobalIndex++;
+        return `
+          <tr>
+            <td class="center">${customerGlobalIndex}</td>
+            <td class="center">${formatDimension(item.width)}</td>
+            <td class="center">${formatDimension(item.height)}</td>
+            <td class="left">${item.system}</td>
+            <td class="left">${item.fabric}</td>
+            <td class="center">${item.control}</td>
+            <td class="center">${item.quantity}</td>
+            <td class="center">${item.coefficient > 0 ? item.coefficient.toFixed(2) : "—"}</td>
+            <td class="center">${formatCurrency(item.unitPrice)}</td>
+            <td class="center">${formatCurrency(item.lineTotal)}</td>
+          </tr>
+        `;
+      });
+      return roomHeader + itemRows.join("");
+    })
+    .join("");
+
   const rows =
     grouped.size > 0
-      ? Array.from(grouped.values()).map((item, index) => {
-          return `
-            <tr>
-              <td class="center">${index + 1}</td>
-              <td class="center">${formatDimension(item.width)}</td>
-              <td class="center">${formatDimension(item.height)}</td>
-              <td class="left">${item.system}</td>
-              <td class="left">${item.fabric}</td>
-              <td class="center">${item.control}</td>
-              <td class="center">${item.quantity}</td>
-              <td class="center">${item.coefficient > 0 ? item.coefficient.toFixed(2) : "—"}</td>
-              <td class="center">${formatCurrency(item.unitPrice)}</td>
-              <td class="center">${formatCurrency(item.lineTotal)}</td>
-            </tr>
-          `;
-        })
-      : [
-          `<tr><td class="center">1</td><td colspan="9" class="left">Позиции заказа отсутствуют</td></tr>`,
-        ];
+      ? customerTableBody
+      : `<tr><td class="center">1</td><td colspan="9" class="left">Позиции заказа отсутствуют</td></tr>`;
 
   win.document.write(`
     <!DOCTYPE html>
@@ -888,6 +927,7 @@ export async function printCustomerInvoice(
           th { background: #f3f4f6; font-weight: 600; text-align: center; }
           td.center { text-align: center; }
           td.left { text-align: left; }
+          .room-header { background: #e5e7eb; font-weight: 600; text-align: left; font-size: 13px; padding: 8px; }
           .total-row { font-size: 15px; font-weight: 700; text-align: right; margin-top: 12px; }
           .coeff-total { font-size: 14px; font-weight: 600; margin-top: 8px; text-align: right; }
           .debt { border: 1px solid #d32f2f; border-radius: 4px; padding: 10px 12px; margin-top: 16px; display: inline-block; }
@@ -916,7 +956,7 @@ export async function printCustomerInvoice(
             </tr>
           </thead>
           <tbody>
-            ${rows.join("")}
+            ${rows}
           </tbody>
         </table>
 
