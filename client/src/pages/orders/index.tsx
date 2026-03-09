@@ -500,9 +500,8 @@ export default function OrdersPage() {
 
   const openEditDialog = async (order: OrderWithRelations) => {
     try {
-      // При редактировании заказа сохраняем текущую цену как "ручную"
-      // чтобы она не перезаписывалась автоматическим расчётом
-      setIsManualSalePrice(true);
+      // Авто-режим цены — пересчёт работает автоматически
+      setIsManualSalePrice(false);
 
       const response = await fetch(`/api/orders/${order.id}`, {
         credentials: "include",
