@@ -1143,6 +1143,7 @@ export async function registerRoutes(
     fabricColorId?: string;
     sashPrice?: string;
     sashCost?: string;
+    room?: number;
   }) => ({
     width: sash.width,
     height: sash.height,
@@ -1153,6 +1154,7 @@ export async function registerRoutes(
     fabricColorId: sash.fabricColorId || null,
     sashPrice: sash.sashPrice || "0",
     sashCost: sash.sashCost || "0",
+    room: sash.room || 1,
   });
 
   // Helper function to calculate current stock levels

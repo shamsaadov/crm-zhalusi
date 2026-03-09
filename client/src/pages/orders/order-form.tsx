@@ -35,6 +35,7 @@ import {
   Check,
   Wallet,
   Info,
+  Home,
 } from "lucide-react";
 import { formatCurrency } from "@/components/status-badge";
 import {
@@ -343,43 +344,93 @@ export function OrderForm({
             </Button>
           </div>
 
-          {fields.map((field, index) => (
-            <SashFields
-              key={field.id}
-              index={index}
-              form={form}
-              systems={systems}
-              fabrics={fabrics}
-              fieldsLength={fields.length}
-              fieldId={field.id}
-              onRemove={handleSashRemove}
-              isCalculating={calculatingSashes?.has(index) || false}
-            />
-          ))}
+          {(() => {
+            const sashValues = form.watch("sashes") || [];
+            let lastRoom = 1;
+            return fields.map((field, index) => {
+              const currentRoom = sashValues[index]?.room || 1;
+              const showRoomHeader = currentRoom !== lastRoom || index === 0;
+              lastRoom = currentRoom;
+              return (
+                <div key={field.id}>
+                  {showRoomHeader && (
+                    <div className="flex items-center gap-2 mt-1 mb-1">
+                      <Home className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium text-muted-foreground">
+                        Комната {currentRoom}
+                      </span>
+                      <div className="flex-1 border-t border-dashed" />
+                    </div>
+                  )}
+                  <SashFields
+                    index={index}
+                    form={form}
+                    systems={systems}
+                    fabrics={fabrics}
+                    fieldsLength={fields.length}
+                    fieldId={field.id}
+                    onRemove={handleSashRemove}
+                    isCalculating={calculatingSashes?.has(index) || false}
+                  />
+                </div>
+              );
+            });
+          })()}
 
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full"
-            onClick={() => {
-              const firstSash = form.getValues("sashes.0");
-              append({
-                width: "",
-                height: "",
-                quantity: "1",
-                systemId: firstSash?.systemId || "",
-                controlSide: "",
-                fabricId: firstSash?.fabricId || "",
-                sashPrice: "",
-                sashCost: "",
-                coefficient: "",
-                isCalculating: false,
-              });
-            }}
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Добавить створку
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={() => {
+                const sashes = form.getValues("sashes");
+                const lastSash = sashes[sashes.length - 1];
+                const currentRoom = lastSash?.room || 1;
+                append({
+                  width: "",
+                  height: "",
+                  quantity: "1",
+                  systemId: lastSash?.systemId || "",
+                  controlSide: "",
+                  fabricId: lastSash?.fabricId || "",
+                  sashPrice: "",
+                  sashCost: "",
+                  coefficient: "",
+                  isCalculating: false,
+                  room: currentRoom,
+                });
+              }}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Добавить створку
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                const sashes = form.getValues("sashes");
+                const maxRoom = Math.max(...sashes.map((s) => s.room || 1));
+                const nextRoom = maxRoom + 1;
+                const lastSash = sashes[sashes.length - 1];
+                append({
+                  width: "",
+                  height: "",
+                  quantity: "1",
+                  systemId: lastSash?.systemId || "",
+                  controlSide: "",
+                  fabricId: lastSash?.fabricId || "",
+                  sashPrice: "",
+                  sashCost: "",
+                  coefficient: "",
+                  isCalculating: false,
+                  room: nextRoom,
+                });
+              }}
+            >
+              <Home className="h-4 w-4 mr-2" />
+              Новая комната
+            </Button>
+          </div>
         </div>
 
         <Separator />

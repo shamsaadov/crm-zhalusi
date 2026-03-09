@@ -343,6 +343,7 @@ export const orderSashes = pgTable("order_sashes", {
   }), // Для заказов товара
   sashPrice: decimal("sash_price", { precision: 12, scale: 2 }).default("0"),
   sashCost: decimal("sash_cost", { precision: 12, scale: 2 }).default("0"),
+  room: integer("room").default(1), // Номер комнаты для группировки
 });
 
 export const orderSashesRelations = relations(orderSashes, ({ one }) => ({

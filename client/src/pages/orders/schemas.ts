@@ -11,6 +11,7 @@ export const sashSchema = z.object({
   sashCost: z.string().optional(),
   coefficient: z.string().optional(), // Коэффициент из файла coefficients.json
   isCalculating: z.boolean().optional(), // Состояние загрузки коэффициента
+  room: z.number().optional().default(1), // Номер комнаты для группировки
 });
 
 export const orderFormSchema = z.object({
