@@ -736,7 +736,7 @@ export default function OrdersPage() {
       }
 
       // При изменении количества пересчитываем цену продажи (без повторного запроса коэффициента)
-      if (name.includes("quantity") && !isManualSalePrice) {
+      if (name.includes("quantity")) {
         const totalPrice = sashes.reduce((sum: number, s: any) => {
           const price = parseFloat(s?.sashPrice || "0");
           const qty = parseFloat(s?.quantity || "1");
@@ -752,7 +752,7 @@ export default function OrdersPage() {
     });
 
     return () => subscription.unsubscribe();
-  }, [form, fabricStock, componentStock, systems, isManualSalePrice]);
+  }, [form, fabricStock, componentStock, systems]);
 
   // Auto-calculate product cost price effect
   useEffect(() => {
@@ -911,8 +911,9 @@ export default function OrdersPage() {
                 console.warn(`[Заказ] ${data.warning}`);
               }
 
-              // Пересчитываем общую цену (только если не ручной режим)
-              if (!isManualSalePrice) {
+              // Пересчитываем общую цену всегда при изменении коэффициента
+              // (isManualSalePrice не блокирует — ручной режим только для редактирования поля)
+              {
                 const allSashes = form.getValues("sashes");
                 const totalPrice = allSashes.reduce((sum, s) => {
                   const price = parseFloat(s.sashPrice || "0");
@@ -964,7 +965,6 @@ export default function OrdersPage() {
     fabricStock,
     componentStock,
     coefficientCalculator,
-    isManualSalePrice,
   ]);
 
   // Filtering

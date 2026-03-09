@@ -93,7 +93,6 @@ export function OrderForm({
   onManualSalePriceChange,
 }: OrderFormProps) {
   const { fields, append, remove } = fieldArray;
-  const [autoSalePrice, setAutoSalePrice] = useState<string | null>(null);
   const [isPaidPopoverOpen, setIsPaidPopoverOpen] = useState(false);
   const [localManualPrice, setLocalManualPrice] = useState(false);
 
@@ -418,7 +417,6 @@ export function OrderForm({
                         size="sm"
                         className="h-6 px-2 text-xs"
                         onClick={() => {
-                          setAutoSalePrice(field.value || "");
                           setIsSalePriceEditable(true);
                         }}
                       >
@@ -432,8 +430,17 @@ export function OrderForm({
                         size="sm"
                         className="h-6 px-2 text-xs"
                         onClick={() => {
-                          if (autoSalePrice !== null) {
-                            field.onChange(autoSalePrice);
+                          // Пересчитываем цену из текущих цен створок
+                          const sashes = form.getValues("sashes");
+                          const totalPrice = sashes.reduce((sum, s) => {
+                            const price = parseFloat(s.sashPrice || "0");
+                            const qty = parseFloat(s.quantity || "1");
+                            return sum + price * qty;
+                          }, 0);
+                          if (totalPrice > 0) {
+                            form.setValue("salePrice", totalPrice.toFixed(2), {
+                              shouldValidate: false,
+                            });
                           }
                           setIsSalePriceEditable(false);
                         }}
