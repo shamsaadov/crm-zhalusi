@@ -71,70 +71,81 @@ export function calculateCostPrice(
         if (system && system.components) {
           for (const component of system.components) {
             const compStock = componentStock.find((c) => c.id === component.id);
-            if (compStock?.stock?.avgPrice && compStock.stock.avgPrice > 0) {
-              const quantity = parseFloat(component.quantity || "1");
-              const sizeSource = component.sizeSource || null;
-              const sizeMultiplier = parseFloat(
-                component.sizeMultiplier || "1"
-              );
-              const unit = compStock.unit || "шт";
+            const quantity = parseFloat(component.quantity || "1");
+            const sizeSource = component.sizeSource || null;
+            const sizeMultiplier = parseFloat(
+              component.sizeMultiplier || "1"
+            );
+            const unit = compStock?.unit || component.unit || "шт";
+            const avgPrice = compStock?.stock?.avgPrice || 0;
 
-              let sizeValue = 1;
-              let componentPrice = 0;
-              let formula = "";
+            let sizeValue = 1;
+            let componentPrice = 0;
+            let formula = "";
 
-              const isMetric = ["м", "пм", "п.м.", "м.п."].includes(
-                unit.toLowerCase()
-              );
+            const isMetric = ["м", "пм", "п.м.", "м.п."].includes(
+              unit.toLowerCase()
+            );
 
-              if (isMetric && sizeSource) {
-                if (sizeSource === "width") {
-                  sizeValue = widthM;
-                } else if (sizeSource === "height") {
-                  sizeValue = heightM;
-                }
+            if (isMetric && sizeSource) {
+              if (sizeSource === "width") {
+                sizeValue = widthM;
+              } else if (sizeSource === "height") {
+                sizeValue = heightM;
+              }
+              if (avgPrice > 0) {
                 componentPrice =
-                  compStock.stock.avgPrice *
+                  avgPrice *
                   sizeValue *
                   sizeMultiplier *
                   quantity;
-                formula = `${compStock.stock.avgPrice.toFixed(
+                formula = `${avgPrice.toFixed(
                   2
                 )} × ${sizeValue.toFixed(
                   3
                 )}м × ${sizeMultiplier} × ${quantity}`;
-              } else if (isMetric && !sizeSource) {
-                sizeValue = widthM;
+              } else {
+                formula = `нет цены`;
+              }
+            } else if (isMetric && !sizeSource) {
+              sizeValue = widthM;
+              if (avgPrice > 0) {
                 componentPrice =
-                  compStock.stock.avgPrice *
+                  avgPrice *
                   sizeValue *
                   sizeMultiplier *
                   quantity;
-                formula = `${compStock.stock.avgPrice.toFixed(
+                formula = `${avgPrice.toFixed(
                   2
                 )} × ${sizeValue.toFixed(
                   3
                 )}м (ширина) × ${sizeMultiplier} × ${quantity}`;
               } else {
-                componentPrice = compStock.stock.avgPrice * quantity;
-                formula = `${compStock.stock.avgPrice.toFixed(
+                formula = `нет цены`;
+              }
+            } else {
+              if (avgPrice > 0) {
+                componentPrice = avgPrice * quantity;
+                formula = `${avgPrice.toFixed(
                   2
                 )} × ${quantity}шт`;
+              } else {
+                formula = `нет цены`;
               }
-
-              componentsCost += componentPrice;
-              componentsDetails.push({
-                name: compStock.name,
-                unit,
-                quantity,
-                sizeSource,
-                sizeMultiplier,
-                sizeValue,
-                avgPrice: compStock.stock.avgPrice,
-                totalPrice: componentPrice,
-                formula,
-              });
             }
+
+            componentsCost += componentPrice;
+            componentsDetails.push({
+              name: compStock?.name || component.name || "Комплектующее",
+              unit,
+              quantity,
+              sizeSource,
+              sizeMultiplier,
+              sizeValue,
+              avgPrice,
+              totalPrice: componentPrice,
+              formula,
+            });
           }
           sashCost += componentsCost;
         }
