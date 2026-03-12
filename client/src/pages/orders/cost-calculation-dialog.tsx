@@ -58,7 +58,7 @@ export function CostCalculationDialog({
   const allFabrics = useMemo(() => {
     const map = new Map<
       string,
-      { name: string; type: string; totalArea: number; avgPrice: number; totalCost: number; rollWidth: number }
+      { name: string; type: string; totalArea: number; avgPrice: number; totalCost: number }
     >();
     details?.sashDetails.forEach((sash) => {
       if (sash.fabricName) {
@@ -77,7 +77,6 @@ export function CostCalculationDialog({
             totalArea: area,
             avgPrice: sash.fabricAvgPrice,
             totalCost: sash.fabricCost * sash.quantity,
-            rollWidth: sash.fabricRollWidth || 0,
           });
         }
       }
@@ -230,11 +229,6 @@ export function CostCalculationDialog({
                           </div>
                           <span className="text-muted-foreground">
                             {fabric.totalArea.toFixed(2)} м²
-                            {fabric.rollWidth > 0 && (
-                              <span className="ml-1 text-xs">
-                                ({(fabric.totalArea / fabric.rollWidth).toFixed(2)} п.м.)
-                              </span>
-                            )}
                           </span>
                         </div>
                         <div className="flex items-center gap-2">

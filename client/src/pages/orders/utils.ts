@@ -45,7 +45,6 @@ export function calculateCostPrice(
     let fabricName = "";
     let fabricType = "roll";
     let fabricAvgPrice = 0;
-    let fabricRollWidth = 0;
 
     if (width > 0 && height > 0) {
       const widthM = width / 100;
@@ -58,7 +57,6 @@ export function calculateCostPrice(
           fabricName = fabric.name;
           fabricType = fabric.fabricType || "roll";
           fabricAvgPrice = fabric.stock.avgPrice;
-          fabricRollWidth = parseFloat(fabric.width?.toString() || "0");
           fabricMultiplier = fabricType === "zebra" ? 2 : 1;
 
           if (fabric.stock.avgPrice > 0) {
@@ -170,7 +168,6 @@ export function calculateCostPrice(
         fabricAvgPrice,
         fabricCost,
         fabricMultiplier,
-        fabricRollWidth,
         componentsCost,
         componentsDetails,
         sashCost,
