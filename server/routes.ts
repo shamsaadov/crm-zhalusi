@@ -4135,6 +4135,225 @@ export async function registerRoutes(
     }
   );
 
+  // ==================== CUTTING LAYOUTS ====================
+
+  // Алгоритм оптимального раскроя рулона
+  function calculateOptimalCutting(
+    pieces: Array<{ index: number; width: number; height: number; quantity: number }>,
+    rollWidth: number
+  ): {
+    rows: Array<{
+      rowIndex: number;
+      cutLength: number;
+      pieces: Array<{ sashIndex: number; width: number; height: number }>;
+      usedWidth: number;
+      wasteWidth: number;
+    }>;
+    totalLength: number;
+    wastePercent: number;
+  } {
+    // Развернуть все куски по количеству
+    const allPieces: Array<{ sashIndex: number; width: number; height: number }> = [];
+    for (const piece of pieces) {
+      for (let i = 0; i < piece.quantity; i++) {
+        allPieces.push({
+          sashIndex: piece.index,
+          width: piece.width,
+          height: piece.height,
+        });
+      }
+    }
+
+    // Сортировка: сначала по высоте (убывание), потом по ширине (убывание)
+    allPieces.sort((a, b) => b.height - a.height || b.width - a.width);
+
+    const rows: Array<{
+      rowIndex: number;
+      cutLength: number;
+      pieces: Array<{ sashIndex: number; width: number; height: number }>;
+      usedWidth: number;
+      wasteWidth: number;
+    }> = [];
+
+    const placed = new Set<number>();
+
+    for (let i = 0; i < allPieces.length; i++) {
+      if (placed.has(i)) continue;
+
+      const piece = allPieces[i];
+      const row: typeof rows[0] = {
+        rowIndex: rows.length + 1,
+        cutLength: piece.height,
+        pieces: [{ sashIndex: piece.sashIndex, width: piece.width, height: piece.height }],
+        usedWidth: piece.width,
+        wasteWidth: rollWidth - piece.width,
+      };
+      placed.add(i);
+
+      // Пытаемся добавить ещё куски в этот ряд
+      for (let j = i + 1; j < allPieces.length; j++) {
+        if (placed.has(j)) continue;
+        const candidate = allPieces[j];
+
+        // Кусок помещается по ширине и его высота <= высоте ряда (отрез идёт по максимальной)
+        if (row.usedWidth + candidate.width <= rollWidth && candidate.height <= row.cutLength) {
+          row.pieces.push({ sashIndex: candidate.sashIndex, width: candidate.width, height: candidate.height });
+          row.usedWidth += candidate.width;
+          row.wasteWidth = rollWidth - row.usedWidth;
+          placed.add(j);
+        }
+      }
+
+      rows.push(row);
+    }
+
+    const totalLength = rows.reduce((sum, r) => sum + r.cutLength, 0);
+    const totalArea = rollWidth * totalLength;
+    const usedArea = rows.reduce(
+      (sum, r) => sum + r.pieces.reduce((s, p) => s + p.width * p.height, 0),
+      0
+    );
+    const wastePercent = totalArea > 0 ? ((totalArea - usedArea) / totalArea) * 100 : 0;
+
+    return { rows, totalLength, wastePercent };
+  }
+
+  // POST /api/orders/:orderId/cutting - рассчитать и сохранить раскрой
+  app.post(
+    "/api/orders/:orderId/cutting",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const orderId = req.params.orderId;
+        const order = await storage.getOrder(orderId);
+        if (!order || order.userId !== req.userId) {
+          return res.status(404).json({ message: "Заказ не найден" });
+        }
+
+        const sashes = await storage.getOrderSashes(orderId);
+        if (sashes.length === 0) {
+          return res.status(400).json({ message: "В заказе нет створок" });
+        }
+
+        // Группируем створки по ткани
+        const fabricGroups = new Map<string, Array<{
+          index: number;
+          width: number;
+          height: number;
+          quantity: number;
+        }>>();
+
+        sashes.forEach((sash, i) => {
+          if (!sash.fabricId) return;
+          const group = fabricGroups.get(sash.fabricId) || [];
+          group.push({
+            index: i + 1,
+            width: parseFloat(sash.width?.toString() || "0"),
+            height: parseFloat(sash.height?.toString() || "0"),
+            quantity: parseFloat((sash as any).quantity?.toString() || "1"),
+          });
+          fabricGroups.set(sash.fabricId, group);
+        });
+
+        // Удаляем старый раскрой для этого заказа
+        await storage.deleteCuttingLayoutsByOrder(orderId);
+
+        const allFabrics = await storage.getFabrics(req.userId!);
+        const results: any[] = [];
+
+        for (const [fabricId, pieces] of fabricGroups) {
+          const fabric = allFabrics.find((f) => f.id === fabricId);
+          const rollWidth = parseFloat(fabric?.width?.toString() || "0");
+          if (rollWidth <= 0) {
+            continue; // Пропускаем ткани без указанной ширины рулона
+          }
+
+          const { rows, totalLength, wastePercent } = calculateOptimalCutting(pieces, rollWidth);
+
+          const layout = await storage.createCuttingLayout({
+            orderId,
+            fabricId,
+            rollWidth: rollWidth.toFixed(2),
+            totalLength: totalLength.toFixed(2),
+            wastePercent: wastePercent.toFixed(2),
+            userId: req.userId!,
+          });
+
+          const layoutRows = await storage.createCuttingLayoutRows(
+            rows.map((r) => ({
+              layoutId: layout.id,
+              rowIndex: r.rowIndex,
+              cutLength: r.cutLength.toFixed(2),
+              pieces: JSON.stringify(r.pieces),
+              usedWidth: r.usedWidth.toFixed(2),
+              wasteWidth: r.wasteWidth.toFixed(2),
+            }))
+          );
+
+          results.push({
+            ...layout,
+            fabricName: fabric?.name,
+            rows: layoutRows.map((r) => ({
+              ...r,
+              pieces: JSON.parse(r.pieces),
+            })),
+          });
+        }
+
+        res.json(results);
+      } catch (error) {
+        console.error("Cutting layout error:", error);
+        res.status(500).json({ message: "Ошибка расчёта раскроя" });
+      }
+    }
+  );
+
+  // GET /api/orders/:orderId/cutting - получить сохранённый раскрой
+  app.get(
+    "/api/orders/:orderId/cutting",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const layouts = await storage.getCuttingLayoutsByOrder(req.params.orderId);
+        const allFabrics = await storage.getFabrics(req.userId!);
+
+        const results = await Promise.all(
+          layouts.map(async (layout) => {
+            const rows = await storage.getCuttingLayoutRows(layout.id);
+            const fabric = allFabrics.find((f) => f.id === layout.fabricId);
+            return {
+              ...layout,
+              fabricName: fabric?.name,
+              rows: rows.map((r) => ({
+                ...r,
+                pieces: JSON.parse(r.pieces),
+              })),
+            };
+          })
+        );
+
+        res.json(results);
+      } catch (error) {
+        console.error("Get cutting layout error:", error);
+        res.status(500).json({ message: "Ошибка загрузки раскроя" });
+      }
+    }
+  );
+
+  // DELETE /api/orders/:orderId/cutting - удалить раскрой
+  app.delete(
+    "/api/orders/:orderId/cutting",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        await storage.deleteCuttingLayoutsByOrder(req.params.orderId);
+        res.json({ success: true });
+      } catch (error) {
+        res.status(500).json({ message: "Ошибка удаления раскроя" });
+      }
+    }
+  );
+
   // Periodic notification generation (every 30 minutes)
   setInterval(() => {
     generatePeriodicNotifications().catch((err) =>

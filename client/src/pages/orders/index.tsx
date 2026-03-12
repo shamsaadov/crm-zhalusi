@@ -44,6 +44,7 @@ import { getOrderColumns } from "./order-columns";
 import { ViewOrderDialog } from "./view-order-dialog";
 import { DeleteOrderDialog } from "./delete-order-dialog";
 import { CostCalculationDialog } from "./cost-calculation-dialog";
+import { CuttingDialog } from "./cutting-dialog";
 import { OrderForm } from "./order-form";
 import { ProductForm } from "./product-form";
 import {
@@ -79,6 +80,9 @@ export default function OrdersPage() {
   const [showCostCalculation, setShowCostCalculation] = useState(false);
   const [costCalculationDetails, setCostCalculationDetails] =
     useState<CostCalculationDetails | null>(null);
+  const [showCuttingDialog, setShowCuttingDialog] = useState(false);
+  const [cuttingOrderId, setCuttingOrderId] = useState<string | null>(null);
+  const [cuttingOrderNumber, setCuttingOrderNumber] = useState<number | undefined>();
   const [calculatingSashes, setCalculatingSashes] = useState<Set<number>>(
     new Set()
   );
@@ -982,6 +986,11 @@ export default function OrdersPage() {
   const columns = getOrderColumns({
     onWorkshopPrint: printInvoice,
     onCustomerPrint: printCustomerInvoice,
+    onCutting: (order: OrderWithRelations) => {
+      setCuttingOrderId(order.id);
+      setCuttingOrderNumber(order.orderNumber);
+      setShowCuttingDialog(true);
+    },
     onDelete: openDeleteDialog,
     onStatusChange: (id, status) => updateStatusMutation.mutate({ id, status }),
   });
@@ -1171,6 +1180,13 @@ export default function OrdersPage() {
         onCostUpdate={(newCost) => {
           form.setValue("costPrice", newCost.toFixed(2), { shouldValidate: false });
         }}
+      />
+
+      <CuttingDialog
+        open={showCuttingDialog}
+        onOpenChange={setShowCuttingDialog}
+        orderId={cuttingOrderId}
+        orderNumber={cuttingOrderNumber}
       />
     </Layout>
   );

@@ -11,7 +11,7 @@ import {
   formatCurrency,
   BalanceBadge,
 } from "@/components/status-badge";
-import { ClipboardList, FileText, Trash2 } from "lucide-react";
+import { ClipboardList, FileText, Trash2, Scissors } from "lucide-react";
 import { ORDER_STATUSES, type OrderStatus } from "@shared/schema";
 import { format } from "date-fns";
 import type { OrderWithRelations } from "./types";
@@ -19,6 +19,7 @@ import type { OrderWithRelations } from "./types";
 interface ColumnActions {
   onWorkshopPrint: (order: OrderWithRelations) => void | Promise<void>;
   onCustomerPrint: (order: OrderWithRelations) => void | Promise<void>;
+  onCutting: (order: OrderWithRelations) => void;
   onDelete: (order: OrderWithRelations) => void;
   onStatusChange: (id: string, status: string) => void;
 }
@@ -113,6 +114,15 @@ export function getOrderColumns(actions: ColumnActions) {
       header: "",
       cell: (order: OrderWithRelations) => (
         <div className="flex gap-1">
+          <Button
+            size="icon"
+            variant="ghost"
+            title="Раскрой"
+            onClick={() => actions.onCutting(order)}
+            data-testid={`button-cutting-${order.id}`}
+          >
+            <Scissors className="h-4 w-4" />
+          </Button>
           <Button
             size="icon"
             variant="ghost"

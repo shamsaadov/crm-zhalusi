@@ -32,6 +32,8 @@ import {
   warehouseWriteoffs,
   auditLogs,
   notifications,
+  cuttingLayouts,
+  cuttingLayoutRows,
   type User,
   type InsertUser,
   type Color,
@@ -70,6 +72,10 @@ import {
   type InsertAuditLog,
   type Notification,
   type InsertNotification,
+  type CuttingLayout,
+  type InsertCuttingLayout,
+  type CuttingLayoutRow,
+  type InsertCuttingLayoutRow,
 } from "@shared/schema";
 
 // Pagination types
@@ -1407,6 +1413,48 @@ export class DatabaseStorage implements IStorage {
           eq(notifications.isRead, false)
         )
       );
+  }
+  // Cutting layouts
+  async getCuttingLayoutsByOrder(orderId: string): Promise<CuttingLayout[]> {
+    return db
+      .select()
+      .from(cuttingLayouts)
+      .where(eq(cuttingLayouts.orderId, orderId))
+      .orderBy(desc(cuttingLayouts.createdAt));
+  }
+
+  async getCuttingLayout(id: string): Promise<CuttingLayout | undefined> {
+    const [layout] = await db
+      .select()
+      .from(cuttingLayouts)
+      .where(eq(cuttingLayouts.id, id));
+    return layout;
+  }
+
+  async getCuttingLayoutRows(layoutId: string): Promise<CuttingLayoutRow[]> {
+    return db
+      .select()
+      .from(cuttingLayoutRows)
+      .where(eq(cuttingLayoutRows.layoutId, layoutId))
+      .orderBy(cuttingLayoutRows.rowIndex);
+  }
+
+  async createCuttingLayout(layout: InsertCuttingLayout): Promise<CuttingLayout> {
+    const [created] = await db.insert(cuttingLayouts).values(layout).returning();
+    return created;
+  }
+
+  async createCuttingLayoutRows(rows: InsertCuttingLayoutRow[]): Promise<CuttingLayoutRow[]> {
+    if (rows.length === 0) return [];
+    return db.insert(cuttingLayoutRows).values(rows).returning();
+  }
+
+  async deleteCuttingLayout(id: string): Promise<void> {
+    await db.delete(cuttingLayouts).where(eq(cuttingLayouts.id, id));
+  }
+
+  async deleteCuttingLayoutsByOrder(orderId: string): Promise<void> {
+    await db.delete(cuttingLayouts).where(eq(cuttingLayouts.orderId, orderId));
   }
 }
 

@@ -634,6 +634,63 @@ export const insertNotificationSchema = createInsertSchema(notifications).omit({
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type Notification = typeof notifications.$inferSelect;
 
+// Cutting layouts (раскрой рулона)
+export const cuttingLayouts = pgTable("cutting_layouts", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  orderId: varchar("order_id")
+    .notNull()
+    .references(() => orders.id, { onDelete: "cascade" }),
+  fabricId: varchar("fabric_id")
+    .notNull()
+    .references(() => fabrics.id),
+  rollWidth: decimal("roll_width", { precision: 10, scale: 2 }).notNull(), // ширина рулона в см
+  totalLength: decimal("total_length", { precision: 10, scale: 2 }).notNull(), // итого п.м. в см
+  wastePercent: decimal("waste_percent", { precision: 5, scale: 2 }).default("0"),
+  userId: varchar("user_id")
+    .notNull()
+    .references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const cuttingLayoutsRelations = relations(cuttingLayouts, ({ one, many }) => ({
+  order: one(orders, { fields: [cuttingLayouts.orderId], references: [orders.id] }),
+  fabric: one(fabrics, { fields: [cuttingLayouts.fabricId], references: [fabrics.id] }),
+  user: one(users, { fields: [cuttingLayouts.userId], references: [users.id] }),
+  rows: many(cuttingLayoutRows),
+}));
+
+export const insertCuttingLayoutSchema = createInsertSchema(cuttingLayouts).omit({ id: true });
+export type InsertCuttingLayout = z.infer<typeof insertCuttingLayoutSchema>;
+export type CuttingLayout = typeof cuttingLayouts.$inferSelect;
+
+// Cutting layout rows (ряды раскроя)
+export const cuttingLayoutRows = pgTable("cutting_layout_rows", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  layoutId: varchar("layout_id")
+    .notNull()
+    .references(() => cuttingLayouts.id, { onDelete: "cascade" }),
+  rowIndex: integer("row_index").notNull(), // порядок ряда
+  cutLength: decimal("cut_length", { precision: 10, scale: 2 }).notNull(), // длина отреза (высота створки) в см
+  pieces: text("pieces").notNull(), // JSON: [{sashIndex, width, height}]
+  usedWidth: decimal("used_width", { precision: 10, scale: 2 }).notNull(), // занято по ширине в см
+  wasteWidth: decimal("waste_width", { precision: 10, scale: 2 }).notNull(), // остаток по ширине в см
+});
+
+export const cuttingLayoutRowsRelations = relations(cuttingLayoutRows, ({ one }) => ({
+  layout: one(cuttingLayouts, {
+    fields: [cuttingLayoutRows.layoutId],
+    references: [cuttingLayouts.id],
+  }),
+}));
+
+export const insertCuttingLayoutRowSchema = createInsertSchema(cuttingLayoutRows).omit({ id: true });
+export type InsertCuttingLayoutRow = z.infer<typeof insertCuttingLayoutRowSchema>;
+export type CuttingLayoutRow = typeof cuttingLayoutRows.$inferSelect;
+
 // Auth schemas for validation
 export const loginSchema = z.object({
   email: z.string().email("Некорректный email"),
