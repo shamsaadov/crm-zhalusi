@@ -1,3 +1,4 @@
+import { useState, useEffect, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -6,22 +7,44 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Ruler, Package, Scissors, Info } from "lucide-react";
+import { Ruler, Package, Scissors, Info, Save } from "lucide-react";
+import { formatCurrency } from "@/components/status-badge";
 import type { CostCalculationDetails } from "./types";
 
 interface CostCalculationDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   details: CostCalculationDetails | null;
+  onCostUpdate?: (newCostPrice: number) => void;
 }
 
 export function CostCalculationDialog({
   open,
   onOpenChange,
   details,
+  onCostUpdate,
 }: CostCalculationDialogProps) {
+  // Локальные переопределения цен тканей: ключ — fabricName-fabricType, значение — цена за м²
+  const [fabricPriceOverrides, setFabricPriceOverrides] = useState<
+    Map<string, number>
+  >(new Map());
+
+  // Локальные переопределения для комплектующих: ключ — name, значение — { price, quantity }
+  const [componentOverrides, setComponentOverrides] = useState<
+    Map<string, { price?: number; quantity?: number }>
+  >(new Map());
+
+  // Сбрасываем overrides при открытии диалога с новыми данными
+  useEffect(() => {
+    if (open && details) {
+      setFabricPriceOverrides(new Map());
+      setComponentOverrides(new Map());
+    }
+  }, [open, details?.totalCost]);
+
   // Расчёт общей статистики
   const totalSashes =
     details?.sashDetails.reduce((sum, s) => sum + s.quantity, 0) || 0;
@@ -31,64 +54,128 @@ export function CostCalculationDialog({
       return sum + area;
     }, 0) || 0;
 
-  // Группировка комплектующих по всем створкам
-  const allComponents = new Map<
-    string,
-    { name: string; unit: string; totalQty: number }
-  >();
-  details?.sashDetails.forEach((sash) => {
-    sash.componentsDetails.forEach((comp) => {
-      const key = comp.name;
-      const isMetric = ["м", "пм", "п.м.", "м.п."].includes(
-        comp.unit.toLowerCase()
-      );
-      // Для метрических единиц используем sizeValue (размер в метрах)
-      // умноженный на sizeMultiplier и quantity
-      const componentQty = isMetric
-        ? comp.sizeValue * comp.sizeMultiplier * comp.quantity * sash.quantity
-        : comp.quantity * sash.quantity;
-
-      const existing = allComponents.get(key);
-      if (existing) {
-        existing.totalQty += componentQty;
-      } else {
-        allComponents.set(key, {
-          name: comp.name,
-          unit: comp.unit,
-          totalQty: componentQty,
-        });
+  // Группировка тканей с ценами
+  const allFabrics = useMemo(() => {
+    const map = new Map<
+      string,
+      { name: string; type: string; totalArea: number; avgPrice: number; totalCost: number }
+    >();
+    details?.sashDetails.forEach((sash) => {
+      if (sash.fabricName) {
+        const key = `${sash.fabricName}-${sash.fabricType}`;
+        const baseArea =
+          (sash.width / 100) * (sash.height / 100) * sash.quantity;
+        const area = baseArea * (sash.fabricMultiplier || 1);
+        const existing = map.get(key);
+        if (existing) {
+          existing.totalArea += area;
+          existing.totalCost += sash.fabricCost * sash.quantity;
+        } else {
+          map.set(key, {
+            name: sash.fabricName,
+            type: sash.fabricType,
+            totalArea: area,
+            avgPrice: sash.fabricAvgPrice,
+            totalCost: sash.fabricCost * sash.quantity,
+          });
+        }
       }
     });
-  });
+    return map;
+  }, [details]);
 
-  // Группировка тканей
-  const allFabrics = new Map<
-    string,
-    { name: string; type: string; totalArea: number }
-  >();
-  details?.sashDetails.forEach((sash) => {
-    if (sash.fabricName) {
-      const key = `${sash.fabricName}-${sash.fabricType}`;
-      // Для зебры требуется двойная площадь ткани (fabricMultiplier = 2)
-      const baseArea =
-        (sash.width / 100) * (sash.height / 100) * sash.quantity;
-      const area = baseArea * (sash.fabricMultiplier || 1);
-      const existing = allFabrics.get(key);
-      if (existing) {
-        existing.totalArea += area;
-      } else {
-        allFabrics.set(key, {
-          name: sash.fabricName,
-          type: sash.fabricType,
-          totalArea: area,
-        });
+  // Группировка комплектующих с ценами
+  const allComponents = useMemo(() => {
+    const map = new Map<
+      string,
+      { name: string; unit: string; totalQty: number; avgPrice: number; totalCost: number }
+    >();
+    details?.sashDetails.forEach((sash) => {
+      sash.componentsDetails.forEach((comp) => {
+        const key = comp.name;
+        const isMetric = ["м", "пм", "п.м.", "м.п."].includes(
+          comp.unit.toLowerCase()
+        );
+        const componentQty = isMetric
+          ? comp.sizeValue * comp.sizeMultiplier * comp.quantity * sash.quantity
+          : comp.quantity * sash.quantity;
+
+        const existing = map.get(key);
+        if (existing) {
+          existing.totalQty += componentQty;
+          existing.totalCost += comp.totalPrice * sash.quantity;
+        } else {
+          map.set(key, {
+            name: comp.name,
+            unit: comp.unit,
+            totalQty: componentQty,
+            avgPrice: comp.avgPrice,
+            totalCost: comp.totalPrice * sash.quantity,
+          });
+        }
+      });
+    });
+    return map;
+  }, [details]);
+
+  // Пересчёт себестоимости с учётом overrides
+  const recalculatedCost = useMemo(() => {
+    if (!details) return 0;
+
+    let totalCost = 0;
+
+    for (const sash of details.sashDetails) {
+      let sashCost = 0;
+
+      // Ткань
+      if (sash.fabricName) {
+        const fabricKey = `${sash.fabricName}-${sash.fabricType}`;
+        const overridePrice = fabricPriceOverrides.get(fabricKey);
+        const price = overridePrice !== undefined ? overridePrice : sash.fabricAvgPrice;
+        const areaM2 = (sash.width / 100) * (sash.height / 100);
+        sashCost += areaM2 * price * (sash.fabricMultiplier || 1);
       }
+
+      // Комплектующие
+      for (const comp of sash.componentsDetails) {
+        const override = componentOverrides.get(comp.name);
+        const price = override?.price !== undefined ? override.price : comp.avgPrice;
+        const quantity = override?.quantity !== undefined ? override.quantity : comp.quantity;
+
+        const isMetric = ["м", "пм", "п.м.", "м.п."].includes(
+          comp.unit.toLowerCase()
+        );
+
+        if (isMetric) {
+          sashCost += price * comp.sizeValue * comp.sizeMultiplier * quantity;
+        } else {
+          sashCost += price * quantity;
+        }
+      }
+
+      // Фиксированная надбавка
+      sashCost += sash.sashFixedCost;
+
+      totalCost += sashCost * sash.quantity;
     }
-  });
+
+    return totalCost;
+  }, [details, fabricPriceOverrides, componentOverrides]);
+
+  const hasOverrides = fabricPriceOverrides.size > 0 || componentOverrides.size > 0;
+  const originalCost = details?.totalCost || 0;
+  const costDiff = recalculatedCost - originalCost;
+
+  const handleSave = () => {
+    if (onCostUpdate) {
+      onCostUpdate(recalculatedCost);
+    }
+    onOpenChange(false);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Info className="h-5 w-5" />
@@ -118,28 +205,60 @@ export function CostCalculationDialog({
                   <Scissors className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm font-medium">Ткани</span>
                 </div>
-                <div className="space-y-1.5">
-                  {Array.from(allFabrics.values()).map((fabric, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center justify-between text-sm py-1 px-2 bg-muted/30 rounded"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span>{fabric.name}</span>
-                        {fabric.type === "zebra" && (
-                          <Badge
-                            variant="secondary"
-                            className="text-[10px] px-1.5 py-0"
-                          >
-                            зебра
-                          </Badge>
-                        )}
+                <div className="space-y-2">
+                  {Array.from(allFabrics.entries()).map(([key, fabric]) => {
+                    const overridePrice = fabricPriceOverrides.get(key);
+                    const currentPrice = overridePrice !== undefined ? overridePrice : fabric.avgPrice;
+
+                    return (
+                      <div
+                        key={key}
+                        className="text-sm py-2 px-2 bg-muted/30 rounded space-y-1"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{fabric.name}</span>
+                            {fabric.type === "zebra" && (
+                              <Badge
+                                variant="secondary"
+                                className="text-[10px] px-1.5 py-0"
+                              >
+                                зебра
+                              </Badge>
+                            )}
+                          </div>
+                          <span className="text-muted-foreground">
+                            {fabric.totalArea.toFixed(2)} м²
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground whitespace-nowrap">Цена/м²:</span>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={currentPrice || ""}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value);
+                              const newMap = new Map(fabricPriceOverrides);
+                              if (!isNaN(val)) {
+                                newMap.set(key, val);
+                              } else {
+                                newMap.delete(key);
+                              }
+                              setFabricPriceOverrides(newMap);
+                            }}
+                            className="h-7 w-28 text-xs"
+                          />
+                          {overridePrice !== undefined && (
+                            <Badge variant="outline" className="text-[10px] px-1 py-0 text-orange-600 border-orange-300">
+                              изм.
+                            </Badge>
+                          )}
+                        </div>
                       </div>
-                      <span className="text-muted-foreground">
-                        {fabric.totalArea.toFixed(2)} м²
-                      </span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -156,21 +275,84 @@ export function CostCalculationDialog({
                     {allComponents.size}
                   </Badge>
                 </div>
-                <div className="space-y-1 max-h-[200px] overflow-y-auto">
-                  {Array.from(allComponents.values()).map((comp, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center justify-between text-sm py-1 px-2 bg-muted/30 rounded"
-                    >
-                      <span>{comp.name}</span>
-                      <span className="text-muted-foreground">
-                        {comp.totalQty % 1 === 0
-                          ? comp.totalQty
-                          : comp.totalQty.toFixed(2)}{" "}
-                        {comp.unit}
-                      </span>
-                    </div>
-                  ))}
+                <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                  {Array.from(allComponents.entries()).map(([key, comp]) => {
+                    const override = componentOverrides.get(key);
+                    const currentPrice = override?.price !== undefined ? override.price : comp.avgPrice;
+                    const currentQty = override?.quantity !== undefined ? override.quantity : comp.totalQty;
+                    const isOverridden = override?.price !== undefined || override?.quantity !== undefined;
+
+                    return (
+                      <div
+                        key={key}
+                        className="text-sm py-2 px-2 bg-muted/30 rounded space-y-1"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium">{comp.name}</span>
+                          {isOverridden && (
+                            <Badge variant="outline" className="text-[10px] px-1 py-0 text-orange-600 border-orange-300">
+                              изм.
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs text-muted-foreground whitespace-nowrap">Кол-во:</span>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={currentQty || ""}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value);
+                                const newMap = new Map(componentOverrides);
+                                const existing = newMap.get(key) || {};
+                                if (!isNaN(val)) {
+                                  newMap.set(key, { ...existing, quantity: val });
+                                } else {
+                                  const { quantity: _, ...rest } = existing;
+                                  if (Object.keys(rest).length > 0) {
+                                    newMap.set(key, rest);
+                                  } else {
+                                    newMap.delete(key);
+                                  }
+                                }
+                                setComponentOverrides(newMap);
+                              }}
+                              className="h-7 w-20 text-xs"
+                            />
+                            <span className="text-xs text-muted-foreground">{comp.unit}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs text-muted-foreground whitespace-nowrap">Цена:</span>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={currentPrice || ""}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value);
+                                const newMap = new Map(componentOverrides);
+                                const existing = newMap.get(key) || {};
+                                if (!isNaN(val)) {
+                                  newMap.set(key, { ...existing, price: val });
+                                } else {
+                                  const { price: _, ...rest } = existing;
+                                  if (Object.keys(rest).length > 0) {
+                                    newMap.set(key, rest);
+                                  } else {
+                                    newMap.delete(key);
+                                  }
+                                }
+                                setComponentOverrides(newMap);
+                              }}
+                              className="h-7 w-24 text-xs"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -180,12 +362,38 @@ export function CostCalculationDialog({
                 Заполните ширину, высоту, ткань и систему для створок
               </p>
             )}
+
+            {/* Итого */}
+            {details.sashDetails.length > 0 && (
+              <>
+                <Separator />
+                <div className="flex items-center justify-between py-1 px-2">
+                  <span className="text-sm font-medium">Себестоимость:</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-base">
+                      {formatCurrency(recalculatedCost)}
+                    </span>
+                    {hasOverrides && costDiff !== 0 && (
+                      <span className={`text-xs ${costDiff > 0 ? 'text-red-500' : 'text-green-500'}`}>
+                        ({costDiff > 0 ? '+' : ''}{formatCurrency(costDiff)})
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         )}
-        <DialogFooter>
-          <Button size="sm" onClick={() => onOpenChange(false)}>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
             Закрыть
           </Button>
+          {onCostUpdate && hasOverrides && (
+            <Button size="sm" onClick={handleSave} className="gap-1">
+              <Save className="h-4 w-4" />
+              Сохранить
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

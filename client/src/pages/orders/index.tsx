@@ -1168,6 +1168,9 @@ export default function OrdersPage() {
         open={showCostCalculation}
         onOpenChange={setShowCostCalculation}
         details={costCalculationDetails}
+        onCostUpdate={(newCost) => {
+          form.setValue("costPrice", newCost.toFixed(2), { shouldValidate: false });
+        }}
       />
     </Layout>
   );

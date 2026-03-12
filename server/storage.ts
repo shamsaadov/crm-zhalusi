@@ -1127,7 +1127,7 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(warehouseReceipts)
       .where(whereClause)
-      .orderBy(desc(warehouseReceipts.date));
+      .orderBy(desc(warehouseReceipts.date), desc(warehouseReceipts.createdAt));
   }
 
   async getWarehouseReceiptsPaginated(
@@ -1145,7 +1145,7 @@ export class DatabaseStorage implements IStorage {
     let query;
 
     if (cursor) {
-      const [cursorDate, cursorId] = cursor.split("_");
+      const [cursorDate, cursorCreatedAt] = cursor.split("_");
       query = db
         .select()
         .from(warehouseReceipts)
@@ -1156,7 +1156,7 @@ export class DatabaseStorage implements IStorage {
               sql`${warehouseReceipts.date} < ${cursorDate}`,
               and(
                 sql`${warehouseReceipts.date} = ${cursorDate}`,
-                sql`${warehouseReceipts.id} < ${cursorId}`
+                sql`${warehouseReceipts.createdAt} < ${cursorCreatedAt}`
               )
             )
           )
@@ -1166,7 +1166,7 @@ export class DatabaseStorage implements IStorage {
     }
 
     const data = await query
-      .orderBy(desc(warehouseReceipts.date), desc(warehouseReceipts.id))
+      .orderBy(desc(warehouseReceipts.date), desc(warehouseReceipts.createdAt))
       .limit(limit + 1);
 
     const hasMore = data.length > limit;
@@ -1174,7 +1174,7 @@ export class DatabaseStorage implements IStorage {
 
     const lastItem = results[results.length - 1];
     const nextCursor =
-      hasMore && lastItem ? `${lastItem.date}_${lastItem.id}` : null;
+      hasMore && lastItem ? `${lastItem.date}_${lastItem.createdAt?.toISOString() ?? ''}` : null;
 
     return { data: results, nextCursor, hasMore };
   }

@@ -456,6 +456,7 @@ export const warehouseReceipts = pgTable("warehouse_receipts", {
   userId: varchar("user_id")
     .notNull()
     .references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const warehouseReceiptsRelations = relations(
