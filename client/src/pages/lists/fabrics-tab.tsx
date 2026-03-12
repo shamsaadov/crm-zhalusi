@@ -210,7 +210,7 @@ export function FabricsTab({ search }: { search: string }) {
                           <Input
                             type="number"
                             step="0.01"
-                            placeholder="Ширина"
+                            placeholder="Ширина рулона (м)"
                             className="h-9"
                             {...field}
                             data-testid="input-fabric-width"
@@ -336,8 +336,8 @@ export function FabricsTab({ search }: { search: string }) {
           { key: "name", header: "Название", cell: (f: Fabric) => f.name },
           {
             key: "width",
-            header: "Ширина",
-            cell: (f: Fabric) => f.width || "-",
+            header: "Ширина рулона",
+            cell: (f: Fabric) => f.width ? `${f.width} м` : "-",
           },
           {
             key: "fabricType",

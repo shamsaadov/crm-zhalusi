@@ -308,19 +308,43 @@ export default function WarehousePage() {
     });
   }, [watchedItems, form]);
 
+  // Конверсия п.м. → м² для тканей при сохранении
+  const convertItemsForStorage = (items: WarehouseFormValues["items"]) => {
+    return items.map((item) => {
+      if (item.itemType === "fabric" && item.fabricId) {
+        const fabric = fabrics.find((f) => f.id === item.fabricId);
+        const rollWidth = parseFloat(fabric?.width?.toString() || "0");
+        const qtyLm = parseFloat(item.quantity || "0");
+        const total = parseFloat(item.total || "0");
+
+        if (rollWidth > 0 && qtyLm > 0) {
+          const qtyM2 = qtyLm * rollWidth;
+          const pricePerM2 = total > 0 ? (total / qtyM2).toFixed(2) : "0";
+          return {
+            itemType: item.itemType,
+            fabricId: item.fabricId,
+            quantity: qtyM2.toFixed(4),
+            price: pricePerM2,
+            total: item.total,
+          };
+        }
+      }
+      return {
+        itemType: item.itemType,
+        componentId: item.itemType === "component" ? item.componentId : undefined,
+        fabricId: item.itemType === "fabric" ? item.fabricId : undefined,
+        quantity: item.quantity,
+        price: item.price,
+        total: item.total,
+      };
+    });
+  };
+
   const createMutation = useMutation({
     mutationFn: (data: WarehouseFormValues) => {
       const payload = {
         ...data,
-        items: data.items.map((item) => ({
-          itemType: item.itemType,
-          componentId:
-            item.itemType === "component" ? item.componentId : undefined,
-          fabricId: item.itemType === "fabric" ? item.fabricId : undefined,
-          quantity: item.quantity,
-          price: item.price,
-          total: item.total,
-        })),
+        items: convertItemsForStorage(data.items),
       };
       return apiRequest("POST", "/api/warehouse", payload);
     },
@@ -362,15 +386,7 @@ export default function WarehousePage() {
     mutationFn: ({ id, data }: { id: string; data: WarehouseFormValues }) => {
       const payload = {
         ...data,
-        items: data.items.map((item) => ({
-          itemType: item.itemType,
-          componentId:
-            item.itemType === "component" ? item.componentId : undefined,
-          fabricId: item.itemType === "fabric" ? item.fabricId : undefined,
-          quantity: item.quantity,
-          price: item.price,
-          total: item.total,
-        })),
+        items: convertItemsForStorage(data.items),
       };
       return apiRequest("PUT", `/api/warehouse/${id}`, payload);
     },
@@ -498,14 +514,33 @@ export default function WarehousePage() {
         supplierId: fullReceipt.supplierId,
         date: format(new Date(fullReceipt.date), "yyyy-MM-dd"),
         comment: fullReceipt.comment || "",
-        items: fullReceipt.items?.map((item: ReceiptItem) => ({
-          itemType: item.itemType,
-          componentId: item.componentId || "",
-          fabricId: item.fabricId || "",
-          quantity: item.quantity || "",
-          price: item.price || "",
-          total: item.total || "",
-        })) || [
+        items: fullReceipt.items?.map((item: ReceiptItem) => {
+          // Конвертируем м² обратно в п.м. для тканей
+          if (item.itemType === "fabric" && item.fabricId) {
+            const fabric = fabrics.find((f) => f.id === item.fabricId);
+            const rollWidth = parseFloat(fabric?.width?.toString() || "0");
+            const qtyM2 = parseFloat(item.quantity || "0");
+            if (rollWidth > 0 && qtyM2 > 0) {
+              const qtyLm = (qtyM2 / rollWidth).toFixed(2);
+              return {
+                itemType: item.itemType,
+                componentId: "",
+                fabricId: item.fabricId || "",
+                quantity: qtyLm,
+                price: "", // Будет пересчитана автоматически из total / qty
+                total: item.total || "",
+              };
+            }
+          }
+          return {
+            itemType: item.itemType,
+            componentId: item.componentId || "",
+            fabricId: item.fabricId || "",
+            quantity: item.quantity || "",
+            price: item.price || "",
+            total: item.total || "",
+          };
+        }) || [
           {
             itemType: firstItemType,
             componentId: "",
@@ -855,7 +890,7 @@ export default function WarehousePage() {
                                     <Input
                                       type="number"
                                       step="0.01"
-                                      placeholder="Кол-во (м²)"
+                                      placeholder={globalItemType === "fabric" ? "Кол-во (п.м.)" : "Кол-во"}
                                       className="h-7 text-xs"
                                       {...field}
                                       data-testid={`input-quantity-${index}`}
@@ -898,7 +933,7 @@ export default function WarehousePage() {
                                         <Input
                                           {...field}
                                           disabled
-                                          placeholder="Цена/м²"
+                                          placeholder="Цена/п.м."
                                           className="bg-muted h-7 text-xs"
                                           data-testid={`input-price-${index}`}
                                         />
@@ -1148,7 +1183,12 @@ export default function WarehousePage() {
                                   : ""
                               }`}
                             >
-                              {fabric.stock.quantity.toFixed(2)}
+                              {fabric.stock.quantity.toFixed(2)} м²
+                              {parseFloat(fabric.width?.toString() || "0") > 0 && (
+                                <span className="text-xs text-muted-foreground ml-1">
+                                  ({(fabric.stock.quantity / parseFloat(fabric.width!.toString())).toFixed(2)} п.м.)
+                                </span>
+                              )}
                             </td>
                             <td className="py-1.5 px-3 text-right font-mono">
                               {formatCurrency(fabric.stock.lastPrice)}

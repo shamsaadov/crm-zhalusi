@@ -76,6 +76,7 @@ export interface CostCalculationDetails {
     fabricAvgPrice: number;
     fabricCost: number;
     fabricMultiplier: number;
+    fabricRollWidth: number;
     componentsCost: number;
     componentsDetails: Array<{
       name: string;
