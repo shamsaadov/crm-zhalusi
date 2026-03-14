@@ -4140,7 +4140,8 @@ export async function registerRoutes(
   // Алгоритм оптимального раскроя рулона
   function calculateOptimalCutting(
     pieces: Array<{ index: number; width: number; height: number; quantity: number }>,
-    rollWidth: number
+    rollWidth: number,
+    fabricType: string = "roll"
   ): {
     rows: Array<{
       rowIndex: number;
@@ -4153,13 +4154,14 @@ export async function registerRoutes(
     wastePercent: number;
   } {
     // Развернуть все куски по количеству
+    const isZebra = fabricType === "zebra";
     const allPieces: Array<{ sashIndex: number; width: number; height: number }> = [];
     for (const piece of pieces) {
       for (let i = 0; i < piece.quantity; i++) {
         allPieces.push({
           sashIndex: piece.index,
           width: piece.width,
-          height: piece.height,
+          height: isZebra ? piece.height * 2 : piece.height,
         });
       }
     }
@@ -4204,6 +4206,8 @@ export async function registerRoutes(
         }
       }
 
+      // Припуск +20 см на каждый ряд (отрез)
+      row.cutLength += 20;
       rows.push(row);
     }
 
@@ -4268,7 +4272,7 @@ export async function registerRoutes(
             continue; // Пропускаем ткани без указанной ширины рулона
           }
 
-          const { rows, totalLength, wastePercent } = calculateOptimalCutting(pieces, rollWidth);
+          const { rows, totalLength, wastePercent } = calculateOptimalCutting(pieces, rollWidth, fabric?.fabricType || "roll");
 
           const layout = await storage.createCuttingLayout({
             orderId,
