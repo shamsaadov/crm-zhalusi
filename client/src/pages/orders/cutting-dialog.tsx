@@ -95,18 +95,20 @@ export function CuttingDialog({
             const usedW = parseFloat(row.usedWidth);
             const scale = 600 / rollW; // масштаб для визуализации
 
+            const maxH = 80;
             const piecesVisual = row.pieces
               .map((p) => {
                 const w = p.width * scale;
+                const h = Math.round((p.height / cutLen) * maxH);
                 const bgColor = p.height < cutLen ? "#fef3c7" : "#dcfce7";
-                return `<div style="width:${w}px;height:60px;background:${bgColor};border:1px solid #6b7280;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0">${p.width}x${p.height}</div>`;
+                return `<div style="width:${w}px;height:${h}px;background:${bgColor};border:1px solid #6b7280;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;align-self:flex-end">${p.width}x${p.height}</div>`;
               })
               .join("");
 
             const wasteW = rollW - usedW;
             const wasteVisual =
               wasteW > 0
-                ? `<div style="width:${wasteW * scale}px;height:60px;background:#fee2e2;border:1px dashed #ef4444;display:flex;align-items:center;justify-content:center;font-size:10px;color:#ef4444;flex-shrink:0">${wasteW.toFixed(0)} см</div>`
+                ? `<div style="width:${wasteW * scale}px;height:${maxH}px;background:#fee2e2;border:1px dashed #ef4444;display:flex;align-items:center;justify-content:center;font-size:10px;color:#ef4444;flex-shrink:0;align-self:flex-end">${wasteW.toFixed(0)} см</div>`
                 : "";
 
             return `
@@ -115,7 +117,7 @@ export function CuttingDialog({
                   Ряд ${row.rowIndex} — отрез ${cutLen} см
                   <span style="color:#6b7280;font-weight:400"> (занято ${usedW.toFixed(0)} из ${rollW} см)</span>
                 </div>
-                <div style="display:flex;border:2px solid #374151;width:${rollW * scale}px">${piecesVisual}${wasteVisual}</div>
+                <div style="display:flex;align-items:flex-end;border:2px solid #374151;width:${rollW * scale}px;height:${maxH}px">${piecesVisual}${wasteVisual}</div>
               </div>
             `;
           })
@@ -241,28 +243,33 @@ export function CuttingDialog({
                             </span>
                           </div>
 
-                          {/* Визуализация ряда */}
-                          <div className="flex h-10 rounded overflow-hidden border">
-                            {row.pieces.map((piece, pi) => (
-                              <div
-                                key={pi}
-                                className="flex items-center justify-center text-[10px] font-mono border-r last:border-r-0"
-                                style={{
-                                  width: `${(piece.width / rollW) * 100}%`,
-                                  backgroundColor:
-                                    piece.height < cutLen
-                                      ? "#fef3c7"
-                                      : "#dcfce7",
-                                }}
-                              >
-                                {piece.width}x{piece.height}
-                              </div>
-                            ))}
+                          {/* Визуализация ряда — высота кусков пропорциональна */}
+                          <div className="flex items-end rounded overflow-hidden border" style={{ height: 60 }}>
+                            {row.pieces.map((piece, pi) => {
+                              const heightRatio = piece.height / cutLen;
+                              return (
+                                <div
+                                  key={pi}
+                                  className="flex items-center justify-center text-[10px] font-mono border-r last:border-r-0"
+                                  style={{
+                                    width: `${(piece.width / rollW) * 100}%`,
+                                    height: `${heightRatio * 100}%`,
+                                    backgroundColor:
+                                      piece.height < cutLen
+                                        ? "#fef3c7"
+                                        : "#dcfce7",
+                                  }}
+                                >
+                                  {piece.width}x{piece.height}
+                                </div>
+                              );
+                            })}
                             {wasteW > 0 && (
                               <div
                                 className="flex items-center justify-center text-[10px] text-red-500 bg-red-50 border-l border-dashed border-red-300"
                                 style={{
                                   width: `${((rollW - usedW) / rollW) * 100}%`,
+                                  height: "100%",
                                 }}
                               >
                                 {wasteW.toFixed(0)}

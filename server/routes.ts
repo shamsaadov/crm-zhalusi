@@ -4161,7 +4161,7 @@ export async function registerRoutes(
         allPieces.push({
           sashIndex: piece.index,
           width: piece.width,
-          height: isZebra ? piece.height * 2 : piece.height,
+          height: (isZebra ? piece.height * 2 : piece.height) + 20,
         });
       }
     }
@@ -4206,8 +4206,6 @@ export async function registerRoutes(
         }
       }
 
-      // Припуск +20 см на каждый ряд (отрез)
-      row.cutLength += 20;
       rows.push(row);
     }
 
