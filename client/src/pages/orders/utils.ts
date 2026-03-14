@@ -568,6 +568,8 @@ export async function printInvoice(order: OrderWithRelations): Promise<void> {
             ${rows}
           </tbody>
         </table>
+
+        ${await buildCuttingHtml(order.id)}
       </body>
     </html>
   `);
@@ -578,6 +580,67 @@ export async function printInvoice(order: OrderWithRelations): Promise<void> {
     win.print();
     win.close();
   }, 150);
+}
+
+async function buildCuttingHtml(orderId: string): Promise<string> {
+  try {
+    const res = await fetch(`/api/orders/${orderId}/cutting`, { credentials: "include" });
+    if (!res.ok) return "";
+    const layouts = await res.json();
+    if (!layouts || layouts.length === 0) return "";
+
+    const sections = layouts.map((layout: any) => {
+      const rollW = parseFloat(layout.rollWidth);
+      const totalLen = parseFloat(layout.totalLength);
+      const waste = parseFloat(layout.wastePercent);
+
+      const rowsHtml = (layout.rows || []).map((row: any) => {
+        const cutLen = parseFloat(row.cutLength);
+        const usedW = parseFloat(row.usedWidth);
+        const scale = 600 / rollW;
+        const maxH = 80;
+
+        const piecesVisual = (row.pieces || []).map((p: any) => {
+          const w = p.width * scale;
+          const h = Math.round((p.height / cutLen) * maxH);
+          const bgColor = p.height < cutLen ? "#fef3c7" : "#dcfce7";
+          return `<div style="width:${w}px;height:${h}px;background:${bgColor};border:1px solid #6b7280;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;align-self:flex-end">${p.width}x${p.height}</div>`;
+        }).join("");
+
+        const wasteW = rollW - usedW;
+        const wasteVisual = wasteW > 0
+          ? `<div style="width:${wasteW * scale}px;height:${maxH}px;background:#fee2e2;border:1px dashed #ef4444;display:flex;align-items:center;justify-content:center;font-size:10px;color:#ef4444;flex-shrink:0;align-self:flex-end">${wasteW.toFixed(0)} см</div>`
+          : "";
+
+        return `
+          <div style="margin-bottom:12px">
+            <div style="font-size:12px;font-weight:600;margin-bottom:4px">
+              Ряд ${row.rowIndex} — отрез ${cutLen} см
+              <span style="color:#6b7280;font-weight:400"> (занято ${usedW.toFixed(0)} из ${rollW} см)</span>
+            </div>
+            <div style="display:flex;align-items:flex-end;border:2px solid #374151;width:${rollW * scale}px;height:${maxH}px">${piecesVisual}${wasteVisual}</div>
+          </div>
+        `;
+      }).join("");
+
+      return `
+        <div style="margin-bottom:24px">
+          <h3 style="margin:0 0 8px">${layout.fabricName || "Ткань"}</h3>
+          <p style="margin:0 0 4px;font-size:13px">Ширина рулона: <strong>${rollW} см</strong></p>
+          <p style="margin:0 0 12px;font-size:13px">Итого: <strong>${(totalLen / 100).toFixed(2)} п.м.</strong> | Отходы: <strong>${waste.toFixed(1)}%</strong></p>
+          ${rowsHtml}
+        </div>
+      `;
+    }).join('<hr style="margin:16px 0">');
+
+    return `
+      <hr style="margin:24px 0;border:none;border-top:2px solid #374151">
+      <h2 style="margin:0 0 16px;font-size:18px">Раскрой</h2>
+      ${sections}
+    `;
+  } catch {
+    return "";
+  }
 }
 
 export async function printCustomerInvoice(

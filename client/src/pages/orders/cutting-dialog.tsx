@@ -244,38 +244,43 @@ export function CuttingDialog({
                           </div>
 
                           {/* Визуализация ряда — высота кусков пропорциональна */}
-                          <div className="flex items-end rounded overflow-hidden border" style={{ height: 60 }}>
-                            {row.pieces.map((piece, pi) => {
-                              const heightRatio = piece.height / cutLen;
-                              return (
-                                <div
-                                  key={pi}
-                                  className="flex items-center justify-center text-[10px] font-mono border-r last:border-r-0"
-                                  style={{
-                                    width: `${(piece.width / rollW) * 100}%`,
-                                    height: `${heightRatio * 100}%`,
-                                    backgroundColor:
-                                      piece.height < cutLen
-                                        ? "#fef3c7"
-                                        : "#dcfce7",
-                                  }}
-                                >
-                                  {piece.width}x{piece.height}
-                                </div>
-                              );
-                            })}
-                            {wasteW > 0 && (
-                              <div
-                                className="flex items-center justify-center text-[10px] text-red-500 bg-red-50 border-l border-dashed border-red-300"
-                                style={{
-                                  width: `${((rollW - usedW) / rollW) * 100}%`,
-                                  height: "100%",
-                                }}
-                              >
-                                {wasteW.toFixed(0)}
+                          {(() => {
+                            const maxH = 60;
+                            return (
+                              <div className="flex items-end rounded overflow-hidden border" style={{ height: maxH }}>
+                                {row.pieces.map((piece, pi) => {
+                                  const h = Math.round((piece.height / cutLen) * maxH);
+                                  return (
+                                    <div
+                                      key={pi}
+                                      className="flex items-center justify-center text-[10px] font-mono border-r last:border-r-0"
+                                      style={{
+                                        width: `${(piece.width / rollW) * 100}%`,
+                                        height: h,
+                                        backgroundColor:
+                                          piece.height < cutLen
+                                            ? "#fef3c7"
+                                            : "#dcfce7",
+                                      }}
+                                    >
+                                      {piece.width}x{piece.height}
+                                    </div>
+                                  );
+                                })}
+                                {wasteW > 0 && (
+                                  <div
+                                    className="flex items-center justify-center text-[10px] text-red-500 bg-red-50 border-l border-dashed border-red-300"
+                                    style={{
+                                      width: `${((rollW - usedW) / rollW) * 100}%`,
+                                      height: maxH,
+                                    }}
+                                  >
+                                    {wasteW.toFixed(0)}
+                                  </div>
+                                )}
                               </div>
-                            )}
-                          </div>
+                            );
+                          })()}
                         </div>
                       );
                     })}
