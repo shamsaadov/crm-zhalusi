@@ -49,9 +49,16 @@ export function SashFields({
   const currentFabricId = form.watch(`sashes.${index}.fabricId`);
   const currentSashPrice = form.watch(`sashes.${index}.sashPrice`);
 
-  const widthM = parseFloat(currentWidth || "0") / 100;
-  const heightM = parseFloat(currentHeight || "0") / 100;
+  const widthNum = parseFloat(currentWidth || "0");
+  const heightNum = parseFloat(currentHeight || "0");
+  const widthM = widthNum / 100;
+  const heightM = heightNum / 100;
   const sashPriceNum = parseFloat(currentSashPrice || "0");
+
+  const MIN_CM = 10;
+  const MAX_CM = 300;
+  const widthWarning = currentWidth && widthNum > 0 && (widthNum < MIN_CM || widthNum > MAX_CM);
+  const heightWarning = currentHeight && heightNum > 0 && (heightNum < MIN_CM || heightNum > MAX_CM);
 
   // Проверяем, есть ли все данные для расчета, но цена равна 0 (система не найдена)
   const hasAllData =
@@ -81,17 +88,19 @@ export function SashFields({
         name={`sashes.${index}.width`}
         render={({ field }) => (
           <FormItem className="min-w-[60px] max-w-[80px]">
-            <FormLabel className="text-xs">Ширина</FormLabel>
+            <FormLabel className={`text-xs ${widthWarning ? "text-orange-600" : ""}`}>Ширина</FormLabel>
             <FormControl>
               <Input
                 type="number"
                 step="any"
                 placeholder="см"
-                className="h-9"
+                className={`h-9 ${widthWarning ? "border-orange-400 bg-orange-50 dark:bg-orange-950/20" : ""}`}
+                title={widthWarning ? `Проверьте размер (${MIN_CM}–${MAX_CM} см)` : undefined}
                 {...field}
                 data-testid={`input-sash-width-${index}`}
               />
             </FormControl>
+            {widthWarning && <p className="text-[10px] text-orange-600 leading-tight">Проверьте!</p>}
           </FormItem>
         )}
       />
@@ -100,17 +109,19 @@ export function SashFields({
         name={`sashes.${index}.height`}
         render={({ field }) => (
           <FormItem className="min-w-[60px] max-w-[80px]">
-            <FormLabel className="text-xs">Высота</FormLabel>
+            <FormLabel className={`text-xs ${heightWarning ? "text-orange-600" : ""}`}>Высота</FormLabel>
             <FormControl>
               <Input
                 type="number"
                 step="any"
                 placeholder="см"
-                className="h-9"
+                className={`h-9 ${heightWarning ? "border-orange-400 bg-orange-50 dark:bg-orange-950/20" : ""}`}
+                title={heightWarning ? `Проверьте размер (${MIN_CM}–${MAX_CM} см)` : undefined}
                 {...field}
                 data-testid={`input-sash-height-${index}`}
               />
             </FormControl>
+            {heightWarning && <p className="text-[10px] text-orange-600 leading-tight">Проверьте!</p>}
           </FormItem>
         )}
       />
