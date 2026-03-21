@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils"
 // Prevents scroll events from leaking to parent (modal)
 function NoScrollLeakMenuList<T>(props: MenuListProps<T, false, GroupBase<T>>) {
   return (
-    <div onWheel={(e) => { e.stopPropagation(); e.preventDefault(); }}>
+    <div onWheel={(e) => e.stopPropagation()}>
       <components.MenuList {...props} />
     </div>
   )
