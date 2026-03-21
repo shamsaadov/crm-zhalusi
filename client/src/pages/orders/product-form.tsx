@@ -62,7 +62,8 @@ export function ProductForm({
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col min-h-0 flex-1">
+        <div className="flex-1 overflow-y-auto space-y-4 pr-1">
         <div className="flex items-start gap-3">
           <div className="grid grid-cols-3 gap-3 flex-1">
             <FormField
@@ -405,7 +406,8 @@ export function ProductForm({
           )}
         />
 
-        <div className="flex justify-end gap-2">
+        </div>
+        <div className="flex justify-end gap-2 pt-3 border-t mt-3 flex-shrink-0">
           <Button type="button" variant="outline" onClick={onCancel}>
             Отмена
           </Button>
