@@ -691,6 +691,157 @@ export const insertCuttingLayoutRowSchema = createInsertSchema(cuttingLayoutRows
 export type InsertCuttingLayoutRow = z.infer<typeof insertCuttingLayoutRowSchema>;
 export type CuttingLayoutRow = typeof cuttingLayoutRows.$inferSelect;
 
+// ===== INSTALLER / MOBILE TABLES =====
+
+// Measurement statuses
+export const MEASUREMENT_STATUSES = [
+  "draft",
+  "sent",
+  "in_production",
+  "ready",
+  "installed",
+] as const;
+export type MeasurementStatus = (typeof MEASUREMENT_STATUSES)[number];
+
+// Installers — учётные записи монтажников (отдельно от users!)
+export const installers = pgTable("installers", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  login: text("login").notNull().unique(),
+  password: text("password").notNull(),
+  name: text("name").notNull(),
+  phone: text("phone"),
+  isActive: boolean("is_active").default(true),
+  userId: varchar("user_id")
+    .notNull()
+    .references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const installersRelations = relations(installers, ({ one, many }) => ({
+  user: one(users, { fields: [installers.userId], references: [users.id] }),
+  measurements: many(measurements),
+}));
+
+export const insertInstallerSchema = createInsertSchema(installers).omit({
+  id: true,
+});
+export type InsertInstaller = z.infer<typeof insertInstallerSchema>;
+export type Installer = typeof installers.$inferSelect;
+
+// Measurements — замеры монтажника
+export const measurements = pgTable("measurements", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  installerId: varchar("installer_id")
+    .notNull()
+    .references(() => installers.id),
+  clientName: text("client_name"),
+  clientPhone: text("client_phone"),
+  address: text("address"),
+  latitude: decimal("latitude", { precision: 12, scale: 8 }),
+  longitude: decimal("longitude", { precision: 12, scale: 8 }),
+  status: text("status").default("draft"),
+  comment: text("comment"),
+  totalCoefficient: decimal("total_coefficient", { precision: 12, scale: 2 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  sentAt: timestamp("sent_at"),
+  orderId: varchar("order_id").references(() => orders.id),
+  signatureUrl: text("signature_url"),
+});
+
+export const measurementsRelations = relations(
+  measurements,
+  ({ one, many }) => ({
+    installer: one(installers, {
+      fields: [measurements.installerId],
+      references: [installers.id],
+    }),
+    order: one(orders, {
+      fields: [measurements.orderId],
+      references: [orders.id],
+    }),
+    sashes: many(measurementSashes),
+    photos: many(measurementPhotos),
+  })
+);
+
+export const insertMeasurementSchema = createInsertSchema(measurements).omit({
+  id: true,
+});
+export type InsertMeasurement = z.infer<typeof insertMeasurementSchema>;
+export type Measurement = typeof measurements.$inferSelect;
+
+// MeasurementSashes — створки замера
+export const measurementSashes = pgTable("measurement_sashes", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  measurementId: varchar("measurement_id")
+    .notNull()
+    .references(() => measurements.id, { onDelete: "cascade" }),
+  width: decimal("width", { precision: 10, scale: 2 }),
+  height: decimal("height", { precision: 10, scale: 2 }),
+  systemName: text("system_name"),
+  category: text("category"),
+  control: text("control"),
+  coefficient: decimal("coefficient", { precision: 12, scale: 2 }),
+  room: integer("room"),
+  roomName: text("room_name"),
+  photoUrl: text("photo_url"),
+});
+
+export const measurementSashesRelations = relations(
+  measurementSashes,
+  ({ one }) => ({
+    measurement: one(measurements, {
+      fields: [measurementSashes.measurementId],
+      references: [measurements.id],
+    }),
+  })
+);
+
+export const insertMeasurementSashSchema = createInsertSchema(
+  measurementSashes
+).omit({ id: true });
+export type InsertMeasurementSash = z.infer<
+  typeof insertMeasurementSashSchema
+>;
+export type MeasurementSash = typeof measurementSashes.$inferSelect;
+
+// MeasurementPhotos — фото к замеру
+export const measurementPhotos = pgTable("measurement_photos", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  measurementId: varchar("measurement_id")
+    .notNull()
+    .references(() => measurements.id, { onDelete: "cascade" }),
+  sashIndex: integer("sash_index"),
+  url: text("url").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const measurementPhotosRelations = relations(
+  measurementPhotos,
+  ({ one }) => ({
+    measurement: one(measurements, {
+      fields: [measurementPhotos.measurementId],
+      references: [measurements.id],
+    }),
+  })
+);
+
+export const insertMeasurementPhotoSchema = createInsertSchema(
+  measurementPhotos
+).omit({ id: true });
+export type InsertMeasurementPhoto = z.infer<
+  typeof insertMeasurementPhotoSchema
+>;
+export type MeasurementPhoto = typeof measurementPhotos.$inferSelect;
+
 // Auth schemas for validation
 export const loginSchema = z.object({
   email: z.string().email("Некорректный email"),
@@ -759,6 +910,8 @@ export const AUDIT_ENTITY_TYPES = [
   "cashbox",
   "expense_type",
   "multiplier",
+  "installer",
+  "measurement",
 ] as const;
 export type AuditEntityType = (typeof AUDIT_ENTITY_TYPES)[number];
 
@@ -768,5 +921,6 @@ export const NOTIFICATION_TYPES = [
   "low_stock",
   "overdue_order",
   "overdue_payment",
+  "measurement_sent",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];

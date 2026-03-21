@@ -34,6 +34,10 @@ import {
   notifications,
   cuttingLayouts,
   cuttingLayoutRows,
+  installers,
+  measurements,
+  measurementSashes,
+  measurementPhotos,
   type User,
   type InsertUser,
   type Color,
@@ -76,6 +80,14 @@ import {
   type InsertCuttingLayout,
   type CuttingLayoutRow,
   type InsertCuttingLayoutRow,
+  type Installer,
+  type InsertInstaller,
+  type Measurement,
+  type InsertMeasurement,
+  type MeasurementSash,
+  type InsertMeasurementSash,
+  type MeasurementPhoto,
+  type InsertMeasurementPhoto,
 } from "@shared/schema";
 
 // Pagination types
@@ -315,6 +327,43 @@ export interface IStorage {
   getUnreadNotificationCount(userId: string): Promise<number>;
   markNotificationRead(id: string): Promise<Notification | undefined>;
   markAllNotificationsRead(userId: string): Promise<void>;
+
+  // Installers
+  getInstallers(userId: string): Promise<Installer[]>;
+  getInstaller(id: string): Promise<Installer | undefined>;
+  getInstallerByLogin(login: string): Promise<Installer | undefined>;
+  createInstaller(installer: InsertInstaller): Promise<Installer>;
+  updateInstaller(
+    id: string,
+    installer: Partial<InsertInstaller>
+  ): Promise<Installer | undefined>;
+  deleteInstaller(id: string): Promise<void>;
+
+  // Measurements
+  getMeasurements(installerId: string): Promise<Measurement[]>;
+  getMeasurement(id: string): Promise<Measurement | undefined>;
+  createMeasurement(measurement: InsertMeasurement): Promise<Measurement>;
+  updateMeasurement(
+    id: string,
+    measurement: Partial<InsertMeasurement>
+  ): Promise<Measurement | undefined>;
+  deleteMeasurement(id: string): Promise<void>;
+
+  // Measurement Sashes
+  getMeasurementSashes(measurementId: string): Promise<MeasurementSash[]>;
+  createMeasurementSash(
+    sash: InsertMeasurementSash
+  ): Promise<MeasurementSash>;
+  deleteMeasurementSashesByMeasurementId(
+    measurementId: string
+  ): Promise<void>;
+
+  // Measurement Photos
+  getMeasurementPhotos(measurementId: string): Promise<MeasurementPhoto[]>;
+  createMeasurementPhoto(
+    photo: InsertMeasurementPhoto
+  ): Promise<MeasurementPhoto>;
+  deleteMeasurementPhoto(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1455,6 +1504,151 @@ export class DatabaseStorage implements IStorage {
 
   async deleteCuttingLayoutsByOrder(orderId: string): Promise<void> {
     await db.delete(cuttingLayouts).where(eq(cuttingLayouts.orderId, orderId));
+  }
+
+  // ===== INSTALLERS =====
+  async getInstallers(userId: string): Promise<Installer[]> {
+    return db
+      .select()
+      .from(installers)
+      .where(eq(installers.userId, userId));
+  }
+
+  async getInstaller(id: string): Promise<Installer | undefined> {
+    const [installer] = await db
+      .select()
+      .from(installers)
+      .where(eq(installers.id, id));
+    return installer || undefined;
+  }
+
+  async getInstallerByLogin(login: string): Promise<Installer | undefined> {
+    const [installer] = await db
+      .select()
+      .from(installers)
+      .where(eq(installers.login, login));
+    return installer || undefined;
+  }
+
+  async createInstaller(installer: InsertInstaller): Promise<Installer> {
+    const [created] = await db
+      .insert(installers)
+      .values(installer)
+      .returning();
+    return created;
+  }
+
+  async updateInstaller(
+    id: string,
+    data: Partial<InsertInstaller>
+  ): Promise<Installer | undefined> {
+    const [updated] = await db
+      .update(installers)
+      .set(data)
+      .where(eq(installers.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteInstaller(id: string): Promise<void> {
+    await db.delete(installers).where(eq(installers.id, id));
+  }
+
+  // ===== MEASUREMENTS =====
+  async getMeasurements(installerId: string): Promise<Measurement[]> {
+    return db
+      .select()
+      .from(measurements)
+      .where(eq(measurements.installerId, installerId))
+      .orderBy(desc(measurements.createdAt));
+  }
+
+  async getMeasurement(id: string): Promise<Measurement | undefined> {
+    const [measurement] = await db
+      .select()
+      .from(measurements)
+      .where(eq(measurements.id, id));
+    return measurement || undefined;
+  }
+
+  async createMeasurement(
+    measurement: InsertMeasurement
+  ): Promise<Measurement> {
+    const [created] = await db
+      .insert(measurements)
+      .values(measurement)
+      .returning();
+    return created;
+  }
+
+  async updateMeasurement(
+    id: string,
+    data: Partial<InsertMeasurement>
+  ): Promise<Measurement | undefined> {
+    const [updated] = await db
+      .update(measurements)
+      .set(data)
+      .where(eq(measurements.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteMeasurement(id: string): Promise<void> {
+    await db.delete(measurements).where(eq(measurements.id, id));
+  }
+
+  // ===== MEASUREMENT SASHES =====
+  async getMeasurementSashes(
+    measurementId: string
+  ): Promise<MeasurementSash[]> {
+    return db
+      .select()
+      .from(measurementSashes)
+      .where(eq(measurementSashes.measurementId, measurementId));
+  }
+
+  async createMeasurementSash(
+    sash: InsertMeasurementSash
+  ): Promise<MeasurementSash> {
+    const [created] = await db
+      .insert(measurementSashes)
+      .values(sash)
+      .returning();
+    return created;
+  }
+
+  async deleteMeasurementSashesByMeasurementId(
+    measurementId: string
+  ): Promise<void> {
+    await db
+      .delete(measurementSashes)
+      .where(eq(measurementSashes.measurementId, measurementId));
+  }
+
+  // ===== MEASUREMENT PHOTOS =====
+  async getMeasurementPhotos(
+    measurementId: string
+  ): Promise<MeasurementPhoto[]> {
+    return db
+      .select()
+      .from(measurementPhotos)
+      .where(eq(measurementPhotos.measurementId, measurementId));
+  }
+
+  async createMeasurementPhoto(
+    photo: InsertMeasurementPhoto
+  ): Promise<MeasurementPhoto> {
+    const [created] = await db
+      .insert(measurementPhotos)
+      .values(photo)
+      .returning();
+    return created;
+  }
+
+  async deleteMeasurementPhoto(id: string): Promise<void> {
+    await db
+      .delete(measurementPhotos)
+      .where(eq(measurementPhotos.id, id));
   }
 }
 
