@@ -27,6 +27,7 @@ import {
 } from "@shared/schema";
 import { format } from "date-fns";
 
+import type { Measurement, MeasurementSash } from "@shared/schema";
 import type {
   OrderWithRelations,
   FabricWithStock,
@@ -78,6 +79,7 @@ export default function OrdersPage() {
   const [orderTypeFilter, setOrderTypeFilter] = useState<
     "all" | "sash" | "product" | "installers"
   >("all");
+  const [convertingMeasurementId, setConvertingMeasurementId] = useState<string | null>(null);
   const [showCostCalculation, setShowCostCalculation] = useState(false);
   const [costCalculationDetails, setCostCalculationDetails] =
     useState<CostCalculationDetails | null>(null);
@@ -232,6 +234,12 @@ export default function OrdersPage() {
         queryClient.invalidateQueries({ queryKey: ["/api/finance"] });
         queryClient.invalidateQueries({ queryKey: ["/api/cashboxes"] });
         queryClient.invalidateQueries({ queryKey: ["/api/dealers"] });
+      }
+      // If converting from measurement, mark it
+      if (convertingMeasurementId) {
+        apiRequest("POST", `/api/installer-measurements/${convertingMeasurementId}/convert`).catch(() => {});
+        queryClient.invalidateQueries({ queryKey: ["/api/installer-measurements"] });
+        setConvertingMeasurementId(null);
       }
       setIsDialogOpen(false);
       form.reset();
@@ -695,6 +703,50 @@ export default function OrdersPage() {
     });
   };
 
+  // Open order form pre-filled from installer measurement
+  const openFromMeasurement = (measurement: Measurement & { sashes: MeasurementSash[]; installerName?: string }) => {
+    setEditingOrder(null);
+    setConvertingMeasurementId(measurement.id);
+    setActiveTab("order");
+    setIsManualSalePrice(true); // keep coefficient from mobile
+
+    const clientParts = [measurement.clientName, measurement.clientPhone].filter(Boolean);
+    const commentLines = [
+      `От монтажника: ${measurement.installerName || ""}`,
+      clientParts.length > 0 ? `Клиент: ${clientParts.join(", ")}` : null,
+      measurement.address ? `Адрес: ${measurement.address}` : null,
+      measurement.comment ? `Примечание: ${measurement.comment}` : null,
+    ].filter(Boolean).join("\n");
+
+    const sashes = (measurement.sashes || []).map((s) => ({
+      width: s.width?.toString() || "",
+      height: s.height?.toString() || "",
+      quantity: "1",
+      systemId: "",
+      controlSide: s.control || "",
+      fabricId: "",
+      sashPrice: s.coefficient?.toString() || "",
+      sashCost: "",
+      coefficient: s.coefficient?.toString() || "",
+      room: s.room || 1,
+      roomName: s.roomName || undefined,
+    }));
+
+    form.reset({
+      date: format(new Date(), "yyyy-MM-dd"),
+      dealerId: "",
+      status: "Новый",
+      salePrice: measurement.totalCoefficient?.toString() || "",
+      costPrice: "",
+      comment: commentLines,
+      isPaid: false,
+      cashboxId: "",
+      sashes: sashes.length > 0 ? sashes : [{ width: "", height: "", quantity: "1", systemId: "", controlSide: "", fabricId: "", sashPrice: "", sashCost: "", coefficient: "", room: 1 }],
+    });
+
+    setIsDialogOpen(true);
+  };
+
   // Auto-calculate cost price effect
   useEffect(() => {
     const subscription = form.watch((value, { name }) => {
@@ -1115,7 +1167,7 @@ export default function OrdersPage() {
         </TabsList>
 
         {orderTypeFilter === "installers" ? (
-          <InstallerMeasurementsTab />
+          <InstallerMeasurementsTab onConvertToOrder={openFromMeasurement} />
         ) : (
           <>
             <FilterBar

@@ -38,7 +38,11 @@ type MeasurementWithSashes = Measurement & {
   installerName?: string;
 };
 
-export function InstallerMeasurementsTab() {
+export function InstallerMeasurementsTab({
+  onConvertToOrder,
+}: {
+  onConvertToOrder?: (m: MeasurementWithSashes) => void;
+}) {
   const { toast } = useToast();
   const [viewingMeasurement, setViewingMeasurement] =
     useState<MeasurementWithSashes | null>(null);
@@ -227,7 +231,13 @@ export function InstallerMeasurementsTab() {
         isLoading={isLoading}
         emptyMessage="Нет замеров от монтажников"
         getRowKey={(m) => m.id}
-        onRowDoubleClick={openView}
+        onRowDoubleClick={(m) => {
+          if (onConvertToOrder && !m.orderId) {
+            onConvertToOrder(m);
+          } else {
+            openView(m);
+          }
+        }}
       />
 
       {/* View measurement dialog */}
@@ -311,19 +321,23 @@ export function InstallerMeasurementsTab() {
               </div>
 
               {/* Convert button */}
-              {viewingMeasurement.status === "sent" &&
-                !viewingMeasurement.orderId && (
+              {!viewingMeasurement.orderId && (
                   <Button
                     className="w-full"
-                    onClick={() =>
-                      convertMutation.mutate(viewingMeasurement.id)
-                    }
+                    onClick={() => {
+                      if (onConvertToOrder) {
+                        setIsViewOpen(false);
+                        onConvertToOrder(viewingMeasurement);
+                      } else {
+                        convertMutation.mutate(viewingMeasurement.id);
+                      }
+                    }}
                     disabled={convertMutation.isPending}
                   >
                     {convertMutation.isPending && (
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     )}
-                    Преобразовать в заказ
+                    Оформить заказ
                   </Button>
                 )}
 
