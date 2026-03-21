@@ -1,20 +1,6 @@
 import * as React from "react";
-import { Check, ChevronsUpDown } from "lucide-react";
+import ReactSelect, { type StylesConfig, type GroupBase, components } from "react-select";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 
 export interface SearchableSelectOption {
   value: string;
@@ -34,6 +20,101 @@ interface SearchableSelectProps {
   "data-testid"?: string;
 }
 
+type OptionType = { value: string; label: string; secondaryLabel?: string };
+
+const customStyles: StylesConfig<OptionType, false, GroupBase<OptionType>> = {
+  control: (base, state) => ({
+    ...base,
+    minHeight: "36px",
+    fontSize: "14px",
+    borderColor: state.isFocused ? "hsl(var(--ring))" : "hsl(var(--input))",
+    backgroundColor: "hsl(var(--background))",
+    boxShadow: state.isFocused ? "0 0 0 2px hsl(var(--ring) / 0.2)" : "none",
+    borderRadius: "calc(var(--radius) - 2px)",
+    "&:hover": { borderColor: "hsl(var(--ring))" },
+  }),
+  menu: (base) => ({
+    ...base,
+    zIndex: 9999,
+    backgroundColor: "hsl(var(--popover))",
+    border: "1px solid hsl(var(--border))",
+    borderRadius: "calc(var(--radius) - 2px)",
+    boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)",
+  }),
+  menuList: (base) => ({
+    ...base,
+    maxHeight: "200px",
+    padding: "4px",
+  }),
+  option: (base, state) => ({
+    ...base,
+    fontSize: "14px",
+    borderRadius: "4px",
+    backgroundColor: state.isSelected
+      ? "hsl(var(--accent))"
+      : state.isFocused
+        ? "hsl(var(--accent))"
+        : "transparent",
+    color: "hsl(var(--popover-foreground))",
+    cursor: "pointer",
+    "&:active": { backgroundColor: "hsl(var(--accent))" },
+  }),
+  singleValue: (base) => ({
+    ...base,
+    color: "hsl(var(--foreground))",
+    fontSize: "14px",
+  }),
+  placeholder: (base) => ({
+    ...base,
+    color: "hsl(var(--muted-foreground))",
+    fontSize: "14px",
+  }),
+  indicatorSeparator: () => ({ display: "none" }),
+  dropdownIndicator: (base) => ({
+    ...base,
+    padding: "4px",
+    color: "hsl(var(--muted-foreground))",
+  }),
+  input: (base) => ({
+    ...base,
+    color: "hsl(var(--foreground))",
+  }),
+  menuPortal: (base) => ({
+    ...base,
+    zIndex: 9999,
+  }),
+};
+
+// Custom option renderer to show secondaryLabel
+const CustomOption = (props: any) => {
+  const { data } = props;
+  return (
+    <components.Option {...props}>
+      <span>{data.label}</span>
+      {data.secondaryLabel && (
+        <span style={{ marginLeft: 6, fontSize: 12, opacity: 0.6 }}>
+          ({data.secondaryLabel})
+        </span>
+      )}
+    </components.Option>
+  );
+};
+
+// Custom single value renderer
+const CustomSingleValue = (props: any) => {
+  const { data } = props;
+  return (
+    <components.SingleValue {...props}>
+      <span>{data.label}</span>
+      {data.secondaryLabel && (
+        <span style={{ marginLeft: 4, fontSize: 12, opacity: 0.6 }}>
+          ({data.secondaryLabel})
+        </span>
+      )}
+    </components.SingleValue>
+  );
+};
+
 export function SearchableSelect({
   options,
   value,
@@ -45,81 +126,36 @@ export function SearchableSelect({
   className,
   "data-testid": testId,
 }: SearchableSelectProps) {
-  const [open, setOpen] = React.useState(false);
+  const reactSelectOptions: OptionType[] = options.map((o) => ({
+    value: o.value,
+    label: o.label,
+    secondaryLabel: o.secondaryLabel,
+  }));
 
-  const selectedOption = options.find((option) => option.value === value);
+  const selected = reactSelectOptions.find((o) => o.value === value) || null;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          className={cn(
-            "w-full justify-between font-normal",
-            !value && "text-muted-foreground",
-            className
-          )}
-          disabled={disabled}
-          data-testid={testId}
-        >
-          <span className="truncate">
-            {selectedOption ? (
-              <>
-                {selectedOption.label}
-                {selectedOption.secondaryLabel && (
-                  <span className="text-muted-foreground ml-1">
-                    ({selectedOption.secondaryLabel})
-                  </span>
-                )}
-              </>
-            ) : (
-              placeholder
-            )}
-          </span>
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent
-        className="w-[--radix-popover-trigger-width] p-0 max-h-80 overflow-y-auto"
-        align="start"
-      >
-        <Command>
-          <CommandInput placeholder={searchPlaceholder} />
-          <CommandList className="max-h-64 overflow-y-auto">
-            <CommandEmpty>{emptyText}</CommandEmpty>
-            <CommandGroup>
-              {options.map((option) => (
-                <CommandItem
-                  key={option.value}
-                  value={`${option.label} ${option.secondaryLabel || ""}`}
-                  onSelect={() => {
-                    onValueChange(option.value);
-                    setOpen(false);
-                  }}
-                >
-                  <Check
-                    className={cn(
-                      "mr-2 h-4 w-4",
-                      value === option.value ? "opacity-100" : "opacity-0"
-                    )}
-                  />
-                  <span className="truncate">{option.label}</span>
-                  {option.secondaryLabel && (
-                    <span className="text-muted-foreground ml-1 text-xs">
-                      ({option.secondaryLabel})
-                    </span>
-                  )}
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
+    <div className={cn("w-full", className)} data-testid={testId}>
+      <ReactSelect
+        value={selected}
+        onChange={(opt) => opt && onValueChange(opt.value)}
+        options={reactSelectOptions}
+        placeholder={placeholder}
+        isSearchable
+        isDisabled={disabled}
+        menuPlacement="auto"
+        menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
+        styles={customStyles}
+        components={{ Option: CustomOption, SingleValue: CustomSingleValue }}
+        noOptionsMessage={() => emptyText}
+        filterOption={(option, inputValue) => {
+          const search = inputValue.toLowerCase();
+          return (
+            option.data.label.toLowerCase().includes(search) ||
+            (option.data.secondaryLabel || "").toLowerCase().includes(search)
+          );
+        }}
+      />
+    </div>
   );
 }
-
-
-
