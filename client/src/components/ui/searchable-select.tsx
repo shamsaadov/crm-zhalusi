@@ -1,15 +1,6 @@
 import * as React from "react";
-import ReactSelect, { type StylesConfig, type GroupBase, components, type MenuListProps } from "react-select";
+import ReactSelect, { type StylesConfig, type GroupBase, components } from "react-select";
 import { cn } from "@/lib/utils";
-
-// Prevents scroll events from leaking to parent (modal)
-function NoScrollLeakMenuList<T>(props: MenuListProps<T, false, GroupBase<T>>) {
-  return (
-    <div onWheel={(e) => e.stopPropagation()}>
-      <components.MenuList {...props} />
-    </div>
-  );
-}
 
 export interface SearchableSelectOption {
   value: string;
@@ -125,18 +116,6 @@ const CustomSingleValue = (props: any) => {
   );
 };
 
-function findScrollableParent(el: HTMLElement | null): HTMLElement | null {
-  let node = el?.parentElement;
-  while (node) {
-    const style = getComputedStyle(node);
-    if (/(auto|scroll)/.test(style.overflowY) && node.scrollHeight > node.clientHeight) {
-      return node;
-    }
-    node = node.parentElement;
-  }
-  return null;
-}
-
 export function SearchableSelect({
   options,
   value,
@@ -148,24 +127,6 @@ export function SearchableSelect({
   className,
   "data-testid": testId,
 }: SearchableSelectProps) {
-  const containerRef = React.useRef<HTMLDivElement>(null);
-  const scrollParentRef = React.useRef<HTMLElement | null>(null);
-
-  const handleMenuOpen = () => {
-    const parent = findScrollableParent(containerRef.current);
-    if (parent) {
-      scrollParentRef.current = parent;
-      parent.style.overflowY = "hidden";
-    }
-  };
-
-  const handleMenuClose = () => {
-    if (scrollParentRef.current) {
-      scrollParentRef.current.style.overflowY = "auto";
-      scrollParentRef.current = null;
-    }
-  };
-
   const reactSelectOptions: OptionType[] = options.map((o) => ({
     value: o.value,
     label: o.label,
@@ -175,7 +136,7 @@ export function SearchableSelect({
   const selected = reactSelectOptions.find((o) => o.value === value) || null;
 
   return (
-    <div ref={containerRef} className={cn("w-full", className)} data-testid={testId}>
+    <div className={cn("w-full", className)} data-testid={testId}>
       <ReactSelect
         value={selected}
         onChange={(opt) => opt && onValueChange(opt.value)}
@@ -188,10 +149,8 @@ export function SearchableSelect({
         menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
         menuShouldBlockScroll
         menuShouldScrollIntoView={false}
-        onMenuOpen={handleMenuOpen}
-        onMenuClose={handleMenuClose}
         styles={customStyles}
-        components={{ Option: CustomOption, SingleValue: CustomSingleValue, MenuList: NoScrollLeakMenuList }}
+        components={{ Option: CustomOption, SingleValue: CustomSingleValue }}
         noOptionsMessage={() => emptyText}
         filterOption={(option, inputValue) => {
           const search = inputValue.toLowerCase();
