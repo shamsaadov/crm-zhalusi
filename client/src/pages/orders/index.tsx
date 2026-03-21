@@ -52,6 +52,7 @@ import {
   printInvoice,
   printCustomerInvoice,
 } from "./utils";
+import { InstallerMeasurementsTab } from "./installer-measurements-tab";
 
 export default function OrdersPage() {
   const { toast } = useToast();
@@ -75,7 +76,7 @@ export default function OrdersPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [dealerFilter, setDealerFilter] = useState("all");
   const [orderTypeFilter, setOrderTypeFilter] = useState<
-    "all" | "sash" | "product"
+    "all" | "sash" | "product" | "installers"
   >("all");
   const [showCostCalculation, setShowCostCalculation] = useState(false);
   const [costCalculationDetails, setCostCalculationDetails] =
@@ -1102,7 +1103,7 @@ export default function OrdersPage() {
       <Tabs
         value={orderTypeFilter}
         onValueChange={(v) =>
-          setOrderTypeFilter(v as "all" | "sash" | "product")
+          setOrderTypeFilter(v as "all" | "sash" | "product" | "installers")
         }
         className="w-full"
       >
@@ -1110,51 +1111,58 @@ export default function OrdersPage() {
           <TabsTrigger value="all">Все заказы</TabsTrigger>
           <TabsTrigger value="sash">Со створками</TabsTrigger>
           <TabsTrigger value="product">Комплектующие</TabsTrigger>
+          <TabsTrigger value="installers">От монтажников</TabsTrigger>
         </TabsList>
 
-        <FilterBar
-          search={search}
-          onSearchChange={setSearch}
-          searchPlaceholder="Поиск по номеру..."
-          showDateFilter
-          dateRange={dateRange}
-          onDateRangeChange={setDateRange}
-          filters={[
-            {
-              key: "status",
-              label: "Статус",
-              value: statusFilter,
-              options: ORDER_STATUSES.map((s) => ({ value: s, label: s })),
-              onChange: setStatusFilter,
-            },
-            {
-              key: "dealer",
-              label: "Дилер",
-              value: dealerFilter,
-              options: dealers.map((d) => ({ value: d.id, label: d.fullName })),
-              onChange: setDealerFilter,
-            },
-          ]}
-          onReset={() => {
-            setSearch("");
-            setDateRange({});
-            setStatusFilter("all");
-            setDealerFilter("all");
-            setOrderTypeFilter("all");
-          }}
-        />
+        {orderTypeFilter === "installers" ? (
+          <InstallerMeasurementsTab />
+        ) : (
+          <>
+            <FilterBar
+              search={search}
+              onSearchChange={setSearch}
+              searchPlaceholder="Поиск по номеру..."
+              showDateFilter
+              dateRange={dateRange}
+              onDateRangeChange={setDateRange}
+              filters={[
+                {
+                  key: "status",
+                  label: "Статус",
+                  value: statusFilter,
+                  options: ORDER_STATUSES.map((s) => ({ value: s, label: s })),
+                  onChange: setStatusFilter,
+                },
+                {
+                  key: "dealer",
+                  label: "Дилер",
+                  value: dealerFilter,
+                  options: dealers.map((d) => ({ value: d.id, label: d.fullName })),
+                  onChange: setDealerFilter,
+                },
+              ]}
+              onReset={() => {
+                setSearch("");
+                setDateRange({});
+                setStatusFilter("all");
+                setDealerFilter("all");
+                setOrderTypeFilter("all");
+              }}
+            />
 
-        <DataTable
-          columns={columns}
-          data={orders}
-          isLoading={ordersLoading}
-          emptyMessage="Заказы не найдены"
-          getRowKey={(order) => order.id}
-          onRowDoubleClick={openEditDialog}
-          hasNextPage={hasNextPage}
-          isFetchingNextPage={isFetchingNextPage}
-          loadMoreRef={loadMoreRef}
-        />
+            <DataTable
+              columns={columns}
+              data={orders}
+              isLoading={ordersLoading}
+              emptyMessage="Заказы не найдены"
+              getRowKey={(order) => order.id}
+              onRowDoubleClick={openEditDialog}
+              hasNextPage={hasNextPage}
+              isFetchingNextPage={isFetchingNextPage}
+              loadMoreRef={loadMoreRef}
+            />
+          </>
+        )}
       </Tabs>
 
       <ViewOrderDialog

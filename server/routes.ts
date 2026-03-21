@@ -4465,6 +4465,154 @@ export async function registerRoutes(
     }
   );
 
+  // ===== INSTALLER MEASUREMENTS (CRM admin view) =====
+
+  // Get all measurements from all installers belonging to this admin
+  app.get(
+    "/api/installer-measurements",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const installerList = await storage.getInstallers(req.userId!);
+        const allMeasurements = [];
+
+        for (const inst of installerList) {
+          const measurements = await storage.getMeasurements(inst.id);
+          for (const m of measurements) {
+            const sashes = await storage.getMeasurementSashes(m.id);
+            allMeasurements.push({
+              ...m,
+              sashes,
+              installerName: inst.name,
+            });
+          }
+        }
+
+        // Sort by createdAt desc
+        allMeasurements.sort((a, b) => {
+          const da = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const db = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return db - da;
+        });
+
+        res.json(allMeasurements);
+      } catch (error) {
+        console.error("Get installer measurements error:", error);
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // Convert measurement to a full order (auto-fill what we have)
+  app.post(
+    "/api/installer-measurements/:id/convert",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const measurement = await storage.getMeasurement(req.params.id);
+        if (!measurement) {
+          return res.status(404).json({ message: "Замер не найден" });
+        }
+
+        // If already converted
+        if (measurement.orderId) {
+          return res
+            .status(400)
+            .json({ message: "Замер уже преобразован в заказ" });
+        }
+
+        const sashes = await storage.getMeasurementSashes(measurement.id);
+
+        // Find installer name
+        const installer = await storage.getInstaller(
+          measurement.installerId
+        );
+        const installerName = installer?.name || "Монтажник";
+
+        // Build order comment
+        const clientParts = [
+          measurement.clientName,
+          measurement.clientPhone,
+        ].filter(Boolean);
+        const comment = [
+          `От монтажника: ${installerName}`,
+          clientParts.length > 0 ? `Клиент: ${clientParts.join(", ")}` : null,
+          measurement.address ? `Адрес: ${measurement.address}` : null,
+          measurement.comment ? `Примечание: ${measurement.comment}` : null,
+        ]
+          .filter(Boolean)
+          .join("\n");
+
+        // Create order
+        const orderNumber = await storage.getNextOrderNumber(req.userId!);
+        const today = new Date().toISOString().split("T")[0];
+
+        const order = await storage.createOrder({
+          orderNumber,
+          date: today,
+          status: "Новый",
+          comment,
+          userId: req.userId!,
+          salePrice: measurement.totalCoefficient || "0",
+        });
+
+        // Create order sashes from measurement sashes
+        for (const s of sashes) {
+          await storage.createOrderSash({
+            orderId: order.id,
+            width: s.width || "0",
+            height: s.height || "0",
+            controlSide: s.control,
+            room: s.room,
+            roomName: s.roomName,
+          });
+        }
+
+        // Update measurement
+        await storage.updateMeasurement(measurement.id, {
+          status: "in_production",
+          orderId: order.id,
+        });
+
+        // Audit
+        await logAudit({
+          userId: req.userId!,
+          action: "create",
+          entityType: "order",
+          entityId: order.id,
+          metadata: {
+            source: "installer_measurement",
+            measurementId: measurement.id,
+            installerName,
+          },
+        });
+
+        res.json({
+          success: true,
+          orderId: order.id,
+          orderNumber,
+        });
+      } catch (error) {
+        console.error("Convert measurement error:", error);
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // Delete measurement (admin)
+  app.delete(
+    "/api/installer-measurements/:id",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        await storage.deleteMeasurement(req.params.id);
+        res.json({ success: true });
+      } catch (error) {
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
   // ===== MOBILE API (installer auth via Bearer JWT) =====
 
   interface MobileAuthRequest extends Request {
