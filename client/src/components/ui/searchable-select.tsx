@@ -1,6 +1,15 @@
 import * as React from "react";
-import ReactSelect, { type StylesConfig, type GroupBase, components } from "react-select";
+import ReactSelect, { type StylesConfig, type GroupBase, components, type MenuListProps } from "react-select";
 import { cn } from "@/lib/utils";
+
+// Prevents scroll events from leaking to parent (modal)
+function NoScrollLeakMenuList<T>(props: MenuListProps<T, false, GroupBase<T>>) {
+  return (
+    <div onWheel={(e) => e.stopPropagation()}>
+      <components.MenuList {...props} />
+    </div>
+  );
+}
 
 export interface SearchableSelectOption {
   value: string;
@@ -149,7 +158,7 @@ export function SearchableSelect({
         menuShouldBlockScroll
         menuShouldScrollIntoView={false}
         styles={customStyles}
-        components={{ Option: CustomOption, SingleValue: CustomSingleValue }}
+        components={{ Option: CustomOption, SingleValue: CustomSingleValue, MenuList: NoScrollLeakMenuList }}
         noOptionsMessage={() => emptyText}
         filterOption={(option, inputValue) => {
           const search = inputValue.toLowerCase();

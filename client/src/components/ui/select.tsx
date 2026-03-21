@@ -1,8 +1,17 @@
 "use client"
 
 import * as React from "react"
-import ReactSelect, { type Props as ReactSelectProps, type StylesConfig, type GroupBase } from "react-select"
+import ReactSelect, { type Props as ReactSelectProps, type StylesConfig, type GroupBase, components, type MenuListProps } from "react-select"
 import { cn } from "@/lib/utils"
+
+// Prevents scroll events from leaking to parent (modal)
+function NoScrollLeakMenuList<T>(props: MenuListProps<T, false, GroupBase<T>>) {
+  return (
+    <div onWheel={(e) => e.stopPropagation()}>
+      <components.MenuList {...props} />
+    </div>
+  )
+}
 
 // ---- internal state ----
 interface SelectContextValue {
@@ -161,6 +170,7 @@ const SelectTrigger = React.forwardRef<
         menuShouldBlockScroll
         menuShouldScrollIntoView={false}
         styles={customStyles}
+        components={{ MenuList: NoScrollLeakMenuList }}
         noOptionsMessage={() => "Ничего не найдено"}
       />
     </div>
