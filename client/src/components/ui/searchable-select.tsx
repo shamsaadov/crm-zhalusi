@@ -52,11 +52,12 @@ const customStyles: StylesConfig<OptionType, false, GroupBase<OptionType>> = {
     fontSize: "14px",
     borderRadius: "4px",
     backgroundColor: state.isSelected
-      ? "hsl(var(--accent))"
+      ? "hsl(var(--primary) / 0.12)"
       : state.isFocused
         ? "hsl(var(--accent))"
         : "transparent",
-    color: "hsl(var(--popover-foreground))",
+    color: state.isSelected ? "hsl(var(--primary))" : "hsl(var(--popover-foreground))",
+    fontWeight: state.isSelected ? 500 : 400,
     cursor: "pointer",
     "&:active": { backgroundColor: "hsl(var(--accent))" },
   }),
@@ -140,7 +141,7 @@ export function SearchableSelect({
         placeholder={placeholder}
         isSearchable
         isDisabled={disabled}
-        menuPlacement="bottom"
+        menuPlacement="auto"
         menuShouldScrollIntoView={false}
         styles={customStyles}
         components={{ Option: CustomOption, SingleValue: CustomSingleValue }}
