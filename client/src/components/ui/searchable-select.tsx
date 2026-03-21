@@ -144,7 +144,10 @@ export function SearchableSelect({
         isSearchable
         isDisabled={disabled}
         menuPlacement="auto"
+        menuPosition="fixed"
         menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
+        menuShouldBlockScroll
+        menuShouldScrollIntoView={false}
         styles={customStyles}
         components={{ Option: CustomOption, SingleValue: CustomSingleValue }}
         noOptionsMessage={() => emptyText}

@@ -156,7 +156,10 @@ const SelectTrigger = React.forwardRef<
         placeholder={placeholder}
         isSearchable={options.length > 6}
         menuPlacement="auto"
+        menuPosition="fixed"
         menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
+        menuShouldBlockScroll
+        menuShouldScrollIntoView={false}
         styles={customStyles}
         noOptionsMessage={() => "Ничего не найдено"}
       />
