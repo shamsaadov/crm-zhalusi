@@ -142,10 +142,6 @@ const SelectTrigger = React.forwardRef<
       ...base,
       color: "hsl(var(--foreground))",
     }),
-    menuPortal: (base) => ({
-      ...base,
-      zIndex: 9999,
-    }),
   }
 
   return (
@@ -157,9 +153,6 @@ const SelectTrigger = React.forwardRef<
         placeholder={placeholder}
         isSearchable={options.length > 6}
         menuPlacement="auto"
-        menuPosition="fixed"
-        menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
-        menuShouldBlockScroll
         menuShouldScrollIntoView={false}
         styles={customStyles}
         noOptionsMessage={() => "Ничего не найдено"}

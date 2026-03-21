@@ -80,10 +80,6 @@ const customStyles: StylesConfig<OptionType, false, GroupBase<OptionType>> = {
     ...base,
     color: "hsl(var(--foreground))",
   }),
-  menuPortal: (base) => ({
-    ...base,
-    zIndex: 9999,
-  }),
 };
 
 // Custom option renderer to show secondaryLabel
@@ -145,9 +141,6 @@ export function SearchableSelect({
         isSearchable
         isDisabled={disabled}
         menuPlacement="auto"
-        menuPosition="fixed"
-        menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
-        menuShouldBlockScroll
         menuShouldScrollIntoView={false}
         styles={customStyles}
         components={{ Option: CustomOption, SingleValue: CustomSingleValue }}
