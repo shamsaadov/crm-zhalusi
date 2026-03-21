@@ -140,7 +140,7 @@ export function SearchableSelect({
         placeholder={placeholder}
         isSearchable
         isDisabled={disabled}
-        menuPlacement="auto"
+        menuPlacement="bottom"
         menuShouldScrollIntoView={false}
         styles={customStyles}
         components={{ Option: CustomOption, SingleValue: CustomSingleValue }}
