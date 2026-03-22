@@ -3941,21 +3941,53 @@ export async function registerRoutes(
       }
     }
 
+    // Агрегация заказов по дилерам
+    const dealerStats = new Map<string, { count: number; totalSale: number; totalCost: number; statuses: Record<string, number> }>();
+    for (const o of userOrders) {
+      const did = o.dealerId || "__none__";
+      const st = dealerStats.get(did) || { count: 0, totalSale: 0, totalCost: 0, statuses: {} };
+      st.count++;
+      st.totalSale += Number(o.salePrice || 0);
+      st.totalCost += Number(o.costPrice || 0);
+      st.statuses[o.status || "Новый"] = (st.statuses[o.status || "Новый"] || 0) + 1;
+      dealerStats.set(did, st);
+    }
+
     if (userDealers.length) {
-      lines.push("\n## Дилеры:");
-      for (const d of userDealers) {
-        lines.push(`- ${d.fullName}${d.city ? `, г.${d.city}` : ""}${d.phone ? `, тел: ${d.phone}` : ""}, нач.баланс: ${d.openingBalance || "0"}`);
+      lines.push("\n## Дилеры (с аналитикой заказов):");
+      // Сортируем по сумме продаж
+      const sorted = [...userDealers].sort((a, b) => {
+        const sa = dealerStats.get(a.id)?.totalSale || 0;
+        const sb = dealerStats.get(b.id)?.totalSale || 0;
+        return sb - sa;
+      });
+      for (const d of sorted) {
+        const stats = dealerStats.get(d.id);
+        const ordersInfo = stats
+          ? `заказов: ${stats.count}, продажи: ${stats.totalSale.toFixed(0)}, себестоимость: ${stats.totalCost.toFixed(0)}, прибыль: ${(stats.totalSale - stats.totalCost).toFixed(0)}`
+          : "заказов: 0";
+        lines.push(`- ${d.fullName}${d.city ? `, г.${d.city}` : ""}${d.phone ? `, тел: ${d.phone}` : ""} | ${ordersInfo}`);
       }
     }
 
     if (userOrders.length) {
-      lines.push(`\n## Заказы (всего: ${userOrders.length}):`);
-      const recent = userOrders.slice(-20);
+      // Общая аналитика заказов
+      const totalSale = userOrders.reduce((s, o) => s + Number(o.salePrice || 0), 0);
+      const totalCost = userOrders.reduce((s, o) => s + Number(o.costPrice || 0), 0);
+      const statusCounts: Record<string, number> = {};
+      userOrders.forEach(o => { statusCounts[o.status || "Новый"] = (statusCounts[o.status || "Новый"] || 0) + 1; });
+
+      lines.push(`\n## Заказы (всего: ${userOrders.length}, продажи: ${totalSale.toFixed(0)}, себестоимость: ${totalCost.toFixed(0)}, прибыль: ${(totalSale - totalCost).toFixed(0)}):`);
+      lines.push(`Статусы: ${Object.entries(statusCounts).map(([k, v]) => `${k}: ${v}`).join(", ")}`);
+
+      // Последние 30 заказов
+      const recent = [...userOrders].sort((a, b) => b.orderNumber - a.orderNumber).slice(0, 30);
       for (const o of recent) {
         const dealer = userDealers.find(d => d.id === o.dealerId);
-        lines.push(`- №${o.orderNumber} от ${o.date}, статус: ${o.status}, цена продажи: ${o.salePrice || "0"}, себестоимость: ${o.costPrice || "0"}, дилер: ${dealer?.fullName || "—"}`);
+        const profit = Number(o.salePrice || 0) - Number(o.costPrice || 0);
+        lines.push(`- №${o.orderNumber} от ${o.date}, ${o.status}, продажа: ${o.salePrice || "0"}, прибыль: ${profit.toFixed(0)}, дилер: ${dealer?.fullName || "—"}`);
       }
-      if (userOrders.length > 20) lines.push(`... и ещё ${userOrders.length - 20} заказов`);
+      if (userOrders.length > 30) lines.push(`... и ещё ${userOrders.length - 30} заказов`);
     }
 
     if (userCashboxes.length) {
@@ -4013,7 +4045,15 @@ export async function registerRoutes(
 
         const systemMessage = {
           role: "system",
-          content: `Ты — ИИ-ассистент CRM-системы для производства жалюзи. У тебя есть доступ к данным пользователя. Отвечай на русском, кратко и по делу. Используй данные ниже для ответов на вопросы.\n\n${dbContext}`,
+          content: `Ты — ИИ-ассистент CRM-системы для производства жалюзи (рулонные шторы, зебра).
+У тебя есть полные данные CRM пользователя. Отвечай на русском, кратко и по делу.
+
+ВАЖНО:
+- Дилеры отсортированы по сумме продаж (от большего к меньшему). Топ дилер = тот у кого больше всего продаж.
+- Для аналитики используй РЕАЛЬНЫЕ цифры из данных ниже: количество заказов, суммы, прибыль.
+- Прибыль = продажа − себестоимость.
+
+${dbContext}`,
         };
 
         const token = await getGigaChatToken();
