@@ -150,14 +150,14 @@ export function OrderForm({
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col min-h-0 flex-1">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col min-h-0 flex-1 overflow-hidden">
         <div className="flex justify-end mb-2 flex-shrink-0">
           <Button type="submit" disabled={isPending} size="sm">
             {isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
             {isEditing ? "Сохранить" : "Создать"}
           </Button>
         </div>
-        <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+        <div className="min-h-0 flex-1 overflow-y-auto space-y-4 pr-1">
         <div className="flex items-start gap-3">
           <div className="grid grid-cols-3 gap-3 flex-1">
             <FormField

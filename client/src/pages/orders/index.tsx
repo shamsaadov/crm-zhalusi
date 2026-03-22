@@ -1108,16 +1108,16 @@ export default function OrdersPage() {
               <Tabs
                 value={activeTab}
                 onValueChange={(v) => setActiveTab(v as "order" | "product")}
-                className="w-full"
+                className="w-full min-h-0 flex-1 flex flex-col"
               >
-                <TabsList className="grid w-full grid-cols-2">
+                <TabsList className="grid w-full grid-cols-2 flex-shrink-0">
                   <TabsTrigger value="order">Заказ (со створками)</TabsTrigger>
                   <TabsTrigger value="product">
                     Товар (комплектующие)
                   </TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="order" className="mt-4">
+                <TabsContent value="order" className="mt-4 min-h-0 flex-1 flex flex-col">
                   <OrderForm
                     form={form}
                     fieldArray={fieldArray}
@@ -1142,7 +1142,7 @@ export default function OrdersPage() {
                   />
                 </TabsContent>
 
-                <TabsContent value="product" className="mt-4">
+                <TabsContent value="product" className="mt-4 min-h-0 flex-1 flex flex-col">
                   <ProductForm
                     form={productForm}
                     fieldArray={productFieldArray}
