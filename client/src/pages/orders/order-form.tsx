@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { UseFormReturn, UseFieldArrayReturn } from "react-hook-form";
-import { DndContext, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { DndContext, PointerSensor, TouchSensor, useSensor, useSensors, pointerWithin, type DragEndEvent } from "@dnd-kit/core";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
@@ -106,11 +106,15 @@ export function OrderForm({
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
   );
 
+  const DEFAULT_ROOM_ID = "__default__";
+  const toDroppableId = (roomName: string) => roomName || DEFAULT_ROOM_ID;
+  const fromDroppableId = (id: string) => id === DEFAULT_ROOM_ID ? "" : id;
+
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
     if (!over) return;
     const sashIndex = active.data.current?.index as number | undefined;
-    const targetRoom = over.id as string;
+    const targetRoom = fromDroppableId(over.id as string);
     if (sashIndex !== undefined) {
       moveSash(sashIndex, targetRoom);
     }
@@ -452,12 +456,13 @@ export function OrderForm({
             </div>
           </div>
 
-          <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+          <DndContext sensors={sensors} onDragEnd={handleDragEnd} collisionDetection={pointerWithin}>
             <div className="space-y-3">
               {rooms.map((room) => (
                 <RoomContainer
-                  key={room.name}
+                  key={room.name || DEFAULT_ROOM_ID}
                   roomName={room.name}
+                  droppableId={toDroppableId(room.name)}
                   isDefault={room.name === ""}
                   sashIndices={room.sashIndices}
                   fields={fields}

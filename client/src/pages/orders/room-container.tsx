@@ -13,6 +13,7 @@ import { SashFields } from "./sash-fields";
 
 interface RoomContainerProps {
   roomName: string;
+  droppableId: string;
   isDefault: boolean;
   sashIndices: number[];
   fields: { id: string }[];
@@ -29,6 +30,7 @@ interface RoomContainerProps {
 
 export function RoomContainer({
   roomName,
+  droppableId,
   isDefault,
   sashIndices,
   fields,
@@ -47,7 +49,7 @@ export function RoomContainer({
   const [editName, setEditName] = useState(roomName);
 
   const { isOver, setNodeRef } = useDroppable({
-    id: roomName, // "" for default
+    id: droppableId,
   });
 
   const displayName = isDefault ? "Общее" : roomName;
