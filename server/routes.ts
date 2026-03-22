@@ -3928,16 +3928,29 @@ export async function registerRoutes(
       ),
     ]);
 
+    // Дополнительные данные: склад, балансы, створки
+    const dealersWithBalance = await storage.getDealers(userId);
+    const { fabricStock: fStock, componentStock: cStock } = await getStockLevels(userId);
+
+    // Створки всех заказов для статистики по тканям/системам
+    const allSashes: any[] = [];
+    for (const o of userOrders.slice(-100)) {
+      const sashes = await storage.getOrderSashes(o.id);
+      sashes.forEach(s => allSashes.push({ ...s, orderId: o.id, dealerId: o.dealerId, date: o.date }));
+    }
+
     const colorMap = Object.fromEntries(userColors.map(c => [c.id, c.name]));
 
     const lines: string[] = [];
     lines.push("=== ДАННЫЕ CRM ПОЛЬЗОВАТЕЛЯ ===");
+    lines.push(`Сегодня: ${new Date().toISOString().slice(0, 10)}`);
 
     if (userFabrics.length) {
-      lines.push("\n## Ткани:");
+      lines.push("\n## Ткани (с остатками на складе):");
       for (const f of userFabrics) {
         const color = f.colorId ? colorMap[f.colorId] || "" : "";
-        lines.push(`- ${f.name}${color ? ` (цвет: ${color})` : ""}, тип: ${f.fabricType || "—"}, ширина: ${f.width || "—"}, категория: ${f.category || "—"}`);
+        const stock = fStock[f.id] || 0;
+        lines.push(`- ${f.name}${color ? ` (${color})` : ""}, тип: ${f.fabricType || "—"}, остаток: ${stock > 0 ? stock.toFixed(2) + " м²" : "нет"}`);
       }
     }
 
@@ -3963,10 +3976,13 @@ export async function registerRoutes(
       });
       for (const d of sorted) {
         const stats = dealerStats.get(d.id);
+        const balanceInfo = dealersWithBalance.find(db => db.id === d.id);
+        const balance = balanceInfo?.balance || 0;
+        const debtStr = balance < 0 ? `долг: ${Math.abs(balance).toFixed(0)}` : balance > 0 ? `переплата: ${balance.toFixed(0)}` : "баланс: 0";
         const ordersInfo = stats
-          ? `заказов: ${stats.count}, продажи: ${stats.totalSale.toFixed(0)}, себестоимость: ${stats.totalCost.toFixed(0)}, прибыль: ${(stats.totalSale - stats.totalCost).toFixed(0)}`
+          ? `заказов: ${stats.count}, продажи: ${stats.totalSale.toFixed(0)}, прибыль: ${(stats.totalSale - stats.totalCost).toFixed(0)}`
           : "заказов: 0";
-        lines.push(`- ${d.fullName}${d.city ? `, г.${d.city}` : ""}${d.phone ? `, тел: ${d.phone}` : ""} | ${ordersInfo}`);
+        lines.push(`- ${d.fullName}${d.city ? `, г.${d.city}` : ""} | ${ordersInfo}, ${debtStr}`);
       }
     }
 
@@ -4005,10 +4021,11 @@ export async function registerRoutes(
     }
 
     if (userComponents.length) {
-      lines.push("\n## Комплектующие:");
+      lines.push("\n## Комплектующие (с остатками):");
       for (const c of userComponents) {
         const color = c.colorId ? colorMap[c.colorId] || "" : "";
-        lines.push(`- ${c.name}${color ? ` (${color})` : ""}, ед: ${c.unit || "—"}`);
+        const stock = cStock[c.id] || 0;
+        lines.push(`- ${c.name}${color ? ` (${color})` : ""}, ед: ${c.unit || "—"}, остаток: ${stock > 0 ? stock.toFixed(2) : "нет"}`);
       }
     }
 
@@ -4016,7 +4033,56 @@ export async function registerRoutes(
       lines.push("\n## Системы:");
       for (const s of userSystems) {
         const color = s.colorId ? colorMap[s.colorId] || "" : "";
-        lines.push(`- ${s.name}${color ? ` (${color})` : ""}, формула: ${s.formula || "—"}`);
+        lines.push(`- ${s.name}${color ? ` (${color})` : ""}`);
+      }
+    }
+
+    // Популярные ткани и системы (по кол-ву створок)
+    if (allSashes.length > 0) {
+      const fabricCount = new Map<string, number>();
+      const systemCount = new Map<string, number>();
+      for (const s of allSashes) {
+        if (s.fabricId) fabricCount.set(s.fabricId, (fabricCount.get(s.fabricId) || 0) + 1);
+        if (s.systemId) systemCount.set(s.systemId, (systemCount.get(s.systemId) || 0) + 1);
+      }
+
+      const topFabrics = Array.from(fabricCount.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([id, cnt]) => `${userFabrics.find(f => f.id === id)?.name || id}: ${cnt} створок`);
+      const topSystems = Array.from(systemCount.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([id, cnt]) => `${userSystems.find(s => s.id === id)?.name || id}: ${cnt} створок`);
+
+      if (topFabrics.length) {
+        lines.push("\n## Топ тканей (по кол-ву створок):");
+        topFabrics.forEach(t => lines.push(`- ${t}`));
+      }
+      if (topSystems.length) {
+        lines.push("\n## Топ систем (по кол-ву створок):");
+        topSystems.forEach(t => lines.push(`- ${t}`));
+      }
+    }
+
+    // Помесячная аналитика заказов
+    if (userOrders.length > 0) {
+      const monthly = new Map<string, { count: number; sale: number; cost: number }>();
+      for (const o of userOrders) {
+        const month = (o.date || "").slice(0, 7); // "2026-03"
+        if (!month) continue;
+        const m = monthly.get(month) || { count: 0, sale: 0, cost: 0 };
+        m.count++;
+        m.sale += Number(o.salePrice || 0);
+        m.cost += Number(o.costPrice || 0);
+        monthly.set(month, m);
+      }
+      const sortedMonths = Array.from(monthly.entries()).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 6);
+      if (sortedMonths.length) {
+        lines.push("\n## Аналитика по месяцам (последние 6):");
+        for (const [month, m] of sortedMonths) {
+          lines.push(`- ${month}: заказов ${m.count}, продажи ${m.sale.toFixed(0)}, прибыль ${(m.sale - m.cost).toFixed(0)}`);
+        }
       }
     }
 
@@ -4024,8 +4090,9 @@ export async function registerRoutes(
       const totalIncome = userFinOps.filter(f => f.type === "income").reduce((s, f) => s + Number(f.amount), 0);
       const totalExpense = userFinOps.filter(f => f.type === "expense").reduce((s, f) => s + Number(f.amount), 0);
       lines.push(`\n## Финансы (операций: ${userFinOps.length}):`);
-      lines.push(`- Общий приход: ${totalIncome}`);
-      lines.push(`- Общий расход: ${totalExpense}`);
+      lines.push(`- Общий приход: ${totalIncome.toFixed(0)}`);
+      lines.push(`- Общий расход: ${totalExpense.toFixed(0)}`);
+      lines.push(`- Баланс: ${(totalIncome - totalExpense).toFixed(0)}`);
     }
 
     return lines.join("\n");
