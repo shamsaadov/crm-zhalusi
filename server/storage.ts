@@ -244,6 +244,7 @@ export interface IStorage {
     id: string,
     order: Partial<InsertOrder>
   ): Promise<Order | undefined>;
+  unlinkMeasurementsFromOrder(orderId: string): Promise<void>;
   deleteOrder(id: string): Promise<void>;
 
   // Order Sashes
@@ -948,6 +949,13 @@ export class DatabaseStorage implements IStorage {
       .where(eq(orders.id, id))
       .returning();
     return updated;
+  }
+
+  async unlinkMeasurementsFromOrder(orderId: string): Promise<void> {
+    await db
+      .update(measurements)
+      .set({ orderId: null })
+      .where(eq(measurements.orderId, orderId));
   }
 
   async deleteOrder(id: string): Promise<void> {

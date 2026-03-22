@@ -2226,6 +2226,8 @@ export async function registerRoutes(
     async (req: AuthRequest, res: Response) => {
       try {
         const orderToDelete = await storage.getOrder(req.params.id);
+        // Обнуляем ссылку в measurements перед удалением (FK без cascade)
+        await storage.unlinkMeasurementsFromOrder(req.params.id);
         await storage.deleteOrder(req.params.id);
 
         if (orderToDelete) {
