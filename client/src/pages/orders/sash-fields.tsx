@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { UseFormReturn } from "react-hook-form";
+import { useDraggable } from "@dnd-kit/core";
+import { CSS } from "@dnd-kit/utilities";
 import {
   FormControl,
   FormField,
@@ -21,7 +23,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
-import { X, Loader2, Pin, Plus } from "lucide-react";
+import { X, Loader2, Pin, Plus, GripVertical } from "lucide-react";
 import { CONTROL_SIDES, type Fabric } from "@shared/schema";
 import { usePinnedSystems } from "@/hooks/use-pinned-systems";
 import { useMutation } from "@tanstack/react-query";
@@ -50,6 +52,12 @@ export function SashFields({
   onRemove,
   isCalculating = false,
 }: SashFieldsProps) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: fieldId,
+    data: { index },
+  });
+  const dragStyle = transform ? { transform: CSS.Translate.toString(transform), zIndex: isDragging ? 50 : undefined } : undefined;
+
   const { sortSystems, toggle: togglePin, isPinned } = usePinnedSystems();
   const sortedSystems = sortSystems(systems);
   const [showQuickFabric, setShowQuickFabric] = useState(false);
@@ -111,35 +119,24 @@ export function SashFields({
 
   return (
     <div
-      key={fieldId}
+      ref={setNodeRef}
+      style={dragStyle}
       className={`flex items-end gap-1.5 py-1.5 px-2 border rounded-lg ${
+        isDragging ? "opacity-50 shadow-lg" : ""
+      } ${
         isSystemMissing
           ? "border-orange-400 bg-orange-50 dark:bg-orange-950/20"
           : "bg-muted/30"
       }`}
     >
-      <div className="flex flex-col items-center gap-0.5 pb-1 min-w-[28px]">
-        <span className="text-xs font-medium text-muted-foreground">
-          {index + 1}.
-        </span>
+      <div
+        className="flex flex-col items-center gap-0.5 pb-1 min-w-[28px] cursor-grab active:cursor-grabbing"
+        {...listeners}
+        {...attributes}
+      >
+        <GripVertical className="h-4 w-4 text-muted-foreground" />
+        <span className="text-[10px] text-muted-foreground">{index + 1}</span>
       </div>
-      <FormField
-        control={form.control}
-        name={`sashes.${index}.roomName`}
-        render={({ field }) => (
-          <FormItem className="min-w-[70px] max-w-[100px]">
-            <FormLabel className="text-xs">Комната</FormLabel>
-            <FormControl>
-              <Input
-                type="text"
-                placeholder="Комната"
-                className="h-8 text-xs"
-                {...field}
-              />
-            </FormControl>
-          </FormItem>
-        )}
-      />
       <FormField
         control={form.control}
         name={`sashes.${index}.width`}

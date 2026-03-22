@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { UseFormReturn, UseFieldArrayReturn } from "react-hook-form";
+import { DndContext, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
@@ -36,6 +37,7 @@ import {
   Check,
   Wallet,
   Info,
+  Home,
 } from "lucide-react";
 import { formatCurrency } from "@/components/status-badge";
 import {
@@ -51,7 +53,8 @@ import type {
   ComponentWithStock,
   CostCalculationDetails,
 } from "./types";
-import { SashFields } from "./sash-fields";
+import { RoomContainer } from "./room-container";
+import { useRoomGroups } from "./use-room-groups";
 import { calculateCostPrice } from "./utils";
 
 interface OrderFormProps {
@@ -94,6 +97,25 @@ export function OrderForm({
   onManualSalePriceChange,
 }: OrderFormProps) {
   const { fields, append, remove } = fieldArray;
+  const { rooms, addRoom, renameRoom, removeRoom, moveSash } = useRoomGroups(form, fields);
+  const [showAddRoom, setShowAddRoom] = useState(false);
+  const [newRoomName, setNewRoomName] = useState("");
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
+  );
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over) return;
+    const sashIndex = active.data.current?.index as number | undefined;
+    const targetRoom = over.id as string;
+    if (sashIndex !== undefined) {
+      moveSash(sashIndex, targetRoom);
+    }
+  }, [moveSash]);
+
   const [isPaidPopoverOpen, setIsPaidPopoverOpen] = useState(false);
   const [localManualPrice, setLocalManualPrice] = useState(false);
   const [showQuickDealer, setShowQuickDealer] = useState(false);
@@ -373,58 +395,102 @@ export function OrderForm({
                 {fields.length} {fields.length !== 1 ? "позиций" : "позиция"}
               </Badge>
             </h3>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleTestCalculation}
-              className="gap-2"
-            >
-              <Info className="h-4 w-4" />
-              Подробности заказа
-            </Button>
+            <div className="flex gap-2">
+              <Popover open={showAddRoom} onOpenChange={setShowAddRoom}>
+                <PopoverTrigger asChild>
+                  <Button type="button" variant="outline" size="sm" className="gap-1.5">
+                    <Home className="h-3.5 w-3.5" />
+                    Комната
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-52 p-3" align="end">
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Новая комната</p>
+                    <Input
+                      placeholder="Название"
+                      value={newRoomName}
+                      onChange={(e) => setNewRoomName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          if (newRoomName.trim()) {
+                            addRoom(newRoomName.trim());
+                            setNewRoomName("");
+                            setShowAddRoom(false);
+                          }
+                        }
+                      }}
+                      className="h-8"
+                      autoFocus
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="w-full"
+                      disabled={!newRoomName.trim()}
+                      onClick={() => {
+                        addRoom(newRoomName.trim());
+                        setNewRoomName("");
+                        setShowAddRoom(false);
+                      }}
+                    >
+                      Добавить
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleTestCalculation}
+                className="gap-2"
+              >
+                <Info className="h-4 w-4" />
+                Подробности заказа
+              </Button>
+            </div>
           </div>
 
-          {fields.map((field, index) => (
-            <SashFields
-              key={field.id}
-              index={index}
-              form={form}
-              systems={systems}
-              fabrics={fabrics}
-              fieldsLength={fields.length}
-              fieldId={field.id}
-              onRemove={handleSashRemove}
-              isCalculating={calculatingSashes?.has(index) || false}
-            />
-          ))}
-
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full"
-            onClick={() => {
-              const sashes = form.getValues("sashes");
-              const lastSash = sashes[sashes.length - 1];
-              append({
-                width: "",
-                height: "",
-                quantity: "1",
-                systemId: lastSash?.systemId || "",
-                controlSide: "",
-                fabricId: lastSash?.fabricId || "",
-                sashPrice: "",
-                sashCost: "",
-                coefficient: "",
-                isCalculating: false,
-                room: 1,
-                roomName: lastSash?.roomName || "",
-              });
-            }}
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Добавить створку
-          </Button>
+          <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+            <div className="space-y-3">
+              {rooms.map((room) => (
+                <RoomContainer
+                  key={room.name}
+                  roomName={room.name}
+                  isDefault={room.name === ""}
+                  sashIndices={room.sashIndices}
+                  fields={fields}
+                  form={form}
+                  systems={systems}
+                  fabrics={fabrics}
+                  totalFields={fields.length}
+                  onRemoveSash={handleSashRemove}
+                  onRenameRoom={(newName) => renameRoom(room.name, newName)}
+                  onDeleteRoom={() => removeRoom(room.name)}
+                  onAddSash={() => {
+                    const sashes = form.getValues("sashes");
+                    const lastSash = sashes[sashes.length - 1];
+                    append({
+                      width: "",
+                      height: "",
+                      quantity: "1",
+                      systemId: lastSash?.systemId || "",
+                      controlSide: "",
+                      fabricId: lastSash?.fabricId || "",
+                      sashPrice: "",
+                      sashCost: "",
+                      coefficient: "",
+                      isCalculating: false,
+                      room: 1,
+                      roomName: room.name,
+                    });
+                  }}
+                  calculatingSashes={calculatingSashes}
+                />
+              ))}
+            </div>
+          </DndContext>
         </div>
 
         <Separator />
