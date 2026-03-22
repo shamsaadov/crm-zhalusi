@@ -31,6 +31,7 @@ export type OrderType = "sash" | "product";
 export interface OrderWithRelations extends Order {
   dealer?: Dealer;
   dealerBalance?: number;
+  dealerShippedDebt?: number;
   sashesCount?: number;
   sashes?: OrderSash[];
   orderType?: OrderType;

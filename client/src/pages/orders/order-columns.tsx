@@ -22,6 +22,7 @@ interface ColumnActions {
   onCutting: (order: OrderWithRelations) => void;
   onDelete: (order: OrderWithRelations) => void;
   onStatusChange: (id: string, status: string) => void;
+  showProfit?: boolean;
 }
 
 export function getOrderColumns(actions: ColumnActions) {
@@ -89,8 +90,18 @@ export function getOrderColumns(actions: ColumnActions) {
       className: "text-right",
     },
     {
+      key: "dealerShippedDebt",
+      header: "Долг дилера",
+      cell: (order: OrderWithRelations) => (
+        <BalanceBadge
+          balance={order.dealerShippedDebt != null ? -(order.dealerShippedDebt) : 0}
+        />
+      ),
+      className: "text-right",
+    },
+    {
       key: "dealerBalance",
-      header: "Баланс дилера",
+      header: "Долг с ожид. отгрузками",
       cell: (order: OrderWithRelations) => (
         <BalanceBadge
           balance={order.dealerBalance || 0}
@@ -98,7 +109,7 @@ export function getOrderColumns(actions: ColumnActions) {
       ),
       className: "text-right",
     },
-    {
+    ...(actions.showProfit ? [{
       key: "profit",
       header: "Прибыль",
       cell: (order: OrderWithRelations) => {
@@ -108,7 +119,7 @@ export function getOrderColumns(actions: ColumnActions) {
         return <BalanceBadge balance={profit} />;
       },
       className: "text-right",
-    },
+    }] : []),
     {
       key: "actions",
       header: "",

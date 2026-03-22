@@ -12,10 +12,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Plus } from "lucide-react";
+import { Plus, Lock, Unlock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
 import { apiRequest, queryClient, ApiError } from "@/lib/queryClient";
@@ -90,6 +96,9 @@ export default function OrdersPage() {
     new Set()
   );
   const [isManualSalePrice, setIsManualSalePrice] = useState(false);
+  const [showProfit, setShowProfit] = useState(() => sessionStorage.getItem("forsa-show-profit") === "true");
+  const [profitPasswordInput, setProfitPasswordInput] = useState("");
+  const [profitUnlocking, setProfitUnlocking] = useState(false);
 
   // Data fetching
   const {
@@ -1036,6 +1045,29 @@ export default function OrdersPage() {
     return () => clearTimeout(id);
   }, [search]);
 
+  const handleUnlockProfit = async () => {
+    setProfitUnlocking(true);
+    try {
+      const res = await fetch("/api/verify-report-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ password: profitPasswordInput }),
+      });
+      const data = await res.json();
+      if (data.valid) {
+        setShowProfit(true);
+        sessionStorage.setItem("forsa-show-profit", "true");
+        setProfitPasswordInput("");
+      } else {
+        toast({ title: "Неверный пароль", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Ошибка проверки", variant: "destructive" });
+    }
+    setProfitUnlocking(false);
+  };
+
   const columns = getOrderColumns({
     onWorkshopPrint: printInvoice,
     onCustomerPrint: printCustomerInvoice,
@@ -1046,6 +1078,7 @@ export default function OrdersPage() {
     },
     onDelete: openDeleteDialog,
     onStatusChange: (id, status) => updateStatusMutation.mutate({ id, status }),
+    showProfit,
   });
 
   return (
@@ -1150,6 +1183,51 @@ export default function OrdersPage() {
             )}
           </DialogContent>
         </Dialog>
+
+        {!showProfit ? (
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1.5">
+                <Lock className="h-3.5 w-3.5" />
+                Прибыль
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-56 p-3" align="end">
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Введите пароль</p>
+                <Input
+                  type="password"
+                  placeholder="Пароль"
+                  value={profitPasswordInput}
+                  onChange={(e) => setProfitPasswordInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleUnlockProfit()}
+                  className="h-8"
+                />
+                <Button
+                  size="sm"
+                  className="w-full"
+                  disabled={profitUnlocking || !profitPasswordInput}
+                  onClick={handleUnlockProfit}
+                >
+                  Показать
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
+        ) : (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1.5 text-green-600"
+            onClick={() => {
+              setShowProfit(false);
+              sessionStorage.removeItem("forsa-show-profit");
+            }}
+          >
+            <Unlock className="h-3.5 w-3.5" />
+            Скрыть прибыль
+          </Button>
+        )}
       </div>
 
       <Tabs

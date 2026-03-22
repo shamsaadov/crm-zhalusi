@@ -72,7 +72,7 @@ const itemSchema = z.object({
 });
 
 const warehouseSchema = z.object({
-  supplierId: z.string().min(1, "Обязательное поле"),
+  supplierId: z.string().optional(),
   date: z.string().min(1, "Обязательное поле"),
   comment: z.string().optional(),
   items: z.array(itemSchema).min(1, "Добавьте минимум одну позицию"),

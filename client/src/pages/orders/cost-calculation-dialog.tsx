@@ -53,6 +53,11 @@ export function CostCalculationDialog({
       const area = (s.width / 100) * (s.height / 100) * s.quantity;
       return sum + area;
     }, 0) || 0;
+  const totalLinearMeters =
+    details?.sashDetails.reduce((sum, s) => {
+      const perimeter = ((s.width + s.height) * 2) / 100;
+      return sum + perimeter * s.quantity;
+    }, 0) || 0;
 
   // Группировка тканей с ценами
   const allFabrics = useMemo(() => {
@@ -175,7 +180,7 @@ export function CostCalculationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Info className="h-5 w-5" />
@@ -185,16 +190,21 @@ export function CostCalculationDialog({
         {details && (
           <div className="space-y-4">
             {/* Общая сводка */}
-            <div className="flex items-center gap-6 py-2 px-3 bg-muted/50 rounded-lg">
-              <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-4 py-1.5 px-3 bg-muted/50 rounded-lg text-sm">
+              <div className="flex items-center gap-1.5">
                 <Package className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Створок:</span>
+                <span className="text-muted-foreground">Створок:</span>
                 <span className="font-semibold">{totalSashes}</span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <Ruler className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Площадь:</span>
+                <span className="text-muted-foreground">Площадь:</span>
                 <span className="font-semibold">{totalArea.toFixed(2)} м²</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Ruler className="h-4 w-4 text-muted-foreground" />
+                <span className="text-muted-foreground">Пог.м:</span>
+                <span className="font-semibold">{totalLinearMeters.toFixed(2)} м</span>
               </div>
             </div>
 
@@ -213,7 +223,7 @@ export function CostCalculationDialog({
                     return (
                       <div
                         key={key}
-                        className="text-sm py-2 px-2 bg-muted/30 rounded space-y-1"
+                        className="text-sm py-1 px-2 bg-muted/30 rounded space-y-0.5"
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
@@ -282,18 +292,29 @@ export function CostCalculationDialog({
                     const currentQty = override?.quantity !== undefined ? override.quantity : comp.totalQty;
                     const isOverridden = override?.price !== undefined || override?.quantity !== undefined;
 
+                    const lineTotal = (() => {
+                      const isMetric = ["м", "пм", "п.м.", "м.п."].includes(comp.unit.toLowerCase());
+                      if (isMetric) return currentPrice * currentQty;
+                      return currentPrice * currentQty;
+                    })();
+
                     return (
                       <div
                         key={key}
-                        className="text-sm py-2 px-2 bg-muted/30 rounded space-y-1"
+                        className="text-sm py-1 px-2 bg-muted/30 rounded space-y-0.5"
                       >
                         <div className="flex items-center justify-between">
-                          <span className="font-medium">{comp.name}</span>
-                          {isOverridden && (
-                            <Badge variant="outline" className="text-[10px] px-1 py-0 text-orange-600 border-orange-300">
-                              изм.
-                            </Badge>
-                          )}
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{comp.name}</span>
+                            {isOverridden && (
+                              <Badge variant="outline" className="text-[10px] px-1 py-0 text-orange-600 border-orange-300">
+                                изм.
+                              </Badge>
+                            )}
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            {currentQty.toFixed(2)} × {currentPrice.toFixed(2)} = {formatCurrency(lineTotal)}
+                          </span>
                         </div>
                         <div className="flex items-center gap-3">
                           <div className="flex items-center gap-1">
@@ -367,17 +388,25 @@ export function CostCalculationDialog({
             {details.sashDetails.length > 0 && (
               <>
                 <Separator />
-                <div className="flex items-center justify-between py-1 px-2">
-                  <span className="text-sm font-medium">Себестоимость:</span>
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-base">
-                      {formatCurrency(recalculatedCost)}
-                    </span>
-                    {hasOverrides && costDiff !== 0 && (
-                      <span className={`text-xs ${costDiff > 0 ? 'text-red-500' : 'text-green-500'}`}>
-                        ({costDiff > 0 ? '+' : ''}{formatCurrency(costDiff)})
+                <div className="space-y-1 px-2">
+                  <div className="flex items-center justify-between py-0.5">
+                    <span className="text-sm font-medium">Себестоимость:</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-base">
+                        {formatCurrency(recalculatedCost)}
                       </span>
-                    )}
+                      {hasOverrides && costDiff !== 0 && (
+                        <span className={`text-xs ${costDiff > 0 ? 'text-red-500' : 'text-green-500'}`}>
+                          ({costDiff > 0 ? '+' : ''}{formatCurrency(costDiff)})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between py-0.5">
+                    <span className="text-sm text-muted-foreground">Без ЗП (−150 × {totalSashes}):</span>
+                    <span className="text-sm font-medium">
+                      {formatCurrency(recalculatedCost - 150 * totalSashes)}
+                    </span>
                   </div>
                 </div>
               </>

@@ -465,7 +465,7 @@ export async function printInvoice(order: OrderWithRelations): Promise<void> {
       systemText,
       fabricText,
       controlText,
-      room,
+      roomName,
     ].join("|");
 
     const existing = grouped.get(key);
@@ -485,24 +485,25 @@ export async function printInvoice(order: OrderWithRelations): Promise<void> {
     }
   });
 
-  // Группируем по комнатам
-  const rooms = new Map<number, { items: GroupedSash[]; name: string }>();
+  // Группируем по комнатам (по roomName)
+  const rooms = new Map<string, { items: GroupedSash[] }>();
   Array.from(grouped.values()).forEach((item) => {
-    const existing = rooms.get(item.room);
+    const key = item.roomName || "";
+    const existing = rooms.get(key);
     if (existing) {
       existing.items.push(item);
     } else {
-      rooms.set(item.room, { items: [item], name: item.roomName });
+      rooms.set(key, { items: [item] });
     }
   });
 
-  const sortedRooms = Array.from(rooms.entries()).sort(([a], [b]) => a - b);
-  const hasMultipleRooms = sortedRooms.length > 1;
+  const sortedRooms = Array.from(rooms.entries());
+  const hasMultipleRooms = sortedRooms.filter(([name]) => name).length > 1 || (sortedRooms.length > 1);
 
   let globalIndex = 0;
   const tableBody = sortedRooms
-    .map(([roomNum, { items, name: roomName }]) => {
-      const displayName = roomName || `Комната ${roomNum}`;
+    .map(([roomName, { items }]) => {
+      const displayName = roomName || "Без комнаты";
       const roomHeader = hasMultipleRooms
         ? `<tr><td colspan="7" class="room-header">${displayName}</td></tr>`
         : "";
@@ -910,7 +911,7 @@ export async function printCustomerInvoice(
       fabricText,
       controlText,
       unitPrice.toFixed(4),
-      room,
+      roomName,
     ].join("|");
 
     const existing = grouped.get(key);
@@ -940,24 +941,25 @@ export async function printCustomerInvoice(
     totalCoefficient += item.coefficient * item.quantity;
   });
 
-  // Группируем по комнатам
-  const customerRooms = new Map<number, { items: GroupedSashCustomer[]; name: string }>();
+  // Группируем по комнатам (по roomName)
+  const customerRooms = new Map<string, { items: GroupedSashCustomer[] }>();
   Array.from(grouped.values()).forEach((item) => {
-    const existing = customerRooms.get(item.room);
+    const key = item.roomName || "";
+    const existing = customerRooms.get(key);
     if (existing) {
       existing.items.push(item);
     } else {
-      customerRooms.set(item.room, { items: [item], name: item.roomName });
+      customerRooms.set(key, { items: [item] });
     }
   });
 
-  const sortedCustomerRooms = Array.from(customerRooms.entries()).sort(([a], [b]) => a - b);
-  const hasMultipleCustomerRooms = sortedCustomerRooms.length > 1;
+  const sortedCustomerRooms = Array.from(customerRooms.entries());
+  const hasMultipleCustomerRooms = sortedCustomerRooms.filter(([name]) => name).length > 1 || (sortedCustomerRooms.length > 1);
 
   let customerGlobalIndex = 0;
   const customerTableBody = sortedCustomerRooms
-    .map(([roomNum, { items, name: rName }]) => {
-      const displayName = rName || `Комната ${roomNum}`;
+    .map(([rName, { items }]) => {
+      const displayName = rName || "Без комнаты";
       const roomHeader = hasMultipleCustomerRooms
         ? `<tr><td colspan="10" class="room-header">${displayName}</td></tr>`
         : "";

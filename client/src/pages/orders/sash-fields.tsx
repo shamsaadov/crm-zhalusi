@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { UseFormReturn } from "react-hook-form";
 import {
   FormControl,
@@ -14,9 +15,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
-import { X, Loader2 } from "lucide-react";
+import { X, Loader2, Pin, Plus } from "lucide-react";
 import { CONTROL_SIDES, type Fabric } from "@shared/schema";
+import { usePinnedSystems } from "@/hooks/use-pinned-systems";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { OrderFormValues } from "./schemas";
 import type { SystemWithComponents } from "./types";
 
@@ -41,9 +50,40 @@ export function SashFields({
   onRemove,
   isCalculating = false,
 }: SashFieldsProps) {
+  const { sortSystems, toggle: togglePin, isPinned } = usePinnedSystems();
+  const sortedSystems = sortSystems(systems);
+  const [showQuickFabric, setShowQuickFabric] = useState(false);
+  const [quickFabricName, setQuickFabricName] = useState("");
+  const [quickFabricType, setQuickFabricType] = useState<string>("roll");
+
+  const createFabricMutation = useMutation({
+    mutationFn: (data: { name: string; fabricType: string }) =>
+      apiRequest("POST", "/api/fabrics", data),
+    onSuccess: async (res: any) => {
+      const fabric = await res.json();
+      queryClient.invalidateQueries({ queryKey: ["/api/fabrics"] });
+      form.setValue(`sashes.${index}.fabricId`, fabric.id);
+      setShowQuickFabric(false);
+      setQuickFabricName("");
+    },
+  });
+
   const selectedSystem = systems.find(
     (s) => s.id === form.watch(`sashes.${index}.systemId`)
   );
+
+  // Фильтрация тканей по типу системы (zebra/roll)
+  const filteredFabrics = (() => {
+    if (!selectedSystem?.systemKey) return fabrics;
+    const key = selectedSystem.systemKey.toLowerCase();
+    const isZebra = key.includes("zebra");
+    const isRoller = key.includes("roller") || key.includes("roll");
+    if (!isZebra && !isRoller) return fabrics;
+    const targetType = isZebra ? "zebra" : "roll";
+    const filtered = fabrics.filter((f) => (f.fabricType || "roll") === targetType);
+    return filtered.length > 0 ? filtered : fabrics;
+  })();
+
   const currentWidth = form.watch(`sashes.${index}.width`);
   const currentHeight = form.watch(`sashes.${index}.height`);
   const currentFabricId = form.watch(`sashes.${index}.fabricId`);
@@ -72,17 +112,34 @@ export function SashFields({
   return (
     <div
       key={fieldId}
-      className={`flex items-end gap-2 p-3 border rounded-lg ${
+      className={`flex items-end gap-1.5 py-1.5 px-2 border rounded-lg ${
         isSystemMissing
           ? "border-orange-400 bg-orange-50 dark:bg-orange-950/20"
           : "bg-muted/30"
       }`}
     >
-      <div className="flex flex-col items-center gap-1 pb-2 min-w-[50px]">
-        <span className="text-sm font-medium text-muted-foreground">
+      <div className="flex flex-col items-center gap-0.5 pb-1 min-w-[28px]">
+        <span className="text-xs font-medium text-muted-foreground">
           {index + 1}.
         </span>
       </div>
+      <FormField
+        control={form.control}
+        name={`sashes.${index}.roomName`}
+        render={({ field }) => (
+          <FormItem className="min-w-[70px] max-w-[100px]">
+            <FormLabel className="text-xs">Комната</FormLabel>
+            <FormControl>
+              <Input
+                type="text"
+                placeholder="Комната"
+                className="h-8 text-xs"
+                {...field}
+              />
+            </FormControl>
+          </FormItem>
+        )}
+      />
       <FormField
         control={form.control}
         name={`sashes.${index}.width`}
@@ -127,41 +184,33 @@ export function SashFields({
       />
       <FormField
         control={form.control}
-        name={`sashes.${index}.quantity`}
-        render={({ field }) => (
-          <FormItem className="flex-1 min-w-[60px] max-w-[80px]">
-            <FormLabel className="text-xs">Кол-во</FormLabel>
-            <FormControl>
-              <Input
-                type="number"
-                step="1"
-                min="1"
-                placeholder="шт"
-                className="h-9"
-                {...field}
-                data-testid={`input-sash-quantity-${index}`}
-              />
-            </FormControl>
-          </FormItem>
-        )}
-      />
-      <FormField
-        control={form.control}
         name={`sashes.${index}.systemId`}
         render={({ field }) => (
           <FormItem className="flex-1 min-w-[120px]">
-            <FormLabel className="text-xs">Система</FormLabel>
+            <FormLabel className="text-xs flex items-center gap-1">
+              Система
+              {field.value && (
+                <button
+                  type="button"
+                  className="inline-flex"
+                  onClick={(e) => { e.stopPropagation(); togglePin(field.value!); }}
+                  title={isPinned(field.value!) ? "Открепить" : "Закрепить"}
+                >
+                  <Pin className={`h-3 w-3 ${isPinned(field.value!) ? "text-blue-500 fill-blue-500" : "text-muted-foreground"}`} />
+                </button>
+              )}
+            </FormLabel>
             <SearchableSelect
-              options={systems.map((system) => ({
+              options={sortedSystems.map((system) => ({
                 value: system.id,
-                label: system.name,
+                label: isPinned(system.id) ? `📌 ${system.name}` : system.name,
               }))}
               value={field.value}
               onValueChange={field.onChange}
               placeholder="Система"
               searchPlaceholder="Поиск системы..."
               emptyText="Система не найдена"
-              className="h-9"
+              className="h-8"
             />
           </FormItem>
         )}
@@ -172,18 +221,61 @@ export function SashFields({
         render={({ field }) => (
           <FormItem className="flex-1 min-w-[120px]">
             <FormLabel className="text-xs">Ткань</FormLabel>
-            <SearchableSelect
-              options={fabrics.map((fabric) => ({
-                value: fabric.id,
-                label: fabric.name,
-              }))}
-              value={field.value}
-              onValueChange={field.onChange}
-              placeholder="Ткань"
-              searchPlaceholder="Поиск ткани..."
-              emptyText="Ткань не найдена"
-              className="h-9"
-            />
+            <div className="flex gap-0.5">
+              <div className="flex-1">
+                <SearchableSelect
+                  options={filteredFabrics.map((fabric) => ({
+                    value: fabric.id,
+                    label: fabric.name,
+                  }))}
+                  value={field.value}
+                  onValueChange={field.onChange}
+                  placeholder="Ткань"
+                  searchPlaceholder="Поиск ткани..."
+                  emptyText="Ткань не найдена"
+                  className="h-8"
+                />
+              </div>
+              <Popover open={showQuickFabric} onOpenChange={setShowQuickFabric}>
+                <PopoverTrigger asChild>
+                  <Button type="button" variant="ghost" size="icon" className="h-8 w-7 shrink-0" title="Добавить ткань">
+                    <Plus className="h-3.5 w-3.5" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-56 p-3" align="end">
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Новая ткань</p>
+                    <Input
+                      placeholder="Название"
+                      value={quickFabricName}
+                      onChange={(e) => setQuickFabricName(e.target.value)}
+                      className="h-8 text-xs"
+                    />
+                    <Select value={quickFabricType} onValueChange={setQuickFabricType}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="roll">Рулонная</SelectItem>
+                        <SelectItem value="zebra">Зебра</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="w-full"
+                      disabled={!quickFabricName.trim() || createFabricMutation.isPending}
+                      onClick={() => createFabricMutation.mutate({
+                        name: quickFabricName.trim(),
+                        fabricType: quickFabricType,
+                      })}
+                    >
+                      {createFabricMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Добавить"}
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
           </FormItem>
         )}
       />
@@ -195,7 +287,7 @@ export function SashFields({
             <FormLabel className="text-xs">Упр.</FormLabel>
             <Select onValueChange={field.onChange} value={field.value}>
               <FormControl>
-                <SelectTrigger className="h-9">
+                <SelectTrigger className="h-8">
                   <SelectValue placeholder="—" />
                 </SelectTrigger>
               </FormControl>
@@ -221,7 +313,7 @@ export function SashFields({
                 <Input
                   type="text"
                   {...field}
-                  className="h-9 bg-blue-50 dark:bg-blue-950/20 font-semibold text-blue-700 dark:text-blue-400 pr-8"
+                  className="h-8 bg-blue-50 dark:bg-blue-950/20 font-semibold text-blue-700 dark:text-blue-400 pr-8"
                   readOnly
                   placeholder={isCalculating ? "..." : "—"}
                   title="Коэффициент из файла coefficients.json"
@@ -241,7 +333,7 @@ export function SashFields({
           type="button"
           variant="ghost"
           size="icon"
-          className="h-9 w-9 shrink-0"
+          className="h-8 w-9 shrink-0"
           onClick={() => onRemove(index)}
         >
           <X className="h-4 w-4" />

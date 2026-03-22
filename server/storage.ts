@@ -861,7 +861,7 @@ export class DatabaseStorage implements IStorage {
     }
     if (filters?.search) {
       conditions.push(
-        sql`${orders.orderNumber}::text LIKE ${"%" + filters.search + "%"}`
+        sql`(${orders.orderNumber}::text LIKE ${"%" + filters.search + "%"} OR ${orders.dealerId} IN (SELECT ${dealers.id} FROM ${dealers} WHERE LOWER(${dealers.fullName}) LIKE ${("%" + filters.search.toLowerCase() + "%")}))`
       );
     }
 

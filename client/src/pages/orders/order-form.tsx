@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { UseFormReturn, UseFieldArrayReturn } from "react-hook-form";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   Form,
   FormControl,
@@ -31,11 +33,9 @@ import {
   Loader2,
   Pencil,
   RotateCcw,
-  FileText,
   Check,
   Wallet,
   Info,
-  Home,
 } from "lucide-react";
 import { formatCurrency } from "@/components/status-badge";
 import {
@@ -52,7 +52,7 @@ import type {
   CostCalculationDetails,
 } from "./types";
 import { SashFields } from "./sash-fields";
-import { calculateCostPrice, printInvoicePreview } from "./utils";
+import { calculateCostPrice } from "./utils";
 
 interface OrderFormProps {
   form: UseFormReturn<OrderFormValues>;
@@ -96,6 +96,22 @@ export function OrderForm({
   const { fields, append, remove } = fieldArray;
   const [isPaidPopoverOpen, setIsPaidPopoverOpen] = useState(false);
   const [localManualPrice, setLocalManualPrice] = useState(false);
+  const [showQuickDealer, setShowQuickDealer] = useState(false);
+  const [quickDealerName, setQuickDealerName] = useState("");
+  const [quickDealerPhone, setQuickDealerPhone] = useState("");
+
+  const createDealerMutation = useMutation({
+    mutationFn: (data: { fullName: string; phone?: string }) =>
+      apiRequest("POST", "/api/dealers", data),
+    onSuccess: async (res: any) => {
+      const dealer = await res.json();
+      queryClient.invalidateQueries({ queryKey: ["/api/dealers"] });
+      form.setValue("dealerId", dealer.id);
+      setShowQuickDealer(false);
+      setQuickDealerName("");
+      setQuickDealerPhone("");
+    },
+  });
 
   // Используем внешнее состояние если передано, иначе локальное
   const isSalePriceEditable = onManualSalePriceChange
@@ -128,19 +144,6 @@ export function OrderForm({
     onShowCostCalculation({ totalCost, sashDetails });
   };
 
-  const handleInvoicePreview = () => {
-    const formData = form.getValues();
-    const selectedDealer = dealers.find((d) => d.id === formData.dealerId);
-
-    printInvoicePreview({
-      date: formData.date,
-      dealerName: selectedDealer?.fullName || "Не указан",
-      sashes: formData.sashes,
-      salePrice: formData.salePrice || "0",
-      comment: formData.comment,
-    });
-  };
-
   const isPaid = form.watch("isPaid");
   const selectedCashboxId = form.watch("cashboxId");
   const selectedCashbox = cashboxes.find((c) => c.id === selectedCashboxId);
@@ -148,6 +151,12 @@ export function OrderForm({
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col min-h-0 flex-1">
+        <div className="flex justify-end mb-2 flex-shrink-0">
+          <Button type="submit" disabled={isPending} size="sm">
+            {isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+            {isEditing ? "Сохранить" : "Создать"}
+          </Button>
+        </div>
         <div className="flex-1 overflow-y-auto space-y-4 pr-1">
         <div className="flex items-start gap-3">
           <div className="grid grid-cols-3 gap-3 flex-1">
@@ -174,17 +183,57 @@ export function OrderForm({
                 return (
                   <FormItem>
                     <FormLabel>Дилер</FormLabel>
-                    <SearchableSelect
-                      options={dealers.map((dealer) => ({
-                        value: dealer.id,
-                        label: dealer.fullName,
-                      }))}
-                      value={field.value}
-                      onValueChange={field.onChange}
-                      placeholder="Выберите дилера"
-                      searchPlaceholder="Поиск дилера..."
-                      emptyText="Дилер не найден"
-                    />
+                    <div className="flex gap-1">
+                      <div className="flex-1">
+                        <SearchableSelect
+                          options={dealers.map((dealer) => ({
+                            value: dealer.id,
+                            label: dealer.fullName,
+                          }))}
+                          value={field.value}
+                          onValueChange={field.onChange}
+                          placeholder="Выберите дилера"
+                          searchPlaceholder="Поиск дилера..."
+                          emptyText="Дилер не найден"
+                        />
+                      </div>
+                      <Popover open={showQuickDealer} onOpenChange={setShowQuickDealer}>
+                        <PopoverTrigger asChild>
+                          <Button type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0" title="Добавить дилера">
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-64 p-3" align="end">
+                          <div className="space-y-2">
+                            <p className="text-sm font-medium">Новый дилер</p>
+                            <Input
+                              placeholder="Имя дилера"
+                              value={quickDealerName}
+                              onChange={(e) => setQuickDealerName(e.target.value)}
+                              className="h-8"
+                            />
+                            <Input
+                              placeholder="Телефон"
+                              value={quickDealerPhone}
+                              onChange={(e) => setQuickDealerPhone(e.target.value)}
+                              className="h-8"
+                            />
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="w-full"
+                              disabled={!quickDealerName.trim() || createDealerMutation.isPending}
+                              onClick={() => createDealerMutation.mutate({
+                                fullName: quickDealerName.trim(),
+                                phone: quickDealerPhone.trim() || undefined,
+                              })}
+                            >
+                              {createDealerMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Добавить"}
+                            </Button>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
                     {selectedDealer && (
                       <p
                         className={`text-sm font-medium ${
@@ -316,21 +365,12 @@ export function OrderForm({
 
         <Separator />
 
-        <div className="space-y-3">
+        <div className="space-y-2">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-medium">
               Створки
               <Badge variant="secondary" className="ml-2">
                 {fields.length} {fields.length !== 1 ? "позиций" : "позиция"}
-              </Badge>
-              <Badge variant="outline" className="ml-2">
-                {fields.reduce((total, _, index) => {
-                  const quantity = parseFloat(
-                    form.watch(`sashes.${index}.quantity`) || "1"
-                  );
-                  return total + quantity;
-                }, 0)}{" "}
-                шт
               </Badge>
             </h3>
             <Button
@@ -345,106 +385,46 @@ export function OrderForm({
             </Button>
           </div>
 
-          {(() => {
-            const sashValues = form.watch("sashes") || [];
-            let lastRoom = 0;
-            return fields.map((field, index) => {
-              const currentRoom = sashValues[index]?.room || 1;
-              const currentRoomName = sashValues[index]?.roomName || "";
-              const showRoomHeader = currentRoom !== lastRoom;
-              lastRoom = currentRoom;
-              return (
-                <div key={field.id}>
-                  {showRoomHeader && (
-                    <div className="flex items-center gap-2 mt-2 mb-1">
-                      <Home className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <input
-                        type="text"
-                        className="text-sm font-medium text-muted-foreground bg-transparent border-none outline-none placeholder:text-muted-foreground/60 min-w-[80px] max-w-[200px]"
-                        placeholder={`Комната ${currentRoom}`}
-                        value={currentRoomName}
-                        onChange={(e) => {
-                          // Обновляем roomName для всех створок этой комнаты
-                          const allSashes = form.getValues("sashes");
-                          allSashes.forEach((s, i) => {
-                            if ((s.room || 1) === currentRoom) {
-                              form.setValue(`sashes.${i}.roomName`, e.target.value, { shouldValidate: false });
-                            }
-                          });
-                        }}
-                      />
-                      <div className="flex-1 border-t border-dashed" />
-                    </div>
-                  )}
-                  <SashFields
-                    index={index}
-                    form={form}
-                    systems={systems}
-                    fabrics={fabrics}
-                    fieldsLength={fields.length}
-                    fieldId={field.id}
-                    onRemove={handleSashRemove}
-                    isCalculating={calculatingSashes?.has(index) || false}
-                  />
-                </div>
-              );
-            });
-          })()}
+          {fields.map((field, index) => (
+            <SashFields
+              key={field.id}
+              index={index}
+              form={form}
+              systems={systems}
+              fabrics={fabrics}
+              fieldsLength={fields.length}
+              fieldId={field.id}
+              onRemove={handleSashRemove}
+              isCalculating={calculatingSashes?.has(index) || false}
+            />
+          ))}
 
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              className="flex-1"
-              onClick={() => {
-                const sashes = form.getValues("sashes");
-                const lastSash = sashes[sashes.length - 1];
-                const currentRoom = lastSash?.room || 1;
-                append({
-                  width: "",
-                  height: "",
-                  quantity: "1",
-                  systemId: lastSash?.systemId || "",
-                  controlSide: "",
-                  fabricId: lastSash?.fabricId || "",
-                  sashPrice: "",
-                  sashCost: "",
-                  coefficient: "",
-                  isCalculating: false,
-                  room: currentRoom,
-                });
-              }}
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Добавить створку
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                const sashes = form.getValues("sashes");
-                const maxRoom = Math.max(...sashes.map((s) => s.room || 1));
-                const nextRoom = maxRoom + 1;
-                const lastSash = sashes[sashes.length - 1];
-                append({
-                  width: "",
-                  height: "",
-                  quantity: "1",
-                  systemId: lastSash?.systemId || "",
-                  controlSide: "",
-                  fabricId: lastSash?.fabricId || "",
-                  sashPrice: "",
-                  sashCost: "",
-                  coefficient: "",
-                  isCalculating: false,
-                  room: nextRoom,
-                });
-              }}
-            >
-              <Home className="h-4 w-4 mr-2" />
-              Новая комната
-            </Button>
-          </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={() => {
+              const sashes = form.getValues("sashes");
+              const lastSash = sashes[sashes.length - 1];
+              append({
+                width: "",
+                height: "",
+                quantity: "1",
+                systemId: lastSash?.systemId || "",
+                controlSide: "",
+                fabricId: lastSash?.fabricId || "",
+                sashPrice: "",
+                sashCost: "",
+                coefficient: "",
+                isCalculating: false,
+                room: 1,
+                roomName: lastSash?.roomName || "",
+              });
+            }}
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Добавить створку
+          </Button>
         </div>
 
         <Separator />
@@ -572,25 +552,23 @@ export function OrderForm({
         />
 
         </div>
-        <div className="flex justify-between gap-2 pt-3 border-t mt-3 flex-shrink-0">
+        <div className="flex justify-end gap-2 pt-3 border-t mt-3 flex-shrink-0">
+          <Button type="button" variant="outline" onClick={onCancel}>
+            Отмена
+          </Button>
           <Button
             type="button"
             variant="outline"
-            onClick={handleInvoicePreview}
+            onClick={handleTestCalculation}
             className="gap-2"
           >
-            <FileText className="h-4 w-4" />
-            Предпросмотр накладной
+            <Info className="h-4 w-4" />
+            Подробности заказа
           </Button>
-          <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={onCancel}>
-              Отмена
-            </Button>
-            <Button type="submit" disabled={isPending}>
-              {isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {isEditing ? "Сохранить" : "Создать"}
-            </Button>
-          </div>
+          <Button type="submit" disabled={isPending}>
+            {isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            {isEditing ? "Сохранить" : "Создать"}
+          </Button>
         </div>
       </form>
     </Form>

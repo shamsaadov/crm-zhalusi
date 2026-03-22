@@ -996,6 +996,25 @@ export async function registerRoutes(
 
         const dealerList = await storage.getDealers(req.userId!);
 
+        // Precompute shipped debt per dealer (sum of salePrice for shipped orders)
+        const shippedDebtMap = new Map<string, number>();
+        const allOrders = await storage.getOrders(req.userId!, {});
+        for (const o of allOrders) {
+          if (o.status === "Отгружен" && o.dealerId) {
+            const prev = shippedDebtMap.get(o.dealerId) || 0;
+            shippedDebtMap.set(o.dealerId, prev + parseFloat(o.salePrice?.toString() || "0"));
+          }
+        }
+        // Subtract payments to get actual shipped debt
+        for (const dealer of dealerList) {
+          const shippedTotal = shippedDebtMap.get(dealer.id) || 0;
+          // Use the same payment logic as getDealers
+          const opening = parseFloat(dealer.openingBalance?.toString() || "0");
+          // dealer.balance is already computed as -(opening + allOrders - payments)
+          // shippedDebt = shippedTotal portion of the overall debt
+          shippedDebtMap.set(dealer.id, shippedTotal);
+        }
+
         // Helper to determine order type based on sashes
         const getOrderType = (sashes: any[]) => {
           if (sashes.length === 0) return "product";
@@ -1010,11 +1029,12 @@ export async function registerRoutes(
           return Promise.all(
             ordersToEnrich.map(async (order) => {
               const sashes = await storage.getOrderSashes(order.id);
+              const dealer = dealerList.find((d) => d.id === order.dealerId);
               return {
                 ...order,
-                dealer: dealerList.find((d) => d.id === order.dealerId),
-                dealerBalance: dealerList.find((d) => d.id === order.dealerId)
-                  ?.balance,
+                dealer,
+                dealerBalance: dealer?.balance,
+                dealerShippedDebt: order.dealerId ? (shippedDebtMap.get(order.dealerId) || 0) : 0,
                 sashesCount: sashes.length,
                 orderType: getOrderType(sashes),
               };
