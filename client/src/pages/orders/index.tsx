@@ -1130,7 +1130,7 @@ export default function OrdersPage() {
                     isEditing={false}
                     isPending={createMutation.isPending}
                     onSubmit={onSubmit}
-                    onCancel={() => setIsDialogOpen(false)}
+                    onCancel={() => { resetForms(); setIsDialogOpen(false); }}
                     onShowCostCalculation={(details) => {
                       setCostCalculationDetails(details);
                       setShowCostCalculation(true);
@@ -1151,7 +1151,7 @@ export default function OrdersPage() {
                     cashboxes={cashboxes}
                     isPending={createProductMutation.isPending}
                     onSubmit={onProductSubmit}
-                    onCancel={() => setIsDialogOpen(false)}
+                    onCancel={() => { resetForms(); setIsDialogOpen(false); }}
                   />
                 </TabsContent>
               </Tabs>
@@ -1170,7 +1170,7 @@ export default function OrdersPage() {
                 isEditing={true}
                 isPending={updateMutation.isPending}
                 onSubmit={onSubmit}
-                onCancel={() => setIsDialogOpen(false)}
+                onCancel={() => { resetForms(); setIsDialogOpen(false); }}
                 onShowCostCalculation={(details) => {
                   setCostCalculationDetails(details);
                   setShowCostCalculation(true);
