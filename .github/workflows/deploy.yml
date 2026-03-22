@@ -6,75 +6,103 @@ on:
       - main
   workflow_dispatch:
 
+env:
+  SSH_SETUP: |
+    export NVM_DIR="$HOME/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+    nvm use 22
+    cd ~/forsa-crm-zhalusi
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Deploy to server
+      - name: Pull latest code
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
-            # Переключаемся на пользователя forsa и выполняем деплой
-            su - forsa << 'EOF'
+            su - forsa << 'STEP'
             cd forsa-crm-zhalusi
-
-            # Переключаемся на node 22
-            export NVM_DIR="$HOME/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-            nvm use 22
-
-            # Закрываем приложение на порте 5000
-            npx kill-port 5000 || true
-
-            # Сохраняем .env если есть
-            if [ -f .env ]; then
-              cp .env /tmp/.env.backup
-              echo "✅ .env saved"
-            fi
-
-            # Сбрасываем локальные изменения и подтягиваем код
+            if [ -f .env ]; then cp .env /tmp/.env.backup; fi
             git fetch origin
             git reset --hard origin/main
+            if [ -f /tmp/.env.backup ]; then cp /tmp/.env.backup .env; fi
+            echo "Latest commit:"
+            git log --oneline -1
+            STEP
 
-            # Восстанавливаем .env
-            if [ -f /tmp/.env.backup ]; then
-              cp /tmp/.env.backup .env
-              echo "✅ .env restored"
-            fi
+      - name: Install dependencies
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
+            su - forsa << 'STEP'
+            export NVM_DIR="$HOME/.nvm" && . "$NVM_DIR/nvm.sh" && nvm use 22
+            cd forsa-crm-zhalusi
+            npm install --prefer-offline
+            STEP
 
-            # Устанавливаем зависимости
-            npm install
+      - name: Run database migrations
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
+            su - forsa << 'STEP'
+            export NVM_DIR="$HOME/.nvm" && . "$NVM_DIR/nvm.sh" && nvm use 22
+            cd forsa-crm-zhalusi
+            npm run db:migrate
+            STEP
 
-            # Применяем миграции базы данных
-            echo "🔄 Applying database migrations..."
-            npm run db:migrate || {
-              echo "❌ Migration failed, showing error:"
-              exit 1
-            }
-            echo "✅ Migrations applied successfully"
-
-            # Делаем сборку
+      - name: Build application
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
+            su - forsa << 'STEP'
+            export NVM_DIR="$HOME/.nvm" && . "$NVM_DIR/nvm.sh" && nvm use 22
+            cd forsa-crm-zhalusi
             npm run build
+            STEP
 
-            # Запускаем приложение с логированием
-            nohup npm run start > app.log 2>&1 &
-
-            # Ждем чтобы приложение запустилось
-            sleep 5
-
-            # Проверяем статус
-            echo "=== Checking server status ==="
-            if curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/api/user 2>/dev/null | grep -q "200\|401"; then
-              echo "✅ Server is responding"
-            else
-              echo "⚠️ Server may have issues, showing logs:"
-              tail -50 app.log
-            fi
-            EOF
-
-            # Перезапускаем nginx
+      - name: Restart application
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
+            su - forsa << 'STEP'
+            export NVM_DIR="$HOME/.nvm" && . "$NVM_DIR/nvm.sh" && nvm use 22
+            cd forsa-crm-zhalusi
+            npx kill-port 5000 || true
+            nohup npm run start > nohup.out 2>&1 &
+            STEP
             systemctl restart nginx
+
+      - name: Health check
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
+            sleep 5
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/api/auth/me 2>/dev/null)
+            echo "Server response: HTTP $STATUS"
+            if echo "$STATUS" | grep -qE "200|401|302"; then
+              echo "Server is running"
+            else
+              echo "Server failed to start! Last logs:"
+              su - forsa -c "tail -30 ~/forsa-crm-zhalusi/nohup.out"
+              exit 1
+            fi
