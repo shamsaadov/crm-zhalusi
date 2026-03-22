@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import type { UseFormReturn } from "react-hook-form";
 import type { FieldArrayWithId } from "react-hook-form";
 import type { OrderFormValues } from "./schemas";
@@ -12,10 +12,11 @@ export function useRoomGroups(
   form: UseFormReturn<OrderFormValues>,
   fields: FieldArrayWithId<OrderFormValues, "sashes">[]
 ) {
-  // Track explicitly created room names (so empty rooms persist)
   const [createdRooms, setCreatedRooms] = useState<string[]>([]);
+  // Counter to force recalculation when roomName changes
+  const [version, setVersion] = useState(0);
 
-  // Seed created rooms from existing sash data on mount / when fields change
+  // Seed created rooms from existing sash data
   useEffect(() => {
     const sashes = form.getValues("sashes");
     const existingNames = new Set<string>();
@@ -30,21 +31,18 @@ export function useRoomGroups(
     }
   }, [fields.length]);
 
-  const sashValues = form.watch("sashes") || [];
-
-  const rooms: RoomGroup[] = useMemo(() => {
-    // Default room always first
+  // Build rooms from current form state (recalculates on version/fields/createdRooms change)
+  const buildRooms = (): RoomGroup[] => {
+    const sashes = form.getValues("sashes");
     const defaultRoom: RoomGroup = { name: "", sashIndices: [] };
     const namedRooms = new Map<string, RoomGroup>();
 
-    // Initialize from created rooms
     createdRooms.forEach((name) => {
       namedRooms.set(name, { name, sashIndices: [] });
     });
 
-    // Distribute sashes
-    sashValues.forEach((sash, index) => {
-      if (index >= fields.length) return; // guard
+    sashes.forEach((sash, index) => {
+      if (index >= fields.length) return;
       const roomName = sash?.roomName || "";
       if (!roomName) {
         defaultRoom.sashIndices.push(index);
@@ -57,7 +55,16 @@ export function useRoomGroups(
     });
 
     return [defaultRoom, ...Array.from(namedRooms.values())];
-  }, [sashValues, fields.length, createdRooms]);
+  };
+
+  // Force rebuild when version, fields length, or createdRooms change
+  const [rooms, setRooms] = useState<RoomGroup[]>(() => buildRooms());
+
+  useEffect(() => {
+    setRooms(buildRooms());
+  }, [version, fields.length, createdRooms]);
+
+  const bump = () => setVersion((v) => v + 1);
 
   const addRoom = useCallback((name: string) => {
     const trimmed = name.trim();
@@ -81,13 +88,13 @@ export function useRoomGroups(
       setCreatedRooms((prev) =>
         prev.map((n) => (n === oldName ? trimmed : n))
       );
+      bump();
     },
     [form]
   );
 
   const removeRoom = useCallback(
     (name: string) => {
-      // Move sashes to default room
       const sashes = form.getValues("sashes");
       sashes.forEach((s, i) => {
         if ((s.roomName || "") === name) {
@@ -97,6 +104,7 @@ export function useRoomGroups(
         }
       });
       setCreatedRooms((prev) => prev.filter((n) => n !== name));
+      bump();
     },
     [form]
   );
@@ -106,6 +114,7 @@ export function useRoomGroups(
       form.setValue(`sashes.${sashIndex}.roomName`, targetRoomName, {
         shouldValidate: false,
       });
+      bump();
     },
     [form]
   );
