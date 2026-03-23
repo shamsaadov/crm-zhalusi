@@ -143,7 +143,11 @@ export function SearchableSelect({
         isDisabled={disabled}
         menuPlacement="auto"
         menuShouldScrollIntoView={false}
-        styles={customStyles}
+        menuPortalTarget={document.body}
+        styles={{
+          ...customStyles,
+          menuPortal: (base) => ({ ...base, zIndex: 9999 }),
+        }}
         components={{ Option: CustomOption, SingleValue: CustomSingleValue }}
         noOptionsMessage={() => emptyText}
         filterOption={(option, inputValue) => {
