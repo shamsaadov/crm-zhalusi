@@ -83,6 +83,16 @@ const customStyles: StylesConfig<OptionType, false, GroupBase<OptionType>> = {
   }),
 };
 
+// Custom menu wrapper — stops pointerdown from reaching Radix Dialog overlay
+// so clicking a portaled option doesn't close the modal
+const CustomMenuList = (props: any) => {
+  return (
+    <div onPointerDown={(e) => e.stopPropagation()}>
+      <components.MenuList {...props} />
+    </div>
+  );
+};
+
 // Custom option renderer to show secondaryLabel
 const CustomOption = (props: any) => {
   const { data } = props;
@@ -148,7 +158,7 @@ export function SearchableSelect({
           ...customStyles,
           menuPortal: (base) => ({ ...base, zIndex: 9999, pointerEvents: "auto" as const }),
         }}
-        components={{ Option: CustomOption, SingleValue: CustomSingleValue }}
+        components={{ Option: CustomOption, SingleValue: CustomSingleValue, MenuList: CustomMenuList }}
         noOptionsMessage={() => emptyText}
         filterOption={(option, inputValue) => {
           const search = inputValue.toLowerCase();
