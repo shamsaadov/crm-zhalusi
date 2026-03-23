@@ -119,5 +119,5 @@ export function useRoomGroups(
     [form]
   );
 
-  return { rooms, addRoom, renameRoom, removeRoom, moveSash };
+  return { rooms, addRoom, renameRoom, removeRoom, moveSash, bump };
 }

@@ -97,7 +97,7 @@ export function OrderForm({
   onManualSalePriceChange,
 }: OrderFormProps) {
   const { fields, append, remove } = fieldArray;
-  const { rooms, addRoom, renameRoom, removeRoom, moveSash } = useRoomGroups(form, fields);
+  const { rooms, addRoom, renameRoom, removeRoom, moveSash, bump } = useRoomGroups(form, fields);
   const [showAddRoom, setShowAddRoom] = useState(false);
   const [newRoomName, setNewRoomName] = useState("");
 
@@ -458,9 +458,9 @@ export function OrderForm({
 
           <DndContext sensors={sensors} onDragEnd={handleDragEnd} collisionDetection={pointerWithin}>
             <div className="space-y-3">
-              {rooms.map((room) => (
+              {rooms.map((room, roomIdx) => (
                 <RoomContainer
-                  key={room.name || DEFAULT_ROOM_ID}
+                  key={`room-${roomIdx}`}
                   roomName={room.name}
                   droppableId={toDroppableId(room.name)}
                   isDefault={room.name === ""}
@@ -490,6 +490,8 @@ export function OrderForm({
                       room: 1,
                       roomName: room.name,
                     });
+                    // Force room recalculation after form values update
+                    setTimeout(() => bump(), 0);
                   }}
                   calculatingSashes={calculatingSashes}
                 />
