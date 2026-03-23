@@ -146,7 +146,7 @@ export function SearchableSelect({
         menuPortalTarget={document.body}
         styles={{
           ...customStyles,
-          menuPortal: (base) => ({ ...base, zIndex: 9999 }),
+          menuPortal: (base) => ({ ...base, zIndex: 9999, pointerEvents: "auto" as const }),
         }}
         components={{ Option: CustomOption, SingleValue: CustomSingleValue }}
         noOptionsMessage={() => emptyText}
