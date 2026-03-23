@@ -24,6 +24,7 @@ import DashboardPage from "@/pages/dashboard";
 import KanbanPage from "@/pages/kanban";
 import AuditLogPage from "@/pages/audit-log";
 import NotificationsPage from "@/pages/notifications";
+import InstallerNotificationsPage from "@/pages/installer-notifications";
 import { Loader2 } from "lucide-react";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -112,6 +113,9 @@ function Router() {
       </Route>
       <Route path="/notifications">
         <ProtectedRoute component={NotificationsPage} />
+      </Route>
+      <Route path="/installer-notifications">
+        <ProtectedRoute component={InstallerNotificationsPage} />
       </Route>
       <Route path="/profile">
         <ProtectedRoute component={ProfilePage} />

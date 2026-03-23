@@ -88,6 +88,9 @@ import {
   type InsertMeasurementSash,
   type MeasurementPhoto,
   type InsertMeasurementPhoto,
+  installerNotifications,
+  type InstallerNotification,
+  type InsertInstallerNotification,
 } from "@shared/schema";
 
 // Pagination types
@@ -328,6 +331,12 @@ export interface IStorage {
   getUnreadNotificationCount(userId: string): Promise<number>;
   markNotificationRead(id: string): Promise<Notification | undefined>;
   markAllNotificationsRead(userId: string): Promise<void>;
+
+  // Installer Notifications
+  createInstallerNotification(data: InsertInstallerNotification): Promise<InstallerNotification>;
+  getInstallerNotifications(installerId: string, limit?: number): Promise<InstallerNotification[]>;
+  getInstallerUnreadCount(installerId: string): Promise<number>;
+  markAllInstallerNotificationsRead(installerId: string): Promise<void>;
 
   // Installers
   getInstallers(userId: string): Promise<Installer[]>;
@@ -1471,6 +1480,66 @@ export class DatabaseStorage implements IStorage {
         )
       );
   }
+
+  // Installer Notifications
+  async createInstallerNotification(
+    data: InsertInstallerNotification
+  ): Promise<InstallerNotification> {
+    const [created] = await db
+      .insert(installerNotifications)
+      .values(data)
+      .returning();
+    return created;
+  }
+
+  async getInstallerNotifications(
+    installerId: string,
+    limit: number = 50
+  ): Promise<InstallerNotification[]> {
+    return db
+      .select()
+      .from(installerNotifications)
+      .where(
+        or(
+          eq(installerNotifications.installerId, installerId),
+          eq(installerNotifications.isBroadcast, true)
+        )
+      )
+      .orderBy(desc(installerNotifications.createdAt))
+      .limit(limit);
+  }
+
+  async getInstallerUnreadCount(installerId: string): Promise<number> {
+    const result = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(installerNotifications)
+      .where(
+        and(
+          or(
+            eq(installerNotifications.installerId, installerId),
+            eq(installerNotifications.isBroadcast, true)
+          ),
+          eq(installerNotifications.isRead, false)
+        )
+      );
+    return Number(result[0]?.count || 0);
+  }
+
+  async markAllInstallerNotificationsRead(installerId: string): Promise<void> {
+    await db
+      .update(installerNotifications)
+      .set({ isRead: true })
+      .where(
+        and(
+          or(
+            eq(installerNotifications.installerId, installerId),
+            eq(installerNotifications.isBroadcast, true)
+          ),
+          eq(installerNotifications.isRead, false)
+        )
+      );
+  }
+
   // Cutting layouts
   async getCuttingLayoutsByOrder(orderId: string): Promise<CuttingLayout[]> {
     return db

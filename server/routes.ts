@@ -4673,6 +4673,86 @@ ${dbContext}`,
     }
   );
 
+  // ===== INSTALLER NOTIFICATIONS (CRM admin sends to installers) =====
+
+  // Send notification to installers
+  app.post(
+    "/api/installer-notifications/send",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const { title, message, installerIds } = req.body;
+        if (!title || !message) {
+          return res
+            .status(400)
+            .json({ message: "Заголовок и текст обязательны" });
+        }
+
+        const userId = req.userId!;
+
+        if (!installerIds || installerIds === "all") {
+          // Broadcast to all installers
+          const allInstallers = await storage.getInstallers(userId);
+          for (const inst of allInstallers) {
+            if (!inst.isActive) continue;
+            await storage.createInstallerNotification({
+              installerId: inst.id,
+              userId,
+              title,
+              message,
+              isBroadcast: true,
+              isRead: false,
+            });
+          }
+          res.json({
+            success: true,
+            count: allInstallers.filter((i) => i.isActive).length,
+          });
+        } else {
+          // Send to specific installers
+          const ids = Array.isArray(installerIds)
+            ? installerIds
+            : [installerIds];
+          for (const installerId of ids) {
+            await storage.createInstallerNotification({
+              installerId,
+              userId,
+              title,
+              message,
+              isBroadcast: false,
+              isRead: false,
+            });
+          }
+          res.json({ success: true, count: ids.length });
+        }
+      } catch (error) {
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // Get sent installer notifications history
+  app.get(
+    "/api/installer-notifications",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const { installerNotifications } = await import("@shared/schema");
+        const { desc, eq } = await import("drizzle-orm");
+        const { db } = await import("./db");
+        const list = await db
+          .select()
+          .from(installerNotifications)
+          .where(eq(installerNotifications.userId, req.userId!))
+          .orderBy(desc(installerNotifications.createdAt))
+          .limit(100);
+        res.json(list);
+      } catch (error) {
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
   // ===== MOBILE API (installer auth via Bearer JWT) =====
 
   interface MobileAuthRequest extends Request {
@@ -5104,6 +5184,61 @@ ${dbContext}`,
           parseFloat(height)
         );
         res.json(result);
+      } catch (error) {
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // Mobile: Get notifications for installer
+  app.get(
+    "/api/mobile/notifications",
+    mobileAuthMiddleware,
+    async (req: MobileAuthRequest, res: Response) => {
+      try {
+        const list = await storage.getInstallerNotifications(
+          req.installerId!
+        );
+        res.json(
+          list.map((n) => ({
+            id: n.id,
+            title: n.title,
+            message: n.message,
+            is_read: n.isRead,
+            is_broadcast: n.isBroadcast,
+            created_at: n.createdAt,
+          }))
+        );
+      } catch (error) {
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // Mobile: Unread notification count
+  app.get(
+    "/api/mobile/notifications/unread-count",
+    mobileAuthMiddleware,
+    async (req: MobileAuthRequest, res: Response) => {
+      try {
+        const count = await storage.getInstallerUnreadCount(
+          req.installerId!
+        );
+        res.json({ count });
+      } catch (error) {
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // Mobile: Mark all notifications as read
+  app.patch(
+    "/api/mobile/notifications/read-all",
+    mobileAuthMiddleware,
+    async (req: MobileAuthRequest, res: Response) => {
+      try {
+        await storage.markAllInstallerNotificationsRead(req.installerId!);
+        res.json({ success: true });
       } catch (error) {
         res.status(500).json({ message: "Ошибка сервера" });
       }

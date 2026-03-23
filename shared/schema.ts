@@ -634,6 +634,46 @@ export const insertNotificationSchema = createInsertSchema(notifications).omit({
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type Notification = typeof notifications.$inferSelect;
 
+// Installer notifications — уведомления для монтажников от CRM
+export const installerNotifications = pgTable("installer_notifications", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  installerId: varchar("installer_id")
+    .references(() => installers.id),
+  userId: varchar("user_id")
+    .notNull()
+    .references(() => users.id),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  isBroadcast: boolean("is_broadcast").default(false),
+  isRead: boolean("is_read").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const installerNotificationsRelations = relations(
+  installerNotifications,
+  ({ one }) => ({
+    installer: one(installers, {
+      fields: [installerNotifications.installerId],
+      references: [installers.id],
+    }),
+    user: one(users, {
+      fields: [installerNotifications.userId],
+      references: [users.id],
+    }),
+  })
+);
+
+export const insertInstallerNotificationSchema = createInsertSchema(
+  installerNotifications
+).omit({ id: true });
+export type InsertInstallerNotification = z.infer<
+  typeof insertInstallerNotificationSchema
+>;
+export type InstallerNotification =
+  typeof installerNotifications.$inferSelect;
+
 // Cutting layouts (раскрой рулона)
 export const cuttingLayouts = pgTable("cutting_layouts", {
   id: varchar("id")
