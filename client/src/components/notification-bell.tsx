@@ -1,5 +1,6 @@
 import { Bell } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { parseMoscow } from "@/lib/date";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import {
@@ -38,7 +39,7 @@ function getEntityLink(entityType?: string, entityId?: string): string | null {
 }
 
 function formatTime(dateStr: string): string {
-  const date = new Date(dateStr);
+  const date = parseMoscow(dateStr);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMin = Math.floor(diffMs / 60000);

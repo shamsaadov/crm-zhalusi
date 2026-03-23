@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { parseMoscow } from "@/lib/date";
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import {
@@ -249,7 +250,7 @@ export default function AuditLogPage() {
                   {displayData.map((log) => (
                     <TableRow key={log.id}>
                       <TableCell className="text-xs">
-                        {new Date(log.createdAt).toLocaleString("ru-RU")}
+                        {parseMoscow(log.createdAt).toLocaleString("ru-RU")}
                       </TableCell>
                       <TableCell>
                         <span

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { parseMoscow } from "@/lib/date";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
@@ -162,7 +163,7 @@ export default function NotificationsPage() {
                     <p className="text-sm text-muted-foreground">{n.message}</p>
                     <div className="flex items-center gap-3 mt-2">
                       <span className="text-xs text-muted-foreground">
-                        {new Date(n.createdAt).toLocaleString("ru-RU")}
+                        {parseMoscow(n.createdAt).toLocaleString("ru-RU")}
                       </span>
                       {link && (
                         <Link

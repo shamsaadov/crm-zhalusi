@@ -31,6 +31,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { format } from "date-fns";
+import { parseMoscow } from "@/lib/date";
 import type { Measurement, MeasurementSash } from "@shared/schema";
 
 type MeasurementWithSashes = Measurement & {
@@ -129,7 +130,7 @@ export function InstallerMeasurementsTab({
             header: "Дата",
             cell: (m: MeasurementWithSashes) =>
               m.createdAt
-                ? format(new Date(m.createdAt), "dd.MM.yyyy HH:mm")
+                ? format(parseMoscow(m.createdAt), "dd.MM.yyyy HH:mm")
                 : "—",
           },
           {

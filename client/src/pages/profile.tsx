@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { parseMoscow } from "@/lib/date";
 import { Loader2, Check, Eye, EyeOff, CalendarDays, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -227,7 +228,7 @@ export default function ProfilePage() {
                 <p className="text-sm text-muted-foreground">Дата регистрации</p>
                 <p className="font-medium">
                   {profile?.createdAt 
-                    ? format(new Date(profile.createdAt), "d MMMM yyyy, HH:mm", { locale: ru })
+                    ? format(parseMoscow(profile.createdAt), "d MMMM yyyy, HH:mm", { locale: ru })
                     : "—"
                   }
                 </p>

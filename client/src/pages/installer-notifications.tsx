@@ -27,6 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Send, Loader2, Users, Clock } from "lucide-react";
+import { parseMoscow } from "@/lib/date";
 import type { Installer } from "@shared/schema";
 
 type InstallerSafe = Omit<Installer, "password">;
@@ -251,7 +252,7 @@ export default function InstallerNotificationsPage() {
                     </div>
                     <p className="text-sm text-muted-foreground">{n.message}</p>
                     <p className="text-xs text-muted-foreground">
-                      {new Date(n.createdAt).toLocaleString("ru-RU")}
+                      {parseMoscow(n.createdAt).toLocaleString("ru-RU")}
                     </p>
                   </div>
                 ))}
