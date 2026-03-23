@@ -155,7 +155,11 @@ const SelectTrigger = React.forwardRef<
         isSearchable={options.length > 6}
         menuPlacement="auto"
         menuShouldScrollIntoView={false}
-        styles={customStyles}
+        menuPortalTarget={document.body}
+        styles={{
+          ...customStyles,
+          menuPortal: (base) => ({ ...base, zIndex: 9999, pointerEvents: "auto" as const }),
+        }}
         noOptionsMessage={() => "Ничего не найдено"}
       />
     </div>

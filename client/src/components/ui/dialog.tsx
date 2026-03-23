@@ -42,9 +42,9 @@ const DialogContent = React.forwardRef<
         className
       )}
       onInteractOutside={(e) => {
-        // Prevent dialog from closing when clicking on portaled select menus
+        // Prevent dialog from closing when clicking on portaled react-select menus
         const target = e.target as HTMLElement;
-        if (target?.closest?.("[class*='menu']") || target?.closest?.("[id*='react-select']")) {
+        if (target?.closest?.("[class*='css-'][class*='-menu']") || target?.closest?.("[id*='react-select']") || target?.closest?.("[class*='MenuList']")) {
           e.preventDefault();
         }
       }}
