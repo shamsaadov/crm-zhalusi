@@ -36,6 +36,20 @@
       "when": 1741344000003,
       "tag": "0004_cutting_layouts",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1741344000004,
+      "tag": "0005_installers_measurements",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1741344000005,
+      "tag": "0006_installment_plans",
+      "breakpoints": true
     }
   ]
 }

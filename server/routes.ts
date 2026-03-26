@@ -21,6 +21,7 @@ import {
   orders,
   financeOperations,
   warehouseReceipts,
+  installmentPlans as installmentPlansTable,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, gte, lte, sql, sum, desc } from "drizzle-orm";
@@ -2501,6 +2502,216 @@ export async function registerRoutes(
         }
 
         await storage.hardDeleteFinanceOperation(req.params.id);
+        res.json({ success: true });
+      } catch (error) {
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // ===== INSTALLMENT PLANS =====
+
+  // Get installment plan for order
+  app.get(
+    "/api/orders/:id/installment",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const plan = await storage.getInstallmentPlanByOrderId(req.params.id);
+        res.json(plan);
+      } catch (error) {
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // Create installment plan for order
+  app.post(
+    "/api/orders/:id/installment",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const order = await storage.getOrder(req.params.id);
+        if (!order || order.userId !== req.userId) {
+          return res.status(404).json({ message: "Заказ не найден" });
+        }
+
+        const { downPayment = 0, months, paymentDay } = req.body;
+        const totalAmount = parseFloat(order.salePrice?.toString() || "0");
+        const dp = parseFloat(downPayment.toString());
+
+        if (dp < 0 || dp >= totalAmount) {
+          return res.status(400).json({ message: "Некорректный первый взнос" });
+        }
+        if (!months || months < 1 || months > 36) {
+          return res.status(400).json({ message: "Некорректное кол-во месяцев" });
+        }
+        if (!paymentDay || paymentDay < 1 || paymentDay > 28) {
+          return res.status(400).json({ message: "День оплаты от 1 до 28" });
+        }
+
+        // Deactivate existing plan if any
+        const existingPlan = await storage.getInstallmentPlanByOrderId(order.id);
+        if (existingPlan) {
+          await storage.deactivateInstallmentPlan(existingPlan.id);
+        }
+
+        const remaining = totalAmount - dp;
+        const monthlyRaw = Math.floor((remaining / months) * 100) / 100;
+
+        const plan = await storage.createInstallmentPlan({
+          orderId: order.id,
+          totalAmount: totalAmount.toString(),
+          downPayment: dp.toString(),
+          months,
+          paymentDay,
+          monthlyPayment: monthlyRaw.toString(),
+          userId: req.userId!,
+        });
+
+        // Generate payment schedule
+        const today = new Date();
+
+        // Down payment (payment #0) — due today
+        if (dp > 0) {
+          await storage.createInstallmentPayment({
+            planId: plan.id,
+            paymentNumber: 0,
+            dueDate: today.toISOString().split("T")[0],
+            amount: dp.toString(),
+            userId: req.userId!,
+          });
+        }
+
+        // Monthly payments
+        let startMonth = today.getMonth() + 1;
+        let startYear = today.getFullYear();
+        // If today's day is past paymentDay, start from next month
+        if (today.getDate() > paymentDay) {
+          startMonth++;
+        }
+
+        for (let i = 0; i < months; i++) {
+          let m = startMonth + i;
+          let y = startYear;
+          while (m > 12) {
+            m -= 12;
+            y++;
+          }
+          const dateStr = `${y}-${String(m).padStart(2, "0")}-${String(paymentDay).padStart(2, "0")}`;
+          const amount = i === months - 1 ? remaining - monthlyRaw * (months - 1) : monthlyRaw;
+
+          await storage.createInstallmentPayment({
+            planId: plan.id,
+            paymentNumber: i + 1,
+            dueDate: dateStr,
+            amount: amount.toFixed(2),
+            userId: req.userId!,
+          });
+        }
+
+        const result = await storage.getInstallmentPlanByOrderId(order.id);
+        res.json(result);
+      } catch (error) {
+        console.error("Installment create error:", error);
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // Mark installment payment as paid
+  app.post(
+    "/api/installment-payments/:id/pay",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const payment = await storage.getInstallmentPayment(req.params.id);
+        if (!payment || payment.userId !== req.userId) {
+          return res.status(404).json({ message: "Платёж не найден" });
+        }
+        if (payment.isPaid) {
+          return res.status(400).json({ message: "Уже оплачен" });
+        }
+
+        const { cashboxId } = req.body;
+        if (!cashboxId) {
+          return res.status(400).json({ message: "Выберите кассу" });
+        }
+
+        // Find the plan to get order info
+        const [planRow] = await db
+          .select()
+          .from(installmentPlansTable)
+          .where(eq(installmentPlansTable.id, payment.planId));
+        if (!planRow) {
+          return res.status(404).json({ message: "План не найден" });
+        }
+
+        const order = await storage.getOrder(planRow.orderId);
+
+        // Create finance operation (income)
+        const finOp = await storage.createFinanceOperation({
+          type: "income",
+          amount: payment.amount,
+          date: new Date().toISOString().split("T")[0],
+          cashboxId,
+          dealerId: order?.dealerId || null,
+          comment: `Рассрочка, платёж №${payment.paymentNumber} по заказу №${order?.orderNumber || "?"}`,
+          userId: req.userId!,
+        });
+
+        await storage.markInstallmentPaymentPaid(
+          payment.id,
+          finOp.id,
+          new Date().toISOString().split("T")[0]
+        );
+
+        res.json({ success: true });
+      } catch (error) {
+        console.error("Installment pay error:", error);
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // Unpay installment payment
+  app.post(
+    "/api/installment-payments/:id/unpay",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const payment = await storage.getInstallmentPayment(req.params.id);
+        if (!payment || payment.userId !== req.userId) {
+          return res.status(404).json({ message: "Платёж не найден" });
+        }
+        if (!payment.isPaid) {
+          return res.status(400).json({ message: "Платёж не оплачен" });
+        }
+
+        // Delete the linked finance operation
+        if (payment.financeOperationId) {
+          await storage.hardDeleteFinanceOperation(payment.financeOperationId);
+        }
+
+        await storage.markInstallmentPaymentUnpaid(payment.id);
+        res.json({ success: true });
+      } catch (error) {
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // Deactivate installment plan
+  app.delete(
+    "/api/orders/:id/installment",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const plan = await storage.getInstallmentPlanByOrderId(req.params.id);
+        if (!plan) {
+          return res.status(404).json({ message: "План не найден" });
+        }
+        await storage.deactivateInstallmentPlan(plan.id);
         res.json({ success: true });
       } catch (error) {
         res.status(500).json({ message: "Ошибка сервера" });

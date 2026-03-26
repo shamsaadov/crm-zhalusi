@@ -151,6 +151,27 @@ export async function generatePeriodicNotifications(): Promise<void> {
           }
         }
       }
+
+      // 3. Overdue installment payments
+      const overduePayments = await storage.getOverdueInstallmentPayments(user.id);
+      for (const payment of overduePayments) {
+        const isDuplicate = await hasDuplicateNotification(
+          user.id,
+          "overdue_payment",
+          payment.id
+        );
+        if (!isDuplicate) {
+          const order = await storage.getOrder(payment.plan.orderId);
+          await notify({
+            userId: user.id,
+            type: "overdue_payment",
+            title: "Просроченный платёж по рассрочке",
+            message: `Платёж №${payment.paymentNumber} по заказу №${order?.orderNumber || "?"} (${parseFloat(payment.amount).toLocaleString("ru-RU")} ₽) просрочен — срок был ${payment.dueDate}`,
+            entityType: "order",
+            entityId: payment.plan.orderId,
+          });
+        }
+      }
     }
   } catch (error) {
     console.error("Periodic notification generation error:", error);

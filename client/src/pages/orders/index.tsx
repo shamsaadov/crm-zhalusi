@@ -52,6 +52,7 @@ import { ViewOrderDialog } from "./view-order-dialog";
 import { DeleteOrderDialog } from "./delete-order-dialog";
 import { CostCalculationDialog } from "./cost-calculation-dialog";
 import { CuttingDialog } from "./cutting-dialog";
+import { InstallmentCalculatorDialog } from "./installment-calculator-dialog";
 import { OrderForm } from "./order-form";
 import { ProductForm } from "./product-form";
 import {
@@ -96,6 +97,7 @@ export default function OrdersPage() {
     new Set()
   );
   const [isManualSalePrice, setIsManualSalePrice] = useState(false);
+  const [installmentOrder, setInstallmentOrder] = useState<OrderWithRelations | null>(null);
   const [showProfit, setShowProfit] = useState(() => sessionStorage.getItem("forsa-show-profit") === "true");
   const [profitPasswordInput, setProfitPasswordInput] = useState("");
   const [profitUnlocking, setProfitUnlocking] = useState(false);
@@ -1077,6 +1079,7 @@ export default function OrdersPage() {
       setShowCuttingDialog(true);
     },
     onDelete: openDeleteDialog,
+    onInstallment: (order: OrderWithRelations) => setInstallmentOrder(order),
     onStatusChange: (id, status) => updateStatusMutation.mutate({ id, status }),
     showProfit,
   });
@@ -1179,6 +1182,7 @@ export default function OrdersPage() {
                 calculatingSashes={calculatingSashes}
                 isManualSalePrice={isManualSalePrice}
                 onManualSalePriceChange={setIsManualSalePrice}
+                onInstallment={editingOrder ? () => setInstallmentOrder(editingOrder) : undefined}
               />
             )}
           </DialogContent>
@@ -1326,6 +1330,19 @@ export default function OrdersPage() {
         orderId={cuttingOrderId}
         orderNumber={cuttingOrderNumber}
       />
+
+      {installmentOrder && (
+        <InstallmentCalculatorDialog
+          open={!!installmentOrder}
+          onOpenChange={(open) => { if (!open) setInstallmentOrder(null); }}
+          orderId={installmentOrder.id}
+          totalAmount={parseFloat(installmentOrder.salePrice?.toString() || "0")}
+          orderNumber={installmentOrder.orderNumber}
+          dealerName={installmentOrder.dealer?.fullName || ""}
+          orderDate={installmentOrder.date}
+          cashboxes={cashboxes}
+        />
+      )}
     </Layout>
   );
 }
