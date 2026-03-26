@@ -997,22 +997,28 @@ export async function registerRoutes(
         const dealerList = await storage.getDealers(req.userId!);
 
         // Precompute shipped debt per dealer (sum of salePrice for shipped orders)
+        // and non-shipped orders total to derive actual shipped debt from dealer balance
         const shippedDebtMap = new Map<string, number>();
+        const nonShippedMap = new Map<string, number>();
         const allOrders = await storage.getOrders(req.userId!, {});
         for (const o of allOrders) {
-          if (o.status === "Отгружен" && o.dealerId) {
-            const prev = shippedDebtMap.get(o.dealerId) || 0;
-            shippedDebtMap.set(o.dealerId, prev + parseFloat(o.salePrice?.toString() || "0"));
+          if (o.dealerId) {
+            const price = parseFloat(o.salePrice?.toString() || "0");
+            if (o.status === "Отгружен") {
+              shippedDebtMap.set(o.dealerId, (shippedDebtMap.get(o.dealerId) || 0) + price);
+            } else {
+              nonShippedMap.set(o.dealerId, (nonShippedMap.get(o.dealerId) || 0) + price);
+            }
           }
         }
-        // Subtract payments to get actual shipped debt
+        // Actual shipped debt = total debt (opening + all orders - payments) minus non-shipped orders
+        // dealer.balance = -(opening + allOrdersTotal - payments)
+        // so -(dealer.balance) = opening + allOrdersTotal - payments
+        // shippedDebt = -(dealer.balance) - nonShippedTotal = opening + shippedOrdersTotal - payments
         for (const dealer of dealerList) {
-          const shippedTotal = shippedDebtMap.get(dealer.id) || 0;
-          // Use the same payment logic as getDealers
-          const opening = parseFloat(dealer.openingBalance?.toString() || "0");
-          // dealer.balance is already computed as -(opening + allOrders - payments)
-          // shippedDebt = shippedTotal portion of the overall debt
-          shippedDebtMap.set(dealer.id, shippedTotal);
+          const nonShippedTotal = nonShippedMap.get(dealer.id) || 0;
+          const actualShippedDebt = -(dealer.balance) - nonShippedTotal;
+          shippedDebtMap.set(dealer.id, actualShippedDebt);
         }
 
         // Helper to determine order type based on sashes
