@@ -848,21 +848,19 @@ export async function printCustomerInvoice(
   const totalSashes = sashes.length || 1;
   const unitFallback = totalSashes > 0 ? totalAmountNum / totalSashes : 0;
 
-  type GroupedSashCustomer = {
+  type SashLineCustomer = {
     width: number | null;
     height: number | null;
     system: string;
     fabric: string;
     control: string;
-    quantity: number;
     unitPrice: number;
-    lineTotal: number;
     coefficient: number;
     room: number;
     roomName: string;
   };
 
-  const grouped = new Map<string, GroupedSashCustomer>();
+  const sashLines: SashLineCustomer[] = [];
 
   sashes.forEach((sash) => {
     const widthNum =
@@ -892,8 +890,6 @@ export async function printCustomerInvoice(
     const room = (sash as any).room || 1;
     const roomName = (sash as any).roomName || "";
 
-    const qtyRaw = parseFloat((sash as any).quantity || "NaN");
-    const quantity = !Number.isNaN(qtyRaw) && qtyRaw > 0 ? qtyRaw : 1;
     const unitPriceRaw = parseFloat((sash as any).sashPrice || "NaN");
     const unitPrice =
       !Number.isNaN(unitPriceRaw) && unitPriceRaw > 0
@@ -904,46 +900,28 @@ export async function printCustomerInvoice(
     const multiplierValue = getMultiplierValue(sash.systemId);
     const coefficient = multiplierValue > 0 ? unitPrice / multiplierValue : 0;
 
-    const key = [
-      widthNum ?? 0,
-      heightNum ?? 0,
-      systemText,
-      fabricText,
-      controlText,
-      unitPrice.toFixed(4),
+    sashLines.push({
+      width: widthNum,
+      height: heightNum,
+      system: systemText,
+      fabric: fabricText,
+      control: controlText,
+      unitPrice,
+      coefficient,
+      room,
       roomName,
-    ].join("|");
-
-    const existing = grouped.get(key);
-    if (existing) {
-      existing.quantity += quantity;
-      existing.lineTotal = existing.quantity * existing.unitPrice;
-    } else {
-      grouped.set(key, {
-        width: widthNum,
-        height: heightNum,
-        system: systemText,
-        fabric: fabricText,
-        control: controlText,
-        quantity,
-        unitPrice,
-        lineTotal: quantity * unitPrice,
-        coefficient,
-        room,
-        roomName,
-      });
-    }
+    });
   });
 
-  // Общий коэффициент (сумма коэфф × кол-во)
+  // Общий коэффициент
   let totalCoefficient = 0;
-  grouped.forEach((item) => {
-    totalCoefficient += item.coefficient * item.quantity;
+  sashLines.forEach((item) => {
+    totalCoefficient += item.coefficient;
   });
 
   // Группируем по комнатам (по roomName)
-  const customerRooms = new Map<string, { items: GroupedSashCustomer[] }>();
-  Array.from(grouped.values()).forEach((item) => {
+  const customerRooms = new Map<string, { items: SashLineCustomer[] }>();
+  sashLines.forEach((item) => {
     const key = item.roomName || "";
     const existing = customerRooms.get(key);
     if (existing) {
@@ -961,7 +939,7 @@ export async function printCustomerInvoice(
     .map(([rName, { items }]) => {
       const displayName = rName || "Без комнаты";
       const roomHeader = hasMultipleCustomerRooms
-        ? `<tr><td colspan="10" class="room-header">${displayName}</td></tr>`
+        ? `<tr><td colspan="8" class="room-header">${displayName}</td></tr>`
         : "";
       const itemRows = items.map((item) => {
         customerGlobalIndex++;
@@ -973,10 +951,8 @@ export async function printCustomerInvoice(
             <td class="left">${item.system}</td>
             <td class="left">${item.fabric}</td>
             <td class="center">${item.control}</td>
-            <td class="center">${item.quantity}</td>
             <td class="center">${item.coefficient > 0 ? item.coefficient.toFixed(2) : "—"}</td>
             <td class="center">${formatCurrency(item.unitPrice)}</td>
-            <td class="center">${formatCurrency(item.lineTotal)}</td>
           </tr>
         `;
       });
@@ -985,9 +961,9 @@ export async function printCustomerInvoice(
     .join("");
 
   const rows =
-    grouped.size > 0
+    sashLines.length > 0
       ? customerTableBody
-      : `<tr><td class="center">1</td><td colspan="9" class="left">Позиции заказа отсутствуют</td></tr>`;
+      : `<tr><td class="center">1</td><td colspan="7" class="left">Позиции заказа отсутствуют</td></tr>`;
 
   win.document.write(`
     <!DOCTYPE html>
@@ -1025,10 +1001,8 @@ export async function printCustomerInvoice(
               <th>Наименование</th>
               <th>ткань</th>
               <th style="width: 30px;">управление</th>
-              <th style="width: 30px;">Кол-во</th>
               <th style="width: 80px;">Коэфф.</th>
               <th style="width: 95px;">Цена</th>
-              <th style="width: 110px;">Сумма</th>
             </tr>
           </thead>
           <tbody>
