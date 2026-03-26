@@ -38,7 +38,6 @@ import {
   Wallet,
   Info,
   Home,
-  Calculator,
 } from "lucide-react";
 import { formatCurrency } from "@/components/status-badge";
 import {
@@ -76,7 +75,6 @@ interface OrderFormProps {
   calculatingSashes?: Set<number>;
   isManualSalePrice?: boolean;
   onManualSalePriceChange?: (isManual: boolean) => void;
-  onInstallment?: () => void;
 }
 
 export function OrderForm({
@@ -97,7 +95,6 @@ export function OrderForm({
   calculatingSashes,
   isManualSalePrice = false,
   onManualSalePriceChange,
-  onInstallment,
 }: OrderFormProps) {
   const { fields, append, remove } = fieldArray;
   const { rooms, addRoom, renameRoom, removeRoom, moveSash, bump } = useRoomGroups(form, fields);
@@ -641,17 +638,6 @@ export function OrderForm({
             <Info className="h-4 w-4" />
             Подробности заказа
           </Button>
-          {onInstallment && (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onInstallment}
-              className="gap-2"
-            >
-              <Calculator className="h-4 w-4" />
-              Рассрочка
-            </Button>
-          )}
           <Button type="submit" disabled={isPending}>
             {isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
             {isEditing ? "Сохранить" : "Создать"}

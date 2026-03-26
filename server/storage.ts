@@ -91,12 +91,6 @@ import {
   installerNotifications,
   type InstallerNotification,
   type InsertInstallerNotification,
-  installmentPlans,
-  installmentPayments,
-  type InstallmentPlan,
-  type InsertInstallmentPlan,
-  type InstallmentPayment,
-  type InsertInstallmentPayment,
 } from "@shared/schema";
 
 // Pagination types
@@ -1732,85 +1726,6 @@ export class DatabaseStorage implements IStorage {
     await db
       .delete(measurementPhotos)
       .where(eq(measurementPhotos.id, id));
-  }
-
-  // ─── Installment Plans ───
-
-  async createInstallmentPlan(data: InsertInstallmentPlan): Promise<InstallmentPlan> {
-    const [created] = await db.insert(installmentPlans).values(data).returning();
-    return created;
-  }
-
-  async createInstallmentPayment(data: InsertInstallmentPayment): Promise<InstallmentPayment> {
-    const [created] = await db.insert(installmentPayments).values(data).returning();
-    return created;
-  }
-
-  async getInstallmentPlanByOrderId(orderId: string): Promise<(InstallmentPlan & { payments: InstallmentPayment[] }) | null> {
-    const [plan] = await db
-      .select()
-      .from(installmentPlans)
-      .where(and(eq(installmentPlans.orderId, orderId), eq(installmentPlans.isActive, true)));
-
-    if (!plan) return null;
-
-    const payments = await db
-      .select()
-      .from(installmentPayments)
-      .where(eq(installmentPayments.planId, plan.id))
-      .orderBy(installmentPayments.paymentNumber);
-
-    return { ...plan, payments };
-  }
-
-  async getInstallmentPayment(id: string): Promise<InstallmentPayment | undefined> {
-    const [payment] = await db
-      .select()
-      .from(installmentPayments)
-      .where(eq(installmentPayments.id, id));
-    return payment;
-  }
-
-  async markInstallmentPaymentPaid(paymentId: string, financeOpId: string, paidAt: string): Promise<void> {
-    await db
-      .update(installmentPayments)
-      .set({ isPaid: true, paidAt, financeOperationId: financeOpId })
-      .where(eq(installmentPayments.id, paymentId));
-  }
-
-  async markInstallmentPaymentUnpaid(paymentId: string): Promise<void> {
-    await db
-      .update(installmentPayments)
-      .set({ isPaid: false, paidAt: null, financeOperationId: null })
-      .where(eq(installmentPayments.id, paymentId));
-  }
-
-  async deactivateInstallmentPlan(planId: string): Promise<void> {
-    await db
-      .update(installmentPlans)
-      .set({ isActive: false })
-      .where(eq(installmentPlans.id, planId));
-  }
-
-  async getOverdueInstallmentPayments(userId: string): Promise<(InstallmentPayment & { plan: InstallmentPlan })[]> {
-    const today = new Date().toISOString().split("T")[0];
-    const payments = await db
-      .select({
-        payment: installmentPayments,
-        plan: installmentPlans,
-      })
-      .from(installmentPayments)
-      .innerJoin(installmentPlans, eq(installmentPayments.planId, installmentPlans.id))
-      .where(
-        and(
-          eq(installmentPayments.userId, userId),
-          eq(installmentPayments.isPaid, false),
-          eq(installmentPlans.isActive, true),
-          lte(installmentPayments.dueDate, today)
-        )
-      );
-
-    return payments.map((r) => ({ ...r.payment, plan: r.plan }));
   }
 }
 

@@ -11,7 +11,7 @@ import {
   formatCurrency,
   BalanceBadge,
 } from "@/components/status-badge";
-import { ClipboardList, FileText, Trash2, Scissors, Calculator } from "lucide-react";
+import { ClipboardList, FileText, Trash2, Scissors } from "lucide-react";
 import { ORDER_STATUSES, type OrderStatus } from "@shared/schema";
 import { format } from "date-fns";
 import type { OrderWithRelations } from "./types";
@@ -21,7 +21,6 @@ interface ColumnActions {
   onCustomerPrint: (order: OrderWithRelations) => void | Promise<void>;
   onCutting: (order: OrderWithRelations) => void;
   onDelete: (order: OrderWithRelations) => void;
-  onInstallment: (order: OrderWithRelations) => void;
   onStatusChange: (id: string, status: string) => void;
   showProfit?: boolean;
 }
@@ -150,15 +149,6 @@ export function getOrderColumns(actions: ColumnActions) {
             data-testid={`button-customer-invoice-${order.id}`}
           >
             <FileText className="h-4 w-4" />
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            title="Рассрочка"
-            onClick={() => actions.onInstallment(order)}
-            data-testid={`button-installment-${order.id}`}
-          >
-            <Calculator className="h-4 w-4" />
           </Button>
           <Button
             size="icon"

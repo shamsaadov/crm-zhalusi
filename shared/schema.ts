@@ -313,7 +313,6 @@ export const ordersRelations = relations(orders, ({ one, many }) => ({
   user: one(users, { fields: [orders.userId], references: [users.id] }),
   dealer: one(dealers, { fields: [orders.dealerId], references: [dealers.id] }),
   sashes: many(orderSashes),
-  installmentPlans: many(installmentPlans),
 }));
 
 export const insertOrderSchema = createInsertSchema(orders).omit({ id: true });
@@ -897,65 +896,6 @@ export const registerSchema = z.object({
 
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
-
-// Installment Plans table
-export const installmentPlans = pgTable("installment_plans", {
-  id: varchar("id")
-    .primaryKey()
-    .default(sql`gen_random_uuid()`),
-  orderId: varchar("order_id")
-    .notNull()
-    .references(() => orders.id, { onDelete: "cascade" }),
-  totalAmount: decimal("total_amount", { precision: 12, scale: 2 }).notNull(),
-  downPayment: decimal("down_payment", { precision: 12, scale: 2 }).default("0"),
-  months: integer("months").notNull(),
-  paymentDay: integer("payment_day").notNull(),
-  monthlyPayment: decimal("monthly_payment", { precision: 12, scale: 2 }).notNull(),
-  isActive: boolean("is_active").default(true),
-  createdAt: timestamp("created_at").defaultNow(),
-  userId: varchar("user_id")
-    .notNull()
-    .references(() => users.id),
-});
-
-export const installmentPlansRelations = relations(installmentPlans, ({ one, many }) => ({
-  order: one(orders, { fields: [installmentPlans.orderId], references: [orders.id] }),
-  user: one(users, { fields: [installmentPlans.userId], references: [users.id] }),
-  payments: many(installmentPayments),
-}));
-
-export const insertInstallmentPlanSchema = createInsertSchema(installmentPlans).omit({ id: true });
-export type InsertInstallmentPlan = z.infer<typeof insertInstallmentPlanSchema>;
-export type InstallmentPlan = typeof installmentPlans.$inferSelect;
-
-// Installment Payments table
-export const installmentPayments = pgTable("installment_payments", {
-  id: varchar("id")
-    .primaryKey()
-    .default(sql`gen_random_uuid()`),
-  planId: varchar("plan_id")
-    .notNull()
-    .references(() => installmentPlans.id, { onDelete: "cascade" }),
-  paymentNumber: integer("payment_number").notNull(),
-  dueDate: date("due_date").notNull(),
-  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
-  isPaid: boolean("is_paid").default(false),
-  paidAt: date("paid_at"),
-  financeOperationId: varchar("finance_operation_id").references(() => financeOperations.id, { onDelete: "set null" }),
-  userId: varchar("user_id")
-    .notNull()
-    .references(() => users.id),
-});
-
-export const installmentPaymentsRelations = relations(installmentPayments, ({ one }) => ({
-  plan: one(installmentPlans, { fields: [installmentPayments.planId], references: [installmentPlans.id] }),
-  user: one(users, { fields: [installmentPayments.userId], references: [users.id] }),
-  financeOperation: one(financeOperations, { fields: [installmentPayments.financeOperationId], references: [financeOperations.id] }),
-}));
-
-export const insertInstallmentPaymentSchema = createInsertSchema(installmentPayments).omit({ id: true });
-export type InsertInstallmentPayment = z.infer<typeof insertInstallmentPaymentSchema>;
-export type InstallmentPayment = typeof installmentPayments.$inferSelect;
 
 // Order statuses
 export const ORDER_STATUSES = [
