@@ -418,18 +418,17 @@ export async function printInvoice(order: OrderWithRelations): Promise<void> {
   }
 
   // Заказы со створками — технологическая карта
-  type GroupedSash = {
+  type SashLine = {
     width: number | null;
     height: number | null;
     system: string;
     fabric: string;
     control: string;
-    quantity: number;
     room: number;
     roomName: string;
   };
 
-  const grouped = new Map<string, GroupedSash>();
+  const sashLines: SashLine[] = [];
 
   sashes.forEach((sash: any) => {
     const widthNum =
@@ -459,35 +458,20 @@ export async function printInvoice(order: OrderWithRelations): Promise<void> {
     const room = sash.room || 1;
     const roomName = sash.roomName || "";
 
-    const key = [
-      widthNum ?? 0,
-      heightNum ?? 0,
-      systemText,
-      fabricText,
-      controlText,
+    sashLines.push({
+      width: widthNum,
+      height: heightNum,
+      system: systemText,
+      fabric: fabricText,
+      control: controlText,
+      room,
       roomName,
-    ].join("|");
-
-    const existing = grouped.get(key);
-    if (existing) {
-      existing.quantity += 1;
-    } else {
-      grouped.set(key, {
-        width: widthNum,
-        height: heightNum,
-        system: systemText,
-        fabric: fabricText,
-        control: controlText,
-        quantity: 1,
-        room,
-        roomName,
-      });
-    }
+    });
   });
 
   // Группируем по комнатам (по roomName)
-  const rooms = new Map<string, { items: GroupedSash[] }>();
-  Array.from(grouped.values()).forEach((item) => {
+  const rooms = new Map<string, { items: SashLine[] }>();
+  sashLines.forEach((item) => {
     const key = item.roomName || "";
     const existing = rooms.get(key);
     if (existing) {
@@ -505,7 +489,7 @@ export async function printInvoice(order: OrderWithRelations): Promise<void> {
     .map(([roomName, { items }]) => {
       const displayName = roomName || "Без комнаты";
       const roomHeader = hasMultipleRooms
-        ? `<tr><td colspan="7" class="room-header">${displayName}</td></tr>`
+        ? `<tr><td colspan="6" class="room-header">${displayName}</td></tr>`
         : "";
       const itemRows = items.map((item) => {
         globalIndex++;
@@ -517,7 +501,6 @@ export async function printInvoice(order: OrderWithRelations): Promise<void> {
             <td class="left">${item.system}</td>
             <td class="left">${item.fabric}</td>
             <td class="center">${item.control}</td>
-            <td class="center">${item.quantity} шт.</td>
           </tr>
         `;
       });
@@ -526,9 +509,9 @@ export async function printInvoice(order: OrderWithRelations): Promise<void> {
     .join("");
 
   const rows =
-    grouped.size > 0
+    sashLines.length > 0
       ? tableBody
-      : `<tr><td class="center">1</td><td colspan="6" class="left">Позиции заказа отсутствуют</td></tr>`;
+      : `<tr><td class="center">1</td><td colspan="5" class="left">Позиции заказа отсутствуют</td></tr>`;
 
   win.document.write(`
     <!DOCTYPE html>
@@ -562,7 +545,6 @@ export async function printInvoice(order: OrderWithRelations): Promise<void> {
               <th>Система</th>
               <th>Ткань</th>
               <th style="width: 90px;">Управление</th>
-              <th style="width: 90px;">количество</th>
             </tr>
           </thead>
           <tbody>
