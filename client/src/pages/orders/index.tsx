@@ -539,39 +539,20 @@ export default function OrdersPage() {
 
       setEditingOrder(fullOrder);
 
-      // Группируем одинаковые створки и подсчитываем quantity (с учётом комнаты)
-      const groupedSashes = (fullOrder.sashes || []).reduce((acc, s) => {
-        const room = (s as any).room || 1;
-        const roomName = (s as any).roomName || "";
-        const key = `${s.width}_${s.height}_${s.systemId}_${s.controlSide}_${s.fabricId}_${s.sashPrice}_${s.sashCost}_${room}`;
-        const existing = acc.find((item) => item.key === key);
-
-        if (existing) {
-          existing.quantity++;
-        } else {
-          acc.push({
-            key,
-            quantity: 1,
-            width: s.width != null ? parseFloat(s.width.toString()).toString() : "",
-            height: s.height != null ? parseFloat(s.height.toString()).toString() : "",
-            systemId: s.systemId || "",
-            controlSide: s.controlSide || "",
-            fabricId: s.fabricId || "",
-            sashPrice: s.sashPrice?.toString() || "",
-            sashCost: s.sashCost?.toString() || "",
-            coefficient: "",
-            isCalculating: false,
-            room,
-            roomName,
-          });
-        }
-        return acc;
-      }, [] as Array<{ key: string; quantity: number; width: string; height: string; systemId: string; controlSide: string; fabricId: string; sashPrice: string; sashCost: string; coefficient: string; isCalculating: boolean; room: number; roomName: string }>);
-
-      const sashesData = groupedSashes.map(({ key, ...sash }) => ({
-        ...sash,
-        quantity: sash.quantity.toString(),
+      // Каждая створка — отдельная строка, без группировки
+      const sashesData = (fullOrder.sashes || []).map((s) => ({
+        width: s.width != null ? parseFloat(s.width.toString()).toString() : "",
+        height: s.height != null ? parseFloat(s.height.toString()).toString() : "",
+        systemId: s.systemId || "",
+        controlSide: s.controlSide || "",
+        fabricId: s.fabricId || "",
+        sashPrice: s.sashPrice?.toString() || "",
+        sashCost: s.sashCost?.toString() || "",
+        coefficient: "",
         isCalculating: false,
+        quantity: "1",
+        room: (s as any).room || 1,
+        roomName: (s as any).roomName || "",
       }));
 
       form.reset({
