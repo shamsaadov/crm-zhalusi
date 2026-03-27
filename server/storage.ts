@@ -91,6 +91,15 @@ import {
   installerNotifications,
   type InstallerNotification,
   type InsertInstallerNotification,
+  installmentPlans,
+  installmentPayments,
+  type InstallmentPlan,
+  type InsertInstallmentPlan,
+  type InstallmentPayment,
+  type InsertInstallmentPayment,
+  dealerNotifications,
+  type DealerNotification,
+  type InsertDealerNotification,
 } from "@shared/schema";
 
 // Pagination types
@@ -1726,6 +1735,211 @@ export class DatabaseStorage implements IStorage {
     await db
       .delete(measurementPhotos)
       .where(eq(measurementPhotos.id, id));
+  }
+
+  // ─── Installment Plans ───
+
+  async createInstallmentPlan(data: InsertInstallmentPlan): Promise<InstallmentPlan> {
+    const [created] = await db.insert(installmentPlans).values(data).returning();
+    return created;
+  }
+
+  async createInstallmentPayment(data: InsertInstallmentPayment): Promise<InstallmentPayment> {
+    const [created] = await db.insert(installmentPayments).values(data).returning();
+    return created;
+  }
+
+  async getInstallmentPlanByOrderId(orderId: string): Promise<(InstallmentPlan & { payments: InstallmentPayment[] }) | null> {
+    const [plan] = await db
+      .select()
+      .from(installmentPlans)
+      .where(and(eq(installmentPlans.orderId, orderId), eq(installmentPlans.isActive, true)));
+    if (!plan) return null;
+    const payments = await db
+      .select()
+      .from(installmentPayments)
+      .where(eq(installmentPayments.planId, plan.id))
+      .orderBy(installmentPayments.paymentNumber);
+    return { ...plan, payments };
+  }
+
+  async getInstallmentPayment(id: string): Promise<InstallmentPayment | undefined> {
+    const [payment] = await db
+      .select()
+      .from(installmentPayments)
+      .where(eq(installmentPayments.id, id));
+    return payment;
+  }
+
+  async markInstallmentPaymentPaid(paymentId: string, financeOpId: string, paidAt: string): Promise<void> {
+    await db
+      .update(installmentPayments)
+      .set({ isPaid: true, paidAt, financeOperationId: financeOpId })
+      .where(eq(installmentPayments.id, paymentId));
+  }
+
+  async markInstallmentPaymentUnpaid(paymentId: string): Promise<void> {
+    await db
+      .update(installmentPayments)
+      .set({ isPaid: false, paidAt: null, financeOperationId: null })
+      .where(eq(installmentPayments.id, paymentId));
+  }
+
+  async deactivateInstallmentPlan(planId: string): Promise<void> {
+    await db
+      .update(installmentPlans)
+      .set({ isActive: false })
+      .where(eq(installmentPlans.id, planId));
+  }
+
+  async getOverdueInstallmentPayments(userId: string): Promise<(InstallmentPayment & { plan: InstallmentPlan })[]> {
+    const today = new Date().toISOString().split("T")[0];
+    const rows = await db
+      .select({ payment: installmentPayments, plan: installmentPlans })
+      .from(installmentPayments)
+      .innerJoin(installmentPlans, eq(installmentPayments.planId, installmentPlans.id))
+      .where(
+        and(
+          eq(installmentPayments.userId, userId),
+          eq(installmentPayments.isPaid, false),
+          eq(installmentPlans.isActive, true),
+          lte(installmentPayments.dueDate, today)
+        )
+      );
+    return rows.map((r) => ({ ...r.payment, plan: r.plan }));
+  }
+
+  // ─── Dealer Mobile ───
+
+  async getDealerByLogin(login: string): Promise<Dealer | undefined> {
+    const [dealer] = await db
+      .select()
+      .from(dealers)
+      .where(eq(dealers.login, login));
+    return dealer;
+  }
+
+  async getDealerOrders(dealerId: string, filters?: { status?: string; from?: string; to?: string }): Promise<Order[]> {
+    const conditions = [eq(orders.dealerId, dealerId)];
+    if (filters?.status) conditions.push(eq(orders.status, filters.status));
+    if (filters?.from) conditions.push(gte(orders.date, filters.from));
+    if (filters?.to) conditions.push(lte(orders.date, filters.to));
+    return db
+      .select()
+      .from(orders)
+      .where(and(...conditions))
+      .orderBy(desc(orders.date));
+  }
+
+  async getDealerBalance(dealerId: string): Promise<{ balance: number; openingBalance: number; totalOrders: number; totalPayments: number }> {
+    const [dealer] = await db.select().from(dealers).where(eq(dealers.id, dealerId));
+    if (!dealer) return { balance: 0, openingBalance: 0, totalOrders: 0, totalPayments: 0 };
+
+    const [orderTotals] = await db
+      .select({ total: sum(orders.salePrice) })
+      .from(orders)
+      .where(eq(orders.dealerId, dealerId));
+
+    const [paymentTotals] = await db
+      .select({ total: sum(financeOperations.amount) })
+      .from(financeOperations)
+      .where(
+        and(
+          eq(financeOperations.dealerId, dealerId),
+          eq(financeOperations.type, "income"),
+          eq(financeOperations.isDraft, false)
+        )
+      );
+
+    const opening = parseFloat(dealer.openingBalance?.toString() || "0");
+    const totalOrd = parseFloat(orderTotals?.total?.toString() || "0");
+    const totalPay = parseFloat(paymentTotals?.total?.toString() || "0");
+    const balance = opening + totalOrd - totalPay;
+
+    return { balance, openingBalance: opening, totalOrders: totalOrd, totalPayments: totalPay };
+  }
+
+  async getDealerPayments(dealerId: string): Promise<FinanceOperation[]> {
+    return db
+      .select()
+      .from(financeOperations)
+      .where(
+        and(
+          eq(financeOperations.dealerId, dealerId),
+          eq(financeOperations.type, "income"),
+          eq(financeOperations.isDraft, false),
+          isNull(financeOperations.deletedAt)
+        )
+      )
+      .orderBy(desc(financeOperations.date));
+  }
+
+  async getDealerInstallmentPlans(dealerId: string): Promise<(InstallmentPlan & { payments: InstallmentPayment[]; order: Order })[]> {
+    const dealerOrders = await db
+      .select({ id: orders.id })
+      .from(orders)
+      .where(eq(orders.dealerId, dealerId));
+
+    const orderIds = dealerOrders.map((o) => o.id);
+    if (orderIds.length === 0) return [];
+
+    const plans = await db
+      .select()
+      .from(installmentPlans)
+      .where(and(eq(installmentPlans.isActive, true), sql`${installmentPlans.orderId} = ANY(${orderIds})`));
+
+    const result = [];
+    for (const plan of plans) {
+      const payments = await db
+        .select()
+        .from(installmentPayments)
+        .where(eq(installmentPayments.planId, plan.id))
+        .orderBy(installmentPayments.paymentNumber);
+      const [order] = await db.select().from(orders).where(eq(orders.id, plan.orderId));
+      result.push({ ...plan, payments, order });
+    }
+    return result;
+  }
+
+  // ─── Dealer Notifications ───
+
+  async createDealerNotification(data: InsertDealerNotification): Promise<DealerNotification> {
+    const [created] = await db.insert(dealerNotifications).values(data).returning();
+    return created;
+  }
+
+  async getDealerNotifications(dealerId: string, limit = 50): Promise<DealerNotification[]> {
+    return db
+      .select()
+      .from(dealerNotifications)
+      .where(eq(dealerNotifications.dealerId, dealerId))
+      .orderBy(desc(dealerNotifications.createdAt))
+      .limit(limit);
+  }
+
+  async getDealerUnreadCount(dealerId: string): Promise<number> {
+    const [result] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(dealerNotifications)
+      .where(
+        and(
+          eq(dealerNotifications.dealerId, dealerId),
+          eq(dealerNotifications.isRead, false)
+        )
+      );
+    return Number(result?.count || 0);
+  }
+
+  async markAllDealerNotificationsRead(dealerId: string): Promise<void> {
+    await db
+      .update(dealerNotifications)
+      .set({ isRead: true })
+      .where(
+        and(
+          eq(dealerNotifications.dealerId, dealerId),
+          eq(dealerNotifications.isRead, false)
+        )
+      );
   }
 }
 

@@ -18,6 +18,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -53,9 +54,11 @@ export function DealersTab({ search }: { search: string }) {
         city: z.string().optional(),
         phone: z.string().optional(),
         openingBalance: z.string().optional(),
+        login: z.string().optional(),
+        password: z.string().optional(),
       })
     ),
-    defaultValues: { fullName: "", city: "", phone: "", openingBalance: "0" },
+    defaultValues: { fullName: "", city: "", phone: "", openingBalance: "0", login: "", password: "" },
   });
 
   const createMutation = useMutation({
@@ -130,6 +133,8 @@ export function DealersTab({ search }: { search: string }) {
       city: item.city || "",
       phone: item.phone || "",
       openingBalance: item.openingBalance?.toString() || "0",
+      login: (item as any).login || "",
+      password: "",
     });
     setIsDialogOpen(true);
   };
@@ -220,6 +225,34 @@ export function DealersTab({ search }: { search: string }) {
                           {...field}
                           data-testid="input-dealer-balance"
                         />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <Separator className="my-2" />
+                <p className="text-xs text-muted-foreground">Доступ в мобильное приложение</p>
+                <FormField
+                  control={form.control}
+                  name="login"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Логин</FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="Логин для входа в приложение" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{editing ? "Новый пароль" : "Пароль"}</FormLabel>
+                      <FormControl>
+                        <Input {...field} type="password" placeholder={editing ? "Оставьте пустым чтобы не менять" : "Пароль"} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

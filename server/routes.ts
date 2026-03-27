@@ -21,6 +21,7 @@ import {
   orders,
   financeOperations,
   warehouseReceipts,
+  installmentPlans as installmentPlansTable,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, gte, lte, sql, sum, desc } from "drizzle-orm";
@@ -311,10 +312,13 @@ export async function registerRoutes(
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
-        const dealer = await storage.createDealer({
-          ...req.body,
-          userId: req.userId,
-        });
+        const data = { ...req.body, userId: req.userId };
+        if (data.password) {
+          data.password = await bcrypt.hash(data.password, 10);
+        } else {
+          delete data.password;
+        }
+        const dealer = await storage.createDealer(data);
         res.json(dealer);
       } catch (error) {
         res.status(500).json({ message: "Ошибка сервера" });
@@ -327,7 +331,13 @@ export async function registerRoutes(
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
-        const dealer = await storage.updateDealer(req.params.id, req.body);
+        const data = { ...req.body };
+        if (data.password) {
+          data.password = await bcrypt.hash(data.password, 10);
+        } else {
+          delete data.password;
+        }
+        const dealer = await storage.updateDealer(req.params.id, data);
         res.json(dealer);
       } catch (error) {
         res.status(500).json({ message: "Ошибка сервера" });
@@ -2501,6 +2511,139 @@ export async function registerRoutes(
         }
 
         await storage.hardDeleteFinanceOperation(req.params.id);
+        res.json({ success: true });
+      } catch (error) {
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // ===== INSTALLMENT PLANS =====
+
+  app.get(
+    "/api/orders/:id/installment",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const plan = await storage.getInstallmentPlanByOrderId(req.params.id);
+        res.json(plan);
+      } catch (error) {
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  app.post(
+    "/api/orders/:id/installment",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const order = await storage.getOrder(req.params.id);
+        if (!order || order.userId !== req.userId) {
+          return res.status(404).json({ message: "Заказ не найден" });
+        }
+        const { downPayment = 0, months, paymentDay } = req.body;
+        const totalAmount = parseFloat(order.salePrice?.toString() || "0");
+        const dp = parseFloat(downPayment.toString());
+        if (dp < 0 || dp >= totalAmount) return res.status(400).json({ message: "Некорректный первый взнос" });
+        if (!months || months < 1 || months > 36) return res.status(400).json({ message: "Некорректное кол-во месяцев" });
+        if (!paymentDay || paymentDay < 1 || paymentDay > 28) return res.status(400).json({ message: "День оплаты от 1 до 28" });
+
+        const existingPlan = await storage.getInstallmentPlanByOrderId(order.id);
+        if (existingPlan) await storage.deactivateInstallmentPlan(existingPlan.id);
+
+        const remaining = totalAmount - dp;
+        const monthlyRaw = Math.floor((remaining / months) * 100) / 100;
+        const plan = await storage.createInstallmentPlan({
+          orderId: order.id, totalAmount: totalAmount.toString(), downPayment: dp.toString(),
+          months, paymentDay, monthlyPayment: monthlyRaw.toString(), userId: req.userId!,
+        });
+
+        const today = new Date();
+        if (dp > 0) {
+          await storage.createInstallmentPayment({
+            planId: plan.id, paymentNumber: 0, dueDate: today.toISOString().split("T")[0],
+            amount: dp.toString(), userId: req.userId!,
+          });
+        }
+        let startMonth = today.getMonth() + 1;
+        let startYear = today.getFullYear();
+        if (today.getDate() > paymentDay) startMonth++;
+        for (let i = 0; i < months; i++) {
+          let m = startMonth + i, y = startYear;
+          while (m > 12) { m -= 12; y++; }
+          const amount = i === months - 1 ? remaining - monthlyRaw * (months - 1) : monthlyRaw;
+          await storage.createInstallmentPayment({
+            planId: plan.id, paymentNumber: i + 1,
+            dueDate: `${y}-${String(m).padStart(2, "0")}-${String(paymentDay).padStart(2, "0")}`,
+            amount: amount.toFixed(2), userId: req.userId!,
+          });
+        }
+        const result = await storage.getInstallmentPlanByOrderId(order.id);
+        res.json(result);
+      } catch (error) {
+        console.error("Installment create error:", error);
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  app.post(
+    "/api/installment-payments/:id/pay",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const payment = await storage.getInstallmentPayment(req.params.id);
+        if (!payment || payment.userId !== req.userId) return res.status(404).json({ message: "Платёж не найден" });
+        if (payment.isPaid) return res.status(400).json({ message: "Уже оплачен" });
+        const { cashboxId } = req.body;
+        if (!cashboxId) return res.status(400).json({ message: "Выберите кассу" });
+
+        const [planRow] = await db.select().from(installmentPlansTable).where(eq(installmentPlansTable.id, payment.planId));
+        if (!planRow) return res.status(404).json({ message: "План не найден" });
+        const order = await storage.getOrder(planRow.orderId);
+
+        const finOp = await storage.createFinanceOperation({
+          type: "income", amount: payment.amount,
+          date: new Date().toISOString().split("T")[0], cashboxId,
+          dealerId: order?.dealerId || null,
+          comment: `Рассрочка, платёж №${payment.paymentNumber} по заказу №${order?.orderNumber || "?"}`,
+          userId: req.userId!,
+        });
+        await storage.markInstallmentPaymentPaid(payment.id, finOp.id, new Date().toISOString().split("T")[0]);
+        res.json({ success: true });
+      } catch (error) {
+        console.error("Installment pay error:", error);
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  app.post(
+    "/api/installment-payments/:id/unpay",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const payment = await storage.getInstallmentPayment(req.params.id);
+        if (!payment || payment.userId !== req.userId) return res.status(404).json({ message: "Платёж не найден" });
+        if (!payment.isPaid) return res.status(400).json({ message: "Платёж не оплачен" });
+        if (payment.financeOperationId) await storage.hardDeleteFinanceOperation(payment.financeOperationId);
+        await storage.markInstallmentPaymentUnpaid(payment.id);
+        res.json({ success: true });
+      } catch (error) {
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  app.delete(
+    "/api/orders/:id/installment",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const plan = await storage.getInstallmentPlanByOrderId(req.params.id);
+        if (!plan) return res.status(404).json({ message: "План не найден" });
+        await storage.deactivateInstallmentPlan(plan.id);
         res.json({ success: true });
       } catch (error) {
         res.status(500).json({ message: "Ошибка сервера" });
@@ -5244,6 +5387,259 @@ ${dbContext}`,
     async (req: MobileAuthRequest, res: Response) => {
       try {
         await storage.markAllInstallerNotificationsRead(req.installerId!);
+        res.json({ success: true });
+      } catch (error) {
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // ===== DEALER MOBILE API =====
+
+  interface DealerMobileAuthRequest extends Request {
+    dealerId?: string;
+  }
+
+  function dealerMobileAuthMiddleware(
+    req: DealerMobileAuthRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ message: "Не авторизован" });
+    }
+    const token = authHeader.slice(7);
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as { dealerId: string; role: string };
+      if (decoded.role !== "dealer") {
+        return res.status(401).json({ message: "Неверный токен" });
+      }
+      req.dealerId = decoded.dealerId;
+      next();
+    } catch {
+      return res.status(401).json({ message: "Неверный токен" });
+    }
+  }
+
+  // Dealer: Login
+  app.post(
+    "/api/mobile/dealer/auth/login",
+    async (req: Request, res: Response) => {
+      try {
+        const { login, password } = req.body;
+        if (!login || !password) {
+          return res.status(400).json({ message: "Логин и пароль обязательны" });
+        }
+        const dealer = await storage.getDealerByLogin(login);
+        if (!dealer || !dealer.isActive || !dealer.password) {
+          return res.status(401).json({ message: "Неверный логин или пароль" });
+        }
+        const valid = await bcrypt.compare(password, dealer.password);
+        if (!valid) {
+          return res.status(401).json({ message: "Неверный логин или пароль" });
+        }
+        const token = jwt.sign(
+          { dealerId: dealer.id, role: "dealer" },
+          JWT_SECRET,
+          { expiresIn: "30d" }
+        );
+        const { password: _, ...safe } = dealer;
+        res.json({ token, dealer: safe });
+      } catch (error) {
+        console.error("Dealer mobile login error:", error);
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // Dealer: Profile
+  app.get(
+    "/api/mobile/dealer/auth/me",
+    dealerMobileAuthMiddleware,
+    async (req: DealerMobileAuthRequest, res: Response) => {
+      try {
+        const dealer = await storage.getDealer(req.dealerId!);
+        if (!dealer || !dealer.isActive) {
+          return res.status(401).json({ message: "Аккаунт не найден" });
+        }
+        const { password: _, ...safe } = dealer;
+        res.json(safe);
+      } catch (error) {
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // Dealer: Orders list
+  app.get(
+    "/api/mobile/dealer/orders",
+    dealerMobileAuthMiddleware,
+    async (req: DealerMobileAuthRequest, res: Response) => {
+      try {
+        const status = typeof req.query.status === "string" ? req.query.status : undefined;
+        const from = typeof req.query.from === "string" ? req.query.from : undefined;
+        const to = typeof req.query.to === "string" ? req.query.to : undefined;
+        const orderList = await storage.getDealerOrders(req.dealerId!, { status, from, to });
+        res.json(orderList);
+      } catch (error) {
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // Dealer: Order detail
+  app.get(
+    "/api/mobile/dealer/orders/:id",
+    dealerMobileAuthMiddleware,
+    async (req: DealerMobileAuthRequest, res: Response) => {
+      try {
+        const order = await storage.getOrder(req.params.id);
+        if (!order || order.dealerId !== req.dealerId) {
+          return res.status(404).json({ message: "Заказ не найден" });
+        }
+        const sashes = await storage.getOrderSashes(order.id);
+        res.json({ ...order, sashes });
+      } catch (error) {
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // Dealer: Balance
+  app.get(
+    "/api/mobile/dealer/balance",
+    dealerMobileAuthMiddleware,
+    async (req: DealerMobileAuthRequest, res: Response) => {
+      try {
+        const balance = await storage.getDealerBalance(req.dealerId!);
+        res.json(balance);
+      } catch (error) {
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // Dealer: Payments history
+  app.get(
+    "/api/mobile/dealer/payments",
+    dealerMobileAuthMiddleware,
+    async (req: DealerMobileAuthRequest, res: Response) => {
+      try {
+        const payments = await storage.getDealerPayments(req.dealerId!);
+        res.json(payments);
+      } catch (error) {
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // Dealer: Installment plans
+  app.get(
+    "/api/mobile/dealer/installments",
+    dealerMobileAuthMiddleware,
+    async (req: DealerMobileAuthRequest, res: Response) => {
+      try {
+        const plans = await storage.getDealerInstallmentPlans(req.dealerId!);
+        res.json(plans);
+      } catch (error) {
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // Dealer: Installment plan detail
+  app.get(
+    "/api/mobile/dealer/installments/:planId",
+    dealerMobileAuthMiddleware,
+    async (req: DealerMobileAuthRequest, res: Response) => {
+      try {
+        const [plan] = await db
+          .select()
+          .from(installmentPlansTable)
+          .where(eq(installmentPlansTable.id, req.params.planId));
+        if (!plan) return res.status(404).json({ message: "План не найден" });
+        // Verify dealer owns the order
+        const order = await storage.getOrder(plan.orderId);
+        if (!order || order.dealerId !== req.dealerId) {
+          return res.status(404).json({ message: "План не найден" });
+        }
+        const fullPlan = await storage.getInstallmentPlanByOrderId(plan.orderId);
+        res.json(fullPlan);
+      } catch (error) {
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // Dealer: Stats
+  app.get(
+    "/api/mobile/dealer/stats",
+    dealerMobileAuthMiddleware,
+    async (req: DealerMobileAuthRequest, res: Response) => {
+      try {
+        const balance = await storage.getDealerBalance(req.dealerId!);
+        const allOrders = await storage.getDealerOrders(req.dealerId!);
+        const statusCounts: Record<string, number> = {};
+        for (const o of allOrders) {
+          const st = o.status || "Новый";
+          statusCounts[st] = (statusCounts[st] || 0) + 1;
+        }
+        const plans = await storage.getDealerInstallmentPlans(req.dealerId!);
+        let overdueCount = 0;
+        const today = new Date().toISOString().split("T")[0];
+        for (const p of plans) {
+          for (const pay of p.payments) {
+            if (!pay.isPaid && pay.dueDate < today) overdueCount++;
+          }
+        }
+        res.json({
+          balance: balance.balance,
+          totalOrders: allOrders.length,
+          ordersByStatus: statusCounts,
+          overdueInstallments: overdueCount,
+        });
+      } catch (error) {
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // Dealer: Notifications
+  app.get(
+    "/api/mobile/dealer/notifications",
+    dealerMobileAuthMiddleware,
+    async (req: DealerMobileAuthRequest, res: Response) => {
+      try {
+        const notifs = await storage.getDealerNotifications(req.dealerId!);
+        res.json(notifs);
+      } catch (error) {
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // Dealer: Unread count
+  app.get(
+    "/api/mobile/dealer/notifications/unread-count",
+    dealerMobileAuthMiddleware,
+    async (req: DealerMobileAuthRequest, res: Response) => {
+      try {
+        const count = await storage.getDealerUnreadCount(req.dealerId!);
+        res.json({ count });
+      } catch (error) {
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // Dealer: Mark all read
+  app.patch(
+    "/api/mobile/dealer/notifications/read-all",
+    dealerMobileAuthMiddleware,
+    async (req: DealerMobileAuthRequest, res: Response) => {
+      try {
+        await storage.markAllDealerNotificationsRead(req.dealerId!);
         res.json({ success: true });
       } catch (error) {
         res.status(500).json({ message: "Ошибка сервера" });
