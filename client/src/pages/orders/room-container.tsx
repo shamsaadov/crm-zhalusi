@@ -74,7 +74,7 @@ export function RoomContainer({
         </button>
         <Home className="h-3.5 w-3.5 text-muted-foreground" />
 
-        {editing && !isDefault ? (
+        {editing ? (
           <form
             className="flex items-center gap-1"
             onSubmit={(e) => {
@@ -103,10 +103,8 @@ export function RoomContainer({
           <span
             className="text-sm font-medium cursor-default"
             onDoubleClick={() => {
-              if (!isDefault) {
-                setEditName(roomName);
-                setEditing(true);
-              }
+              setEditName(displayName);
+              setEditing(true);
             }}
           >
             {displayName}
@@ -119,24 +117,26 @@ export function RoomContainer({
 
         <div className="flex-1" />
 
-        {!isDefault && !editing && (
+        {!editing && (
           <>
             <button
               type="button"
-              onClick={() => { setEditName(roomName); setEditing(true); }}
+              onClick={() => { setEditName(displayName); setEditing(true); }}
               className="text-muted-foreground hover:text-foreground"
               title="Переименовать"
             >
               <Pencil className="h-3 w-3" />
             </button>
-            <button
-              type="button"
-              onClick={onDeleteRoom}
-              className="text-muted-foreground hover:text-red-500"
-              title="Удалить комнату (створки переместятся в Общее)"
-            >
-              <Trash2 className="h-3 w-3" />
-            </button>
+            {!isDefault && (
+              <button
+                type="button"
+                onClick={onDeleteRoom}
+                className="text-muted-foreground hover:text-red-500"
+                title="Удалить комнату (створки переместятся в Общее)"
+              >
+                <Trash2 className="h-3 w-3" />
+              </button>
+            )}
           </>
         )}
       </div>

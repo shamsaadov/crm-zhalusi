@@ -85,9 +85,13 @@ export function useRoomGroups(
           });
         }
       });
-      setCreatedRooms((prev) =>
-        prev.map((n) => (n === oldName ? trimmed : n))
-      );
+      setCreatedRooms((prev) => {
+        // Если переименовываем дефолтную комнату (oldName=""), добавляем новое имя
+        if (!oldName || !prev.includes(oldName)) {
+          return prev.includes(trimmed) ? prev : [...prev, trimmed];
+        }
+        return prev.map((n) => (n === oldName ? trimmed : n));
+      });
       bump();
     },
     [form]
