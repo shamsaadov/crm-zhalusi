@@ -760,11 +760,13 @@ export const installers = pgTable("installers", {
   userId: varchar("user_id")
     .notNull()
     .references(() => users.id),
+  dealerId: varchar("dealer_id").references(() => dealers.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const installersRelations = relations(installers, ({ one, many }) => ({
   user: one(users, { fields: [installers.userId], references: [users.id] }),
+  dealer: one(dealers, { fields: [installers.dealerId], references: [dealers.id] }),
   measurements: many(measurements),
 }));
 

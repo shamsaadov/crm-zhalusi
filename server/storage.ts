@@ -351,6 +351,7 @@ export interface IStorage {
   getInstallers(userId: string): Promise<Installer[]>;
   getInstaller(id: string): Promise<Installer | undefined>;
   getInstallerByLogin(login: string): Promise<Installer | undefined>;
+  getInstallerByDealerId(dealerId: string): Promise<Installer | undefined>;
   createInstaller(installer: InsertInstaller): Promise<Installer>;
   updateInstaller(
     id: string,
@@ -1613,6 +1614,14 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(installers)
       .where(eq(installers.login, login));
+    return installer || undefined;
+  }
+
+  async getInstallerByDealerId(dealerId: string): Promise<Installer | undefined> {
+    const [installer] = await db
+      .select()
+      .from(installers)
+      .where(eq(installers.dealerId, dealerId));
     return installer || undefined;
   }
 

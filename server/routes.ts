@@ -4925,7 +4925,7 @@ ${dbContext}`,
     installerId?: string;
   }
 
-  function mobileAuthMiddleware(
+  async function mobileAuthMiddleware(
     req: MobileAuthRequest,
     res: Response,
     next: NextFunction
@@ -4936,11 +4936,38 @@ ${dbContext}`,
     }
     const token = authHeader.slice(7);
     try {
-      const decoded = jwt.verify(token, JWT_SECRET) as {
-        installerId: string;
-      };
-      req.installerId = decoded.installerId;
-      next();
+      const decoded = jwt.verify(token, JWT_SECRET) as Record<string, any>;
+
+      // Standard installer token
+      if (decoded.installerId) {
+        req.installerId = decoded.installerId;
+        return next();
+      }
+
+      // Dealer token — find or create linked installer
+      if (decoded.dealerId && decoded.role === "dealer") {
+        let installer = await storage.getInstallerByDealerId(decoded.dealerId);
+        if (!installer) {
+          const dealer = await storage.getDealer(decoded.dealerId);
+          if (dealer) {
+            installer = await storage.createInstaller({
+              name: dealer.fullName,
+              phone: dealer.phone || "",
+              login: `d_${dealer.login || decoded.dealerId}`,
+              password: dealer.password || "",
+              userId: dealer.userId,
+              dealerId: decoded.dealerId,
+              isActive: true,
+            });
+          }
+        }
+        if (installer) {
+          req.installerId = installer.id;
+          return next();
+        }
+      }
+
+      return res.status(401).json({ message: "Неверный токен" });
     } catch {
       return res.status(401).json({ message: "Неверный токен" });
     }
