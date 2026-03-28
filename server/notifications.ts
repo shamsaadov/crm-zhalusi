@@ -1,6 +1,6 @@
 import { storage } from "./storage";
 import { db } from "./db";
-import { notifications, orders, users } from "@shared/schema";
+import { notifications, orders, users, dealerNotifications, dealers } from "@shared/schema";
 import { eq, and, gte, sql } from "drizzle-orm";
 
 export async function notify(params: {
@@ -40,6 +40,46 @@ async function hasDuplicateNotification(
         eq(notifications.type, type),
         eq(notifications.entityId, entityId),
         gte(notifications.createdAt, oneDayAgo)
+      )
+    );
+  return Number(result[0]?.count || 0) > 0;
+}
+
+export async function notifyDealer(params: {
+  dealerId: string;
+  userId: string;
+  title: string;
+  message: string;
+  entityType?: string;
+  entityId?: string;
+}): Promise<void> {
+  try {
+    await storage.createDealerNotification({
+      dealerId: params.dealerId,
+      userId: params.userId,
+      title: params.title,
+      message: params.message,
+      entityType: params.entityType || null,
+      entityId: params.entityId || null,
+    });
+  } catch (error) {
+    console.error("Dealer notification error:", error);
+  }
+}
+
+async function hasDuplicateDealerNotification(
+  dealerId: string,
+  entityId: string
+): Promise<boolean> {
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const result = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(dealerNotifications)
+    .where(
+      and(
+        eq(dealerNotifications.dealerId, dealerId),
+        eq(dealerNotifications.entityId, entityId),
+        gte(dealerNotifications.createdAt, oneDayAgo)
       )
     );
   return Number(result[0]?.count || 0) > 0;
@@ -168,6 +208,61 @@ export async function generatePeriodicNotifications(): Promise<void> {
           });
         }
       }
+    }
+
+    // Dealer notifications: installment payment reminders
+    try {
+      const allDealers = await db.select().from(dealers).where(eq(dealers.isActive, true));
+      const today = new Date();
+      const todayStr = today.toISOString().split("T")[0];
+      const threeDaysLater = new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+
+      for (const dealer of allDealers) {
+        try {
+          const plans = await storage.getDealerInstallmentPlans(dealer.id);
+          for (const plan of plans) {
+            const order = plan.order;
+            for (const payment of plan.payments) {
+              if (payment.isPaid) continue;
+
+              // Overdue payment
+              if (payment.dueDate < todayStr) {
+                const isDup = await hasDuplicateDealerNotification(dealer.id, payment.id);
+                if (!isDup) {
+                  await notifyDealer({
+                    dealerId: dealer.id,
+                    userId: dealer.userId,
+                    title: "Просроченный платёж",
+                    message: `Платёж №${payment.paymentNumber} по заказу №${order?.orderNumber || "?"} (${parseFloat(payment.amount).toLocaleString("ru-RU")} ₽) просрочен — срок был ${payment.dueDate}`,
+                    entityType: "installment",
+                    entityId: plan.id,
+                  });
+                }
+              }
+              // Upcoming payment (within 3 days)
+              else if (payment.dueDate <= threeDaysLater && payment.dueDate >= todayStr) {
+                const isDup = await hasDuplicateDealerNotification(dealer.id, payment.id);
+                if (!isDup) {
+                  const daysLeft = Math.ceil((new Date(payment.dueDate).getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+                  const dayWord = daysLeft === 0 ? "сегодня" : daysLeft === 1 ? "завтра" : `через ${daysLeft} дн.`;
+                  await notifyDealer({
+                    dealerId: dealer.id,
+                    userId: dealer.userId,
+                    title: "Предстоящий платёж",
+                    message: `Платёж №${payment.paymentNumber} по заказу №${order?.orderNumber || "?"} (${parseFloat(payment.amount).toLocaleString("ru-RU")} ₽) — ${dayWord}`,
+                    entityType: "installment",
+                    entityId: plan.id,
+                  });
+                }
+              }
+            }
+          }
+        } catch (dealerErr) {
+          console.error(`Dealer notification error for ${dealer.id}:`, dealerErr);
+        }
+      }
+    } catch (dealerNotifErr) {
+      console.error("Dealer periodic notification error:", dealerNotifErr);
     }
   } catch (error) {
     console.error("Periodic notification generation error:", error);

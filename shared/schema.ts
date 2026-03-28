@@ -974,6 +974,8 @@ export const dealerNotifications = pgTable("dealer_notifications", {
   message: text("message").notNull(),
   isBroadcast: boolean("is_broadcast").default(false),
   isRead: boolean("is_read").default(false),
+  entityType: varchar("entity_type"),
+  entityId: varchar("entity_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

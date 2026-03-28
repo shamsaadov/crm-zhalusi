@@ -1819,11 +1819,16 @@ export class DatabaseStorage implements IStorage {
     return dealer;
   }
 
-  async getDealerOrders(dealerId: string, filters?: { status?: string; from?: string; to?: string }): Promise<Order[]> {
+  async getDealerOrders(dealerId: string, filters?: { status?: string; from?: string; to?: string; search?: string }): Promise<Order[]> {
     const conditions = [eq(orders.dealerId, dealerId)];
     if (filters?.status) conditions.push(eq(orders.status, filters.status));
     if (filters?.from) conditions.push(gte(orders.date, filters.from));
     if (filters?.to) conditions.push(lte(orders.date, filters.to));
+    if (filters?.search) {
+      conditions.push(
+        sql`CAST(${orders.orderNumber} AS TEXT) LIKE ${'%' + filters.search + '%'}`
+      );
+    }
     return db
       .select()
       .from(orders)
@@ -1940,6 +1945,10 @@ export class DatabaseStorage implements IStorage {
           eq(dealerNotifications.isRead, false)
         )
       );
+  }
+
+  async markDealerNotificationRead(id: string): Promise<void> {
+    await db.update(dealerNotifications).set({ isRead: true }).where(eq(dealerNotifications.id, id));
   }
 }
 

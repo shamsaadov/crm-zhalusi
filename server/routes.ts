@@ -27,7 +27,7 @@ import { db } from "./db";
 import { eq, and, gte, lte, sql, sum, desc } from "drizzle-orm";
 import pg from "pg";
 import { logAudit } from "./audit";
-import { notify, generatePeriodicNotifications } from "./notifications";
+import { notify, notifyDealer, generatePeriodicNotifications } from "./notifications";
 
 const JWT_SECRET =
   process.env.SESSION_SECRET || "fallback-secret-key-change-in-production";
@@ -2227,6 +2227,23 @@ export async function registerRoutes(
           entityType: "order",
           entityId: order.id,
         });
+
+        if (order.dealerId) {
+          const statusLabels: Record<string, string> = {
+            "Новый": "Новый",
+            "В производстве": "В производстве",
+            "Готов": "Готов к выдаче",
+            "Отгружен": "Отгружен",
+          };
+          notifyDealer({
+            dealerId: order.dealerId,
+            userId: req.userId!,
+            title: "Статус заказа изменён",
+            message: `Заказ №${order.orderNumber}: ${statusLabels[status] || status}`,
+            entityType: "order",
+            entityId: order.id,
+          });
+        }
 
         res.json(updated);
       } catch (error) {
@@ -5471,6 +5488,56 @@ ${dbContext}`,
     }
   );
 
+  // Dealer: Update profile
+  app.patch(
+    "/api/mobile/dealer/profile",
+    dealerMobileAuthMiddleware,
+    async (req: DealerMobileAuthRequest, res: Response) => {
+      try {
+        const dealer = await storage.getDealer(req.dealerId!);
+        if (!dealer || !dealer.isActive) {
+          return res.status(401).json({ message: "Аккаунт не найден" });
+        }
+
+        const { fullName, city, phone, currentPassword, newPassword } = req.body;
+        const updateData: Record<string, any> = {};
+
+        if (fullName !== undefined) updateData.fullName = fullName;
+        if (city !== undefined) updateData.city = city;
+        if (phone !== undefined) updateData.phone = phone;
+
+        if (newPassword) {
+          if (!currentPassword) {
+            return res.status(400).json({ message: "Введите текущий пароль" });
+          }
+          if (!dealer.password) {
+            return res.status(400).json({ message: "Пароль не установлен" });
+          }
+          const valid = await bcrypt.compare(currentPassword, dealer.password);
+          if (!valid) {
+            return res.status(400).json({ message: "Неверный текущий пароль" });
+          }
+          updateData.password = await bcrypt.hash(newPassword, 10);
+        }
+
+        if (Object.keys(updateData).length === 0) {
+          return res.status(400).json({ message: "Нет данных для обновления" });
+        }
+
+        const updated = await storage.updateDealer(req.dealerId!, updateData);
+        if (updated) {
+          const { password: _, ...safe } = updated;
+          res.json(safe);
+        } else {
+          res.status(404).json({ message: "Дилер не найден" });
+        }
+      } catch (error) {
+        console.error("Update dealer profile error:", error);
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
   // Dealer: Orders list
   app.get(
     "/api/mobile/dealer/orders",
@@ -5480,7 +5547,8 @@ ${dbContext}`,
         const status = typeof req.query.status === "string" ? req.query.status : undefined;
         const from = typeof req.query.from === "string" ? req.query.from : undefined;
         const to = typeof req.query.to === "string" ? req.query.to : undefined;
-        const orderList = await storage.getDealerOrders(req.dealerId!, { status, from, to });
+        const search = typeof req.query.search === "string" ? req.query.search : undefined;
+        const orderList = await storage.getDealerOrders(req.dealerId!, { status, from, to, search });
         res.json(orderList);
       } catch (error) {
         res.status(500).json({ message: "Ошибка сервера" });
@@ -5696,6 +5764,20 @@ ${dbContext}`,
     async (req: DealerMobileAuthRequest, res: Response) => {
       try {
         await storage.markAllDealerNotificationsRead(req.dealerId!);
+        res.json({ success: true });
+      } catch (error) {
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // Dealer: Mark single notification as read
+  app.patch(
+    "/api/mobile/dealer/notifications/:id/read",
+    dealerMobileAuthMiddleware,
+    async (req: DealerMobileAuthRequest, res: Response) => {
+      try {
+        await storage.markDealerNotificationRead(req.params.id);
         res.json({ success: true });
       } catch (error) {
         res.status(500).json({ message: "Ошибка сервера" });
