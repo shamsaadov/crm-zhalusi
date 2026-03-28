@@ -28,9 +28,12 @@ import { eq, and, gte, lte, sql, sum, desc } from "drizzle-orm";
 import pg from "pg";
 import { logAudit } from "./audit";
 import { notify, notifyDealer, generatePeriodicNotifications } from "./notifications";
+import { createDealerMobileRouter } from "./routes/dealer-mobile";
 
-const JWT_SECRET =
-  process.env.SESSION_SECRET || "fallback-secret-key-change-in-production";
+if (!process.env.SESSION_SECRET) {
+  throw new Error("SESSION_SECRET environment variable is required");
+}
+const JWT_SECRET = process.env.SESSION_SECRET;
 const SALT_ROUNDS = 10;
 
 const PgSession = connectPgSimple(session);
@@ -174,6 +177,7 @@ export async function registerRoutes(
         }
         res.json({ user: { id: user.id, email: user.email, name: user.name } });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -188,6 +192,7 @@ export async function registerRoutes(
         const data = await storage.getColors(req.userId!);
         res.json(data);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -204,6 +209,7 @@ export async function registerRoutes(
         });
         res.json(color);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -217,6 +223,7 @@ export async function registerRoutes(
         const color = await storage.updateColor(req.params.id, req.body);
         res.json(color);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -230,6 +237,7 @@ export async function registerRoutes(
         await storage.deleteColor(req.params.id);
         res.json({ success: true });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -244,6 +252,7 @@ export async function registerRoutes(
         const data = await storage.getFabrics(req.userId!);
         res.json(data);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -274,6 +283,7 @@ export async function registerRoutes(
         const fabric = await storage.updateFabric(req.params.id, req.body);
         res.json(fabric);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -302,6 +312,7 @@ export async function registerRoutes(
         const data = await storage.getDealers(req.userId!);
         res.json(data);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -321,6 +332,7 @@ export async function registerRoutes(
         const dealer = await storage.createDealer(data);
         res.json(dealer);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -340,6 +352,7 @@ export async function registerRoutes(
         const dealer = await storage.updateDealer(req.params.id, data);
         res.json(dealer);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -353,6 +366,7 @@ export async function registerRoutes(
         await storage.deleteDealer(req.params.id);
         res.json({ success: true });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -416,6 +430,7 @@ export async function registerRoutes(
         const data = await storage.getCashboxes(req.userId!);
         res.json(data);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -432,6 +447,7 @@ export async function registerRoutes(
         });
         res.json(cashbox);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -445,6 +461,7 @@ export async function registerRoutes(
         const cashbox = await storage.updateCashbox(req.params.id, req.body);
         res.json(cashbox);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -458,6 +475,7 @@ export async function registerRoutes(
         await storage.deleteCashbox(req.params.id);
         res.json({ success: true });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -528,6 +546,7 @@ export async function registerRoutes(
         });
         res.json(system);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -541,6 +560,7 @@ export async function registerRoutes(
         const system = await storage.updateSystem(req.params.id, req.body);
         res.json(system);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -569,6 +589,7 @@ export async function registerRoutes(
         const components = await storage.getSystemComponents(req.params.id);
         res.json(components);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -589,6 +610,7 @@ export async function registerRoutes(
         });
         res.json(systemComponent);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -602,6 +624,7 @@ export async function registerRoutes(
         await storage.deleteSystemComponentsBySystemId(req.params.id);
         res.json({ success: true });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -616,6 +639,7 @@ export async function registerRoutes(
         const systemKeys = getAvailableSystems();
         res.json({ systemKeys });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -709,6 +733,7 @@ export async function registerRoutes(
         const data = await storage.getExpenseTypes(req.userId!);
         res.json(data);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -725,6 +750,7 @@ export async function registerRoutes(
         });
         res.json(expenseType);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -741,6 +767,7 @@ export async function registerRoutes(
         );
         res.json(expenseType);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -754,6 +781,7 @@ export async function registerRoutes(
         await storage.deleteExpenseType(req.params.id);
         res.json({ success: true });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -768,6 +796,7 @@ export async function registerRoutes(
         const data = await storage.getComponents(req.userId!);
         res.json(data);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -784,6 +813,7 @@ export async function registerRoutes(
         });
         res.json(component);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -800,6 +830,7 @@ export async function registerRoutes(
         );
         res.json(component);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -813,6 +844,7 @@ export async function registerRoutes(
         await storage.deleteComponent(req.params.id);
         res.json({ success: true });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -827,6 +859,7 @@ export async function registerRoutes(
         const data = await storage.getMultipliers(req.userId!);
         res.json(data);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -843,6 +876,7 @@ export async function registerRoutes(
         });
         res.json(multiplier);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -859,6 +893,7 @@ export async function registerRoutes(
         );
         res.json(multiplier);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -872,6 +907,7 @@ export async function registerRoutes(
         await storage.deleteMultiplier(req.params.id);
         res.json({ success: true });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -886,6 +922,7 @@ export async function registerRoutes(
         const data = await storage.getSuppliers(req.userId!);
         res.json(data);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -902,6 +939,7 @@ export async function registerRoutes(
         });
         res.json(supplier);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -915,6 +953,7 @@ export async function registerRoutes(
         const supplier = await storage.updateSupplier(req.params.id, req.body);
         res.json(supplier);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -928,6 +967,7 @@ export async function registerRoutes(
         await storage.deleteSupplier(req.params.id);
         res.json({ success: true });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -1116,6 +1156,7 @@ export async function registerRoutes(
           res.json(enriched);
         }
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -1163,6 +1204,7 @@ export async function registerRoutes(
           cashboxId: paymentOp?.cashboxId || null,
         });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -1687,6 +1729,7 @@ export async function registerRoutes(
 
         res.json(order);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -2276,6 +2319,7 @@ export async function registerRoutes(
 
         res.json({ success: true });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -2290,6 +2334,7 @@ export async function registerRoutes(
         const sashes = await storage.getOrderSashes(req.params.orderId);
         res.json(sashes);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -2306,6 +2351,7 @@ export async function registerRoutes(
         });
         res.json(sash);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -2385,6 +2431,7 @@ export async function registerRoutes(
           res.json(enriched);
         }
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -2401,6 +2448,7 @@ export async function registerRoutes(
         }
         res.json(operation);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -2454,6 +2502,7 @@ export async function registerRoutes(
 
         res.json(operation);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -2477,6 +2526,7 @@ export async function registerRoutes(
 
         res.json({ success: true });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -2490,6 +2540,7 @@ export async function registerRoutes(
         const operation = await storage.restoreFinanceOperation(req.params.id);
         res.json(operation);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -2530,6 +2581,7 @@ export async function registerRoutes(
         await storage.hardDeleteFinanceOperation(req.params.id);
         res.json({ success: true });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -2545,6 +2597,7 @@ export async function registerRoutes(
         const plan = await storage.getInstallmentPlanByOrderId(req.params.id);
         res.json(plan);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -2648,6 +2701,7 @@ export async function registerRoutes(
         await storage.markInstallmentPaymentUnpaid(payment.id);
         res.json({ success: true });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -2663,6 +2717,7 @@ export async function registerRoutes(
         await storage.deactivateInstallmentPlan(plan.id);
         res.json({ success: true });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -2755,6 +2810,7 @@ export async function registerRoutes(
         );
         res.json({ price });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -2786,6 +2842,7 @@ export async function registerRoutes(
           items: enrichedItems,
         });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -2900,6 +2957,7 @@ export async function registerRoutes(
 
         res.json({ success: true });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -3044,6 +3102,7 @@ export async function registerRoutes(
           components: componentStockList,
         });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -3339,6 +3398,7 @@ export async function registerRoutes(
           expenseGroups,
         });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -3407,6 +3467,7 @@ export async function registerRoutes(
           orders: enrichedOrders,
         });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -3438,6 +3499,7 @@ export async function registerRoutes(
           totalAP,
         });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -3457,6 +3519,7 @@ export async function registerRoutes(
           totalBalance,
         });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -3480,6 +3543,7 @@ export async function registerRoutes(
           createdAt: user.createdAt,
         });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -3531,6 +3595,7 @@ export async function registerRoutes(
           hasReportPassword: !!updated?.reportPassword,
         });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -3564,6 +3629,7 @@ export async function registerRoutes(
         });
         res.json({ success: true });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -3589,6 +3655,7 @@ export async function registerRoutes(
         }
         res.json({ valid });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -4386,6 +4453,7 @@ ${dbContext}`,
         const data = await storage.getNotifications(req.userId!, limit);
         res.json(data);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -4399,6 +4467,7 @@ ${dbContext}`,
         const count = await storage.getUnreadNotificationCount(req.userId!);
         res.json({ count });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -4412,6 +4481,7 @@ ${dbContext}`,
         await storage.markAllNotificationsRead(req.userId!);
         res.json({ success: true });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -4425,6 +4495,7 @@ ${dbContext}`,
         const notification = await storage.markNotificationRead(req.params.id);
         res.json(notification);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -4663,6 +4734,7 @@ ${dbContext}`,
           data.map(({ password, ...rest }) => rest)
         );
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -4742,6 +4814,7 @@ ${dbContext}`,
         const { password: _, ...safe } = installer;
         res.json(safe);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -4755,6 +4828,7 @@ ${dbContext}`,
         await storage.deleteInstaller(req.params.id);
         res.json({ success: true });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -4834,6 +4908,7 @@ ${dbContext}`,
         await storage.deleteMeasurement(req.params.id);
         res.json({ success: true });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -4892,6 +4967,7 @@ ${dbContext}`,
           res.json({ success: true, count: ids.length });
         }
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -4914,6 +4990,7 @@ ${dbContext}`,
           .limit(100);
         res.json(list);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -5029,6 +5106,7 @@ ${dbContext}`,
         const { password: _, ...safe } = installer;
         res.json(safe);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -5043,6 +5121,7 @@ ${dbContext}`,
         const list = await storage.getMeasurements(req.installerId!);
         res.json(list);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -5071,6 +5150,7 @@ ${dbContext}`,
         );
         res.json({ ...measurement, sashes, photos });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -5205,6 +5285,7 @@ ${dbContext}`,
         await storage.deleteMeasurement(req.params.id);
         res.json({ success: true });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -5350,6 +5431,7 @@ ${dbContext}`,
           installed,
         });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -5378,6 +5460,7 @@ ${dbContext}`,
         );
         res.json(result);
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -5403,6 +5486,7 @@ ${dbContext}`,
           }))
         );
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -5419,6 +5503,7 @@ ${dbContext}`,
         );
         res.json({ count });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -5433,384 +5518,14 @@ ${dbContext}`,
         await storage.markAllInstallerNotificationsRead(req.installerId!);
         res.json({ success: true });
       } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
   );
 
-  // ===== DEALER MOBILE API =====
-
-  interface DealerMobileAuthRequest extends Request {
-    dealerId?: string;
-  }
-
-  function dealerMobileAuthMiddleware(
-    req: DealerMobileAuthRequest,
-    res: Response,
-    next: NextFunction
-  ) {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ message: "Не авторизован" });
-    }
-    const token = authHeader.slice(7);
-    try {
-      const decoded = jwt.verify(token, JWT_SECRET) as { dealerId: string; role: string };
-      if (decoded.role !== "dealer") {
-        return res.status(401).json({ message: "Неверный токен" });
-      }
-      req.dealerId = decoded.dealerId;
-      next();
-    } catch {
-      return res.status(401).json({ message: "Неверный токен" });
-    }
-  }
-
-  // Dealer: Login
-  app.post(
-    "/api/mobile/dealer/auth/login",
-    async (req: Request, res: Response) => {
-      try {
-        const { login, password } = req.body;
-        if (!login || !password) {
-          return res.status(400).json({ message: "Логин и пароль обязательны" });
-        }
-        const dealer = await storage.getDealerByLogin(login);
-        if (!dealer || !dealer.isActive || !dealer.password) {
-          return res.status(401).json({ message: "Неверный логин или пароль" });
-        }
-        const valid = await bcrypt.compare(password, dealer.password);
-        if (!valid) {
-          return res.status(401).json({ message: "Неверный логин или пароль" });
-        }
-        const token = jwt.sign(
-          { dealerId: dealer.id, role: "dealer" },
-          JWT_SECRET,
-          { expiresIn: "30d" }
-        );
-        const { password: _, ...safe } = dealer;
-        res.json({ token, dealer: safe });
-      } catch (error) {
-        console.error("Dealer mobile login error:", error);
-        res.status(500).json({ message: "Ошибка сервера" });
-      }
-    }
-  );
-
-  // Dealer: Profile
-  app.get(
-    "/api/mobile/dealer/auth/me",
-    dealerMobileAuthMiddleware,
-    async (req: DealerMobileAuthRequest, res: Response) => {
-      try {
-        const dealer = await storage.getDealer(req.dealerId!);
-        if (!dealer || !dealer.isActive) {
-          return res.status(401).json({ message: "Аккаунт не найден" });
-        }
-        const { password: _, ...safe } = dealer;
-        res.json(safe);
-      } catch (error) {
-        res.status(500).json({ message: "Ошибка сервера" });
-      }
-    }
-  );
-
-  // Dealer: Update profile
-  app.patch(
-    "/api/mobile/dealer/profile",
-    dealerMobileAuthMiddleware,
-    async (req: DealerMobileAuthRequest, res: Response) => {
-      try {
-        const dealer = await storage.getDealer(req.dealerId!);
-        if (!dealer || !dealer.isActive) {
-          return res.status(401).json({ message: "Аккаунт не найден" });
-        }
-
-        const { fullName, city, phone, currentPassword, newPassword } = req.body;
-        const updateData: Record<string, any> = {};
-
-        if (fullName !== undefined) updateData.fullName = fullName;
-        if (city !== undefined) updateData.city = city;
-        if (phone !== undefined) updateData.phone = phone;
-
-        if (newPassword) {
-          if (!currentPassword) {
-            return res.status(400).json({ message: "Введите текущий пароль" });
-          }
-          if (!dealer.password) {
-            return res.status(400).json({ message: "Пароль не установлен" });
-          }
-          const valid = await bcrypt.compare(currentPassword, dealer.password);
-          if (!valid) {
-            return res.status(400).json({ message: "Неверный текущий пароль" });
-          }
-          updateData.password = await bcrypt.hash(newPassword, 10);
-        }
-
-        if (Object.keys(updateData).length === 0) {
-          return res.status(400).json({ message: "Нет данных для обновления" });
-        }
-
-        const updated = await storage.updateDealer(req.dealerId!, updateData);
-        if (updated) {
-          const { password: _, ...safe } = updated;
-          res.json(safe);
-        } else {
-          res.status(404).json({ message: "Дилер не найден" });
-        }
-      } catch (error) {
-        console.error("Update dealer profile error:", error);
-        res.status(500).json({ message: "Ошибка сервера" });
-      }
-    }
-  );
-
-  // Dealer: Orders list
-  app.get(
-    "/api/mobile/dealer/orders",
-    dealerMobileAuthMiddleware,
-    async (req: DealerMobileAuthRequest, res: Response) => {
-      try {
-        const status = typeof req.query.status === "string" ? req.query.status : undefined;
-        const from = typeof req.query.from === "string" ? req.query.from : undefined;
-        const to = typeof req.query.to === "string" ? req.query.to : undefined;
-        const search = typeof req.query.search === "string" ? req.query.search : undefined;
-        const orderList = await storage.getDealerOrders(req.dealerId!, { status, from, to, search });
-        res.json(orderList);
-      } catch (error) {
-        res.status(500).json({ message: "Ошибка сервера" });
-      }
-    }
-  );
-
-  // Dealer: Order detail
-  app.get(
-    "/api/mobile/dealer/orders/:id",
-    dealerMobileAuthMiddleware,
-    async (req: DealerMobileAuthRequest, res: Response) => {
-      try {
-        const order = await storage.getOrder(req.params.id);
-        if (!order || order.dealerId !== req.dealerId) {
-          return res.status(404).json({ message: "Заказ не найден" });
-        }
-        const sashes = await storage.getOrderSashes(order.id);
-        res.json({ ...order, sashes });
-      } catch (error) {
-        res.status(500).json({ message: "Ошибка сервера" });
-      }
-    }
-  );
-
-  // Dealer: Balance
-  app.get(
-    "/api/mobile/dealer/balance",
-    dealerMobileAuthMiddleware,
-    async (req: DealerMobileAuthRequest, res: Response) => {
-      try {
-        const balance = await storage.getDealerBalance(req.dealerId!);
-        res.json(balance);
-      } catch (error) {
-        res.status(500).json({ message: "Ошибка сервера" });
-      }
-    }
-  );
-
-  // Dealer: Payments history
-  app.get(
-    "/api/mobile/dealer/payments",
-    dealerMobileAuthMiddleware,
-    async (req: DealerMobileAuthRequest, res: Response) => {
-      try {
-        const payments = await storage.getDealerPayments(req.dealerId!);
-        res.json(payments);
-      } catch (error) {
-        res.status(500).json({ message: "Ошибка сервера" });
-      }
-    }
-  );
-
-  // Dealer: Installment plans
-  app.get(
-    "/api/mobile/dealer/installments",
-    dealerMobileAuthMiddleware,
-    async (req: DealerMobileAuthRequest, res: Response) => {
-      try {
-        const plans = await storage.getDealerInstallmentPlans(req.dealerId!);
-        res.json(plans);
-      } catch (error) {
-        res.status(500).json({ message: "Ошибка сервера" });
-      }
-    }
-  );
-
-  // Dealer: Installment plan detail
-  app.get(
-    "/api/mobile/dealer/installments/:planId",
-    dealerMobileAuthMiddleware,
-    async (req: DealerMobileAuthRequest, res: Response) => {
-      try {
-        const [plan] = await db
-          .select()
-          .from(installmentPlansTable)
-          .where(eq(installmentPlansTable.id, req.params.planId));
-        if (!plan) return res.status(404).json({ message: "План не найден" });
-        // Verify dealer owns the order
-        const order = await storage.getOrder(plan.orderId);
-        if (!order || order.dealerId !== req.dealerId) {
-          return res.status(404).json({ message: "План не найден" });
-        }
-        const fullPlan = await storage.getInstallmentPlanByOrderId(plan.orderId);
-        res.json(fullPlan);
-      } catch (error) {
-        res.status(500).json({ message: "Ошибка сервера" });
-      }
-    }
-  );
-
-  // Dealer: Create installment plan for order
-  app.post(
-    "/api/mobile/dealer/orders/:id/installment",
-    dealerMobileAuthMiddleware,
-    async (req: DealerMobileAuthRequest, res: Response) => {
-      try {
-        const order = await storage.getOrder(req.params.id);
-        if (!order || order.dealerId !== req.dealerId) {
-          return res.status(404).json({ message: "Заказ не найден" });
-        }
-        const { downPayment = 0, months, paymentDay } = req.body;
-        const totalAmount = parseFloat(order.salePrice?.toString() || "0");
-        const dp = parseFloat(downPayment.toString());
-        if (dp < 0 || dp >= totalAmount) return res.status(400).json({ message: "Некорректный первый взнос" });
-        if (!months || months < 1 || months > 36) return res.status(400).json({ message: "Некорректное кол-во месяцев" });
-        if (!paymentDay || paymentDay < 1 || paymentDay > 28) return res.status(400).json({ message: "День оплаты от 1 до 28" });
-
-        const existingPlan = await storage.getInstallmentPlanByOrderId(order.id);
-        if (existingPlan) await storage.deactivateInstallmentPlan(existingPlan.id);
-
-        const remaining = totalAmount - dp;
-        const monthlyRaw = Math.floor((remaining / months) * 100) / 100;
-        const plan = await storage.createInstallmentPlan({
-          orderId: order.id, totalAmount: totalAmount.toString(), downPayment: dp.toString(),
-          months, paymentDay, monthlyPayment: monthlyRaw.toString(), userId: order.userId,
-        });
-
-        const today = new Date();
-        if (dp > 0) {
-          await storage.createInstallmentPayment({
-            planId: plan.id, paymentNumber: 0, dueDate: today.toISOString().split("T")[0],
-            amount: dp.toString(), userId: order.userId,
-          });
-        }
-        let startMonth = today.getMonth() + 1;
-        let startYear = today.getFullYear();
-        if (today.getDate() > paymentDay) startMonth++;
-        for (let i = 0; i < months; i++) {
-          let m = startMonth + i, y = startYear;
-          while (m > 12) { m -= 12; y++; }
-          const amount = i === months - 1 ? remaining - monthlyRaw * (months - 1) : monthlyRaw;
-          await storage.createInstallmentPayment({
-            planId: plan.id, paymentNumber: i + 1,
-            dueDate: `${y}-${String(m).padStart(2, "0")}-${String(paymentDay).padStart(2, "0")}`,
-            amount: amount.toFixed(2), userId: order.userId,
-          });
-        }
-        const result = await storage.getInstallmentPlanByOrderId(order.id);
-        res.json(result);
-      } catch (error) {
-        console.error("Dealer installment create error:", error);
-        res.status(500).json({ message: "Ошибка сервера" });
-      }
-    }
-  );
-
-  // Dealer: Stats
-  app.get(
-    "/api/mobile/dealer/stats",
-    dealerMobileAuthMiddleware,
-    async (req: DealerMobileAuthRequest, res: Response) => {
-      try {
-        const balance = await storage.getDealerBalance(req.dealerId!);
-        const allOrders = await storage.getDealerOrders(req.dealerId!);
-        const statusCounts: Record<string, number> = {};
-        for (const o of allOrders) {
-          const st = o.status || "Новый";
-          statusCounts[st] = (statusCounts[st] || 0) + 1;
-        }
-        const plans = await storage.getDealerInstallmentPlans(req.dealerId!);
-        let overdueCount = 0;
-        const today = new Date().toISOString().split("T")[0];
-        for (const p of plans) {
-          for (const pay of p.payments) {
-            if (!pay.isPaid && pay.dueDate < today) overdueCount++;
-          }
-        }
-        res.json({
-          balance: balance.balance,
-          totalOrders: allOrders.length,
-          ordersByStatus: statusCounts,
-          overdueInstallments: overdueCount,
-        });
-      } catch (error) {
-        res.status(500).json({ message: "Ошибка сервера" });
-      }
-    }
-  );
-
-  // Dealer: Notifications
-  app.get(
-    "/api/mobile/dealer/notifications",
-    dealerMobileAuthMiddleware,
-    async (req: DealerMobileAuthRequest, res: Response) => {
-      try {
-        const notifs = await storage.getDealerNotifications(req.dealerId!);
-        res.json(notifs);
-      } catch (error) {
-        res.status(500).json({ message: "Ошибка сервера" });
-      }
-    }
-  );
-
-  // Dealer: Unread count
-  app.get(
-    "/api/mobile/dealer/notifications/unread-count",
-    dealerMobileAuthMiddleware,
-    async (req: DealerMobileAuthRequest, res: Response) => {
-      try {
-        const count = await storage.getDealerUnreadCount(req.dealerId!);
-        res.json({ count });
-      } catch (error) {
-        res.status(500).json({ message: "Ошибка сервера" });
-      }
-    }
-  );
-
-  // Dealer: Mark all read
-  app.patch(
-    "/api/mobile/dealer/notifications/read-all",
-    dealerMobileAuthMiddleware,
-    async (req: DealerMobileAuthRequest, res: Response) => {
-      try {
-        await storage.markAllDealerNotificationsRead(req.dealerId!);
-        res.json({ success: true });
-      } catch (error) {
-        res.status(500).json({ message: "Ошибка сервера" });
-      }
-    }
-  );
-
-  // Dealer: Mark single notification as read
-  app.patch(
-    "/api/mobile/dealer/notifications/:id/read",
-    dealerMobileAuthMiddleware,
-    async (req: DealerMobileAuthRequest, res: Response) => {
-      try {
-        await storage.markDealerNotificationRead(req.params.id);
-        res.json({ success: true });
-      } catch (error) {
-        res.status(500).json({ message: "Ошибка сервера" });
-      }
-    }
-  );
+  // ===== DEALER MOBILE API (mounted as sub-router) =====
+  app.use("/api/mobile/dealer", createDealerMobileRouter());
 
   // Periodic notification generation (every 30 minutes)
   setInterval(() => {
