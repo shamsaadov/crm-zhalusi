@@ -230,8 +230,6 @@ export function DealersTab({ search }: { search: string }) {
                     </FormItem>
                   )}
                 />
-                <Separator className="my-2" />
-                <p className="text-xs text-muted-foreground">Доступ в мобильное приложение</p>
                 <FormField
                   control={form.control}
                   name="login"
