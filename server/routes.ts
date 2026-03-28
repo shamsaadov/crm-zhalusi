@@ -5572,6 +5572,62 @@ ${dbContext}`,
     }
   );
 
+  // Dealer: Create installment plan for order
+  app.post(
+    "/api/mobile/dealer/orders/:id/installment",
+    dealerMobileAuthMiddleware,
+    async (req: DealerMobileAuthRequest, res: Response) => {
+      try {
+        const order = await storage.getOrder(req.params.id);
+        if (!order || order.dealerId !== req.dealerId) {
+          return res.status(404).json({ message: "Заказ не найден" });
+        }
+        const { downPayment = 0, months, paymentDay } = req.body;
+        const totalAmount = parseFloat(order.salePrice?.toString() || "0");
+        const dp = parseFloat(downPayment.toString());
+        if (dp < 0 || dp >= totalAmount) return res.status(400).json({ message: "Некорректный первый взнос" });
+        if (!months || months < 1 || months > 36) return res.status(400).json({ message: "Некорректное кол-во месяцев" });
+        if (!paymentDay || paymentDay < 1 || paymentDay > 28) return res.status(400).json({ message: "День оплаты от 1 до 28" });
+
+        const existingPlan = await storage.getInstallmentPlanByOrderId(order.id);
+        if (existingPlan) await storage.deactivateInstallmentPlan(existingPlan.id);
+
+        const remaining = totalAmount - dp;
+        const monthlyRaw = Math.floor((remaining / months) * 100) / 100;
+        const plan = await storage.createInstallmentPlan({
+          orderId: order.id, totalAmount: totalAmount.toString(), downPayment: dp.toString(),
+          months, paymentDay, monthlyPayment: monthlyRaw.toString(), userId: order.userId,
+        });
+
+        const today = new Date();
+        if (dp > 0) {
+          await storage.createInstallmentPayment({
+            planId: plan.id, paymentNumber: 0, dueDate: today.toISOString().split("T")[0],
+            amount: dp.toString(), userId: order.userId,
+          });
+        }
+        let startMonth = today.getMonth() + 1;
+        let startYear = today.getFullYear();
+        if (today.getDate() > paymentDay) startMonth++;
+        for (let i = 0; i < months; i++) {
+          let m = startMonth + i, y = startYear;
+          while (m > 12) { m -= 12; y++; }
+          const amount = i === months - 1 ? remaining - monthlyRaw * (months - 1) : monthlyRaw;
+          await storage.createInstallmentPayment({
+            planId: plan.id, paymentNumber: i + 1,
+            dueDate: `${y}-${String(m).padStart(2, "0")}-${String(paymentDay).padStart(2, "0")}`,
+            amount: amount.toFixed(2), userId: order.userId,
+          });
+        }
+        const result = await storage.getInstallmentPlanByOrderId(order.id);
+        res.json(result);
+      } catch (error) {
+        console.error("Dealer installment create error:", error);
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
   // Dealer: Stats
   app.get(
     "/api/mobile/dealer/stats",
