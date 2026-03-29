@@ -5,6 +5,8 @@ import { storage } from "../storage";
 import { db } from "../db";
 import { eq } from "drizzle-orm";
 import { installmentPlans as installmentPlansTable } from "@shared/schema";
+import { notify } from "../notifications";
+import { logAudit } from "../audit";
 
 const JWT_SECRET = process.env.SESSION_SECRET!;
 
@@ -38,35 +40,35 @@ export function createDealerMobileRouter(): Router {
   const router = Router();
 
   // POST /auth/login (mounted at /api/mobile/dealer, so full path = /api/mobile/dealer/auth/login)
-  router.post(
-    "/auth/login",
-    async (req: Request, res: Response) => {
-      try {
-        const { login, password } = req.body;
-        if (!login || !password) {
-          return res.status(400).json({ message: "Логин и пароль обязательны" });
-        }
-        const dealer = await storage.getDealerByLogin(login);
-        if (!dealer || !dealer.isActive || !dealer.password) {
-          return res.status(401).json({ message: "Неверный логин или пароль" });
-        }
-        const valid = await bcrypt.compare(password, dealer.password);
-        if (!valid) {
-          return res.status(401).json({ message: "Неверный логин или пароль" });
-        }
-        const token = jwt.sign(
-          { dealerId: dealer.id, role: "dealer" },
-          JWT_SECRET,
-          { expiresIn: "30d" }
-        );
-        const { password: _, ...safe } = dealer;
-        res.json({ token, dealer: safe });
-      } catch (error) {
-        console.error("Dealer mobile login error:", error);
-        res.status(500).json({ message: "Ошибка сервера" });
+  router.post("/auth/login", async (req: Request, res: Response) => {
+    try {
+      const { login, password } = req.body;
+      if (!login || !password) {
+        return res.status(400).json({ message: "Логин и пароль обязательны" });
       }
+
+      const dealer = await storage.getDealerByLogin(login);
+      if (!dealer || !dealer.isActive || !dealer.password) {
+        return res.status(401).json({ message: "Неверный логин или пароль" });
+      }
+
+      const valid = await bcrypt.compare(password, dealer.password);
+      if (!valid) {
+        return res.status(401).json({ message: "Неверный логин или пароль" });
+      }
+
+      const token = jwt.sign(
+        { dealerId: dealer.id, role: "dealer" },
+        JWT_SECRET,
+        { expiresIn: "30d" }
+      );
+      const { password: _, ...safe } = dealer;
+      res.json({ token, dealer: safe });
+    } catch (error) {
+      console.error("Dealer mobile login error:", error);
+      res.status(500).json({ message: "Ошибка сервера" });
     }
-  );
+  });
 
   // GET /auth/me
   router.get(
@@ -322,11 +324,23 @@ export function createDealerMobileRouter(): Router {
             if (!pay.isPaid && pay.dueDate < today) overdueCount++;
           }
         }
+
+        const measurementList = await storage.getMeasurements(req.dealerId!);
+        const measurementStats = {
+          total: measurementList.length,
+          drafts: measurementList.filter((m) => m.status === "draft").length,
+          sent: measurementList.filter((m) => m.status === "sent").length,
+          inProduction: measurementList.filter((m) => m.status === "in_production").length,
+          ready: measurementList.filter((m) => m.status === "ready").length,
+          installed: measurementList.filter((m) => m.status === "installed").length,
+        };
+
         res.json({
           balance: balance.balance,
           totalOrders: allOrders.length,
           ordersByStatus: statusCounts,
           overdueInstallments: overdueCount,
+          measurements: measurementStats,
         });
       } catch (error) {
         console.error(`[${req.method} ${req.path}]`, error);
@@ -388,6 +402,292 @@ export function createDealerMobileRouter(): Router {
       try {
         await storage.markDealerNotificationRead(req.params.id);
         res.json({ success: true });
+      } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // ===== MEASUREMENTS =====
+
+  // GET /measurements
+  router.get(
+    "/measurements",
+    dealerMobileAuthMiddleware,
+    async (req: DealerMobileAuthRequest, res: Response) => {
+      try {
+        const list = await storage.getMeasurements(req.dealerId!);
+        // Include sashes for each measurement
+        const result = await Promise.all(
+          list.map(async (m) => {
+            const sashes = await storage.getMeasurementSashes(m.id);
+            return { ...m, sashes };
+          })
+        );
+        res.json(result);
+      } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // GET /measurements/:id
+  router.get(
+    "/measurements/:id",
+    dealerMobileAuthMiddleware,
+    async (req: DealerMobileAuthRequest, res: Response) => {
+      try {
+        const measurement = await storage.getMeasurement(req.params.id);
+        if (!measurement || measurement.dealerId !== req.dealerId) {
+          return res.status(404).json({ message: "Замер не найден" });
+        }
+        const sashes = await storage.getMeasurementSashes(measurement.id);
+        const photos = await storage.getMeasurementPhotos(measurement.id);
+        res.json({ ...measurement, sashes, photos });
+      } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // POST /measurements (create or update measurement with sashes)
+  router.post(
+    "/measurements",
+    dealerMobileAuthMiddleware,
+    async (req: DealerMobileAuthRequest, res: Response) => {
+      try {
+        const {
+          id,
+          clientName,
+          clientPhone,
+          address,
+          latitude,
+          longitude,
+          comment,
+          totalCoefficient,
+          signatureUrl,
+          sashes,
+        } = req.body;
+
+        let measurement;
+
+        if (id) {
+          // Update existing
+          const existing = await storage.getMeasurement(id);
+          if (!existing || existing.dealerId !== req.dealerId) {
+            return res.status(404).json({ message: "Замер не найден" });
+          }
+
+          measurement = await storage.updateMeasurement(id, {
+            clientName,
+            clientPhone,
+            address,
+            latitude,
+            longitude,
+            comment,
+            totalCoefficient,
+            signatureUrl,
+          });
+
+          // Replace sashes
+          if (sashes && Array.isArray(sashes)) {
+            await storage.deleteMeasurementSashesByMeasurementId(id);
+            for (const s of sashes) {
+              await storage.createMeasurementSash({
+                measurementId: id,
+                width: s.width,
+                height: s.height,
+                systemName: s.systemName,
+                category: s.category,
+                control: s.control,
+                coefficient: s.coefficient,
+                room: s.room,
+                roomName: s.roomName,
+                photoUrl: s.photoUrl,
+              });
+            }
+          }
+        } else {
+          // Create new
+          measurement = await storage.createMeasurement({
+            dealerId: req.dealerId!,
+            clientName,
+            clientPhone,
+            address,
+            latitude,
+            longitude,
+            comment,
+            totalCoefficient,
+            signatureUrl,
+          });
+
+          if (sashes && Array.isArray(sashes)) {
+            for (const s of sashes) {
+              await storage.createMeasurementSash({
+                measurementId: measurement.id,
+                width: s.width,
+                height: s.height,
+                systemName: s.systemName,
+                category: s.category,
+                control: s.control,
+                coefficient: s.coefficient,
+                room: s.room,
+                roomName: s.roomName,
+                photoUrl: s.photoUrl,
+              });
+            }
+          }
+        }
+
+        // Return with sashes
+        const savedSashes = await storage.getMeasurementSashes(measurement!.id);
+        res.json({ ...measurement, sashes: savedSashes });
+      } catch (error) {
+        console.error("Save measurement error:", error);
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // DELETE /measurements/:id (only draft)
+  router.delete(
+    "/measurements/:id",
+    dealerMobileAuthMiddleware,
+    async (req: DealerMobileAuthRequest, res: Response) => {
+      try {
+        const measurement = await storage.getMeasurement(req.params.id);
+        if (!measurement || measurement.dealerId !== req.dealerId) {
+          return res.status(404).json({ message: "Замер не найден" });
+        }
+        if (measurement.status !== "draft") {
+          return res.status(400).json({ message: "Можно удалить только черновик" });
+        }
+        await storage.deleteMeasurement(req.params.id);
+        res.json({ success: true });
+      } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // POST /measurements/:id/send (send measurement to CRM, creates order)
+  router.post(
+    "/measurements/:id/send",
+    dealerMobileAuthMiddleware,
+    async (req: DealerMobileAuthRequest, res: Response) => {
+      try {
+        const measurement = await storage.getMeasurement(req.params.id);
+        if (!measurement || measurement.dealerId !== req.dealerId) {
+          return res.status(404).json({ message: "Замер не найден" });
+        }
+        if (measurement.status !== "draft") {
+          return res.status(400).json({ message: "Замер уже отправлен" });
+        }
+
+        const dealer = await storage.getDealer(req.dealerId!);
+        if (!dealer) {
+          return res.status(401).json({ message: "Дилер не найден" });
+        }
+
+        const sashes = await storage.getMeasurementSashes(measurement.id);
+
+        // Create order under admin user
+        const adminUserId = dealer.userId;
+        const orderNumber = await storage.getNextOrderNumber(adminUserId);
+        const today = new Date().toISOString().split("T")[0];
+
+        const clientInfo = [measurement.clientName, measurement.clientPhone]
+          .filter(Boolean)
+          .join(", ");
+        const orderComment = `Дилер: ${dealer.fullName} | ${clientInfo} | ${measurement.address || ""}`.trim();
+
+        const order = await storage.createOrder({
+          orderNumber,
+          date: today,
+          status: "Новый",
+          comment: orderComment,
+          userId: adminUserId,
+          dealerId: dealer.id,
+          salePrice: measurement.totalCoefficient || "0",
+        });
+
+        // Create orderSashes from measurementSashes
+        for (const s of sashes) {
+          await storage.createOrderSash({
+            orderId: order.id,
+            width: s.width || "0",
+            height: s.height || "0",
+            controlSide: s.control,
+            room: s.room,
+            roomName: s.roomName,
+          });
+        }
+
+        // Update measurement status
+        await storage.updateMeasurement(measurement.id, {
+          status: "sent",
+          sentAt: new Date(),
+          orderId: order.id,
+        });
+
+        // Notify admin
+        await notify({
+          userId: adminUserId,
+          type: "measurement_sent",
+          title: "Новый замер из приложения",
+          message: `${dealer.fullName} отправил замер: ${clientInfo || "без имени"}, ${measurement.address || "без адреса"}`,
+          entityType: "order",
+          entityId: order.id,
+        });
+
+        // Audit log
+        await logAudit({
+          userId: adminUserId,
+          action: "create",
+          entityType: "measurement",
+          entityId: measurement.id,
+          metadata: {
+            source: "mobile",
+            dealerName: dealer.fullName,
+            orderId: order.id,
+          },
+        });
+
+        res.json({
+          success: true,
+          orderId: order.id,
+          orderNumber,
+          status: "sent",
+        });
+      } catch (error) {
+        console.error("Send measurement error:", error);
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // POST /coefficients/calculate (public, no auth)
+  router.post(
+    "/coefficients/calculate",
+    async (req: Request, res: Response) => {
+      try {
+        const { systemKey, category, width, height } = req.body;
+        if (!systemKey || !category || !width || !height) {
+          return res.status(400).json({ message: "Все параметры обязательны" });
+        }
+
+        const { getCoefficientDetailed } = await import("../coefficients");
+        const result = getCoefficientDetailed(
+          systemKey,
+          category,
+          parseFloat(width),
+          parseFloat(height)
+        );
+        res.json(result);
       } catch (error) {
         console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
