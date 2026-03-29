@@ -122,8 +122,13 @@ export function DealersTab({ search }: { search: string }) {
   });
 
   const onSubmit = (data: Record<string, unknown>) => {
-    if (editing) updateMutation.mutate({ id: editing.id, data });
-    else createMutation.mutate(data);
+    const payload = { ...data };
+    // Only include password if non-empty
+    if (!payload.password) {
+      delete payload.password;
+    }
+    if (editing) updateMutation.mutate({ id: editing.id, data: payload });
+    else createMutation.mutate(payload);
   };
 
   const openEdit = (item: Dealer) => {
@@ -235,7 +240,7 @@ export function DealersTab({ search }: { search: string }) {
                   name="login"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Логин</FormLabel>
+                      <FormLabel>Логин (для приложения)</FormLabel>
                       <FormControl>
                         <Input {...field} placeholder="Логин для входа в приложение" />
                       </FormControl>
@@ -250,7 +255,7 @@ export function DealersTab({ search }: { search: string }) {
                     <FormItem>
                       <FormLabel>{editing ? "Новый пароль" : "Пароль"}</FormLabel>
                       <FormControl>
-                        <Input {...field} type="password" placeholder={editing ? "Оставьте пустым чтобы не менять" : "Пароль"} />
+                        <Input {...field} type="password" placeholder={editing ? "Оставьте пустым" : "Пароль"} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

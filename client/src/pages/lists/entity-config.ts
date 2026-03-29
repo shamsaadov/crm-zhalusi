@@ -8,7 +8,7 @@ export type ListEntity =
   | "components"
   | "multipliers"
   | "suppliers"
-  | "installers";
+;
 
 export const entityConfig: Record<
   ListEntity,
@@ -38,11 +38,6 @@ export const entityConfig: Record<
     label: "Поставщики",
     apiPath: "/api/suppliers",
     plural: "поставщиков",
-  },
-  installers: {
-    label: "Монтажники",
-    apiPath: "/api/installers",
-    plural: "монтажников",
   },
 };
 

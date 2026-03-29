@@ -12,7 +12,7 @@ import { ExpenseTypesTab } from "./expense-types-tab";
 import { ComponentsTab } from "./components-tab";
 import { MultipliersTab } from "./multipliers-tab";
 import { SuppliersTab } from "./suppliers-tab";
-import { InstallersTab } from "./installers-tab";
+
 
 export default function ListsPage() {
   const [activeTab, setActiveTab] = useState<ListEntity>("colors");
@@ -65,9 +65,6 @@ export default function ListsPage() {
         </TabsContent>
         <TabsContent value="suppliers">
           <SuppliersTab search={search} />
-        </TabsContent>
-        <TabsContent value="installers">
-          <InstallersTab search={search} />
         </TabsContent>
       </Tabs>
     </Layout>

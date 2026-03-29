@@ -28,23 +28,24 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Send, Loader2, Users, Clock } from "lucide-react";
 import { parseMoscow } from "@/lib/date";
-import type { Installer } from "@shared/schema";
-
-type InstallerSafe = Omit<Installer, "password">;
+import type { Dealer } from "@shared/schema";
 
 const formSchema = z.object({
   title: z.string().min(1, "Заголовок обязателен"),
   message: z.string().min(1, "Текст сообщения обязателен"),
 });
 
-export default function InstallerNotificationsPage() {
+export default function AppNotificationsPage() {
   const { toast } = useToast();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [sendToAll, setSendToAll] = useState(true);
 
-  const { data: installers = [] } = useQuery<InstallerSafe[]>({
-    queryKey: ["/api/installers"],
+  const { data: allDealers = [] } = useQuery<Dealer[]>({
+    queryKey: ["/api/dealers"],
   });
+
+  // Only show dealers that have a login (i.e. can use the app)
+  const dealers = allDealers.filter((d: any) => d.login);
 
   const { data: history = [], isLoading: historyLoading } = useQuery<
     {
@@ -52,11 +53,11 @@ export default function InstallerNotificationsPage() {
       title: string;
       message: string;
       isBroadcast: boolean;
-      installerId: string | null;
+      dealerId: string | null;
       createdAt: string;
     }[]
   >({
-    queryKey: ["/api/installer-notifications"],
+    queryKey: ["/api/dealer-notifications/history"],
   });
 
   const form = useForm({
@@ -65,16 +66,16 @@ export default function InstallerNotificationsPage() {
   });
 
   const sendMutation = useMutation({
-    mutationFn: (data: { title: string; message: string; installerIds: string[] | "all" }) =>
-      apiRequest("POST", "/api/installer-notifications/send", data),
+    mutationFn: (data: { title: string; message: string; dealerIds: string[]; sendToAll: boolean }) =>
+      apiRequest("POST", "/api/dealer-notifications/send", data),
     onSuccess: async (res) => {
       const result = await res.json();
-      queryClient.invalidateQueries({ queryKey: ["/api/installer-notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dealer-notifications/history"] });
       form.reset();
       setSelectedIds([]);
       toast({
         title: "Уведомление отправлено",
-        description: `Доставлено ${result.count} монтажник(ам)`,
+        description: `Доставлено ${result.count} дилер(ам)`,
       });
     },
     onError: (e: Error) =>
@@ -84,25 +85,24 @@ export default function InstallerNotificationsPage() {
   const onSubmit = (data: { title: string; message: string }) => {
     sendMutation.mutate({
       ...data,
-      installerIds: sendToAll ? "all" : selectedIds,
+      dealerIds: sendToAll ? [] : selectedIds,
+      sendToAll,
     });
   };
 
-  const activeInstallers = installers.filter((i) => i.isActive);
-
-  const toggleInstaller = (id: string) => {
+  const toggleDealer = (id: string) => {
     setSelectedIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
   };
 
-  const getInstallerName = (id: string | null) => {
+  const getDealerName = (id: string | null) => {
     if (!id) return "—";
-    return installers.find((i) => i.id === id)?.name || id;
+    return allDealers.find((d) => d.id === id)?.fullName || id;
   };
 
   return (
-    <Layout title="Уведомления монтажникам">
+    <Layout title="Уведомления в приложение">
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Send form */}
         <Card>
@@ -112,7 +112,7 @@ export default function InstallerNotificationsPage() {
               Отправить уведомление
             </CardTitle>
             <CardDescription>
-              Монтажники увидят уведомление в мобильном приложении
+              Дилеры увидят уведомление в мобильном приложении
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -162,30 +162,30 @@ export default function InstallerNotificationsPage() {
                       }}
                     />
                     <label htmlFor="send-to-all" className="text-sm font-medium cursor-pointer">
-                      Все активные монтажники ({activeInstallers.length})
+                      Все дилеры с приложением ({dealers.length})
                     </label>
                   </div>
 
                   {!sendToAll && (
                     <div className="border rounded-md p-3 space-y-2 max-h-48 overflow-y-auto">
-                      {activeInstallers.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">Нет активных монтажников</p>
+                      {dealers.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">Нет дилеров с приложением</p>
                       ) : (
-                        activeInstallers.map((inst) => (
-                          <div key={inst.id} className="flex items-center gap-2">
+                        dealers.map((dealer) => (
+                          <div key={dealer.id} className="flex items-center gap-2">
                             <Checkbox
-                              id={`inst-${inst.id}`}
-                              checked={selectedIds.includes(inst.id)}
-                              onCheckedChange={() => toggleInstaller(inst.id)}
+                              id={`dealer-${dealer.id}`}
+                              checked={selectedIds.includes(dealer.id)}
+                              onCheckedChange={() => toggleDealer(dealer.id)}
                             />
                             <label
-                              htmlFor={`inst-${inst.id}`}
+                              htmlFor={`dealer-${dealer.id}`}
                               className="text-sm cursor-pointer"
                             >
-                              {inst.name}
-                              {inst.phone && (
+                              {dealer.fullName}
+                              {dealer.phone && (
                                 <span className="text-muted-foreground ml-1">
-                                  ({inst.phone})
+                                  ({dealer.phone})
                                 </span>
                               )}
                             </label>
@@ -246,7 +246,7 @@ export default function InstallerNotificationsPage() {
                         {n.isBroadcast ? (
                           <><Users className="h-3 w-3 mr-1" />Все</>
                         ) : (
-                          getInstallerName(n.installerId)
+                          getDealerName(n.dealerId)
                         )}
                       </Badge>
                     </div>

@@ -59,7 +59,7 @@ import {
   printInvoice,
   printCustomerInvoice,
 } from "./utils";
-import { InstallerMeasurementsTab } from "./installer-measurements-tab";
+import { AppMeasurementsTab } from "./app-measurements-tab";
 
 export default function OrdersPage() {
   const { toast } = useToast();
@@ -83,7 +83,7 @@ export default function OrdersPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [dealerFilter, setDealerFilter] = useState("all");
   const [orderTypeFilter, setOrderTypeFilter] = useState<
-    "all" | "sash" | "product" | "installers"
+    "all" | "sash" | "product" | "app"
   >("all");
   const [convertingMeasurementId, setConvertingMeasurementId] = useState<string | null>(null);
   const [showCostCalculation, setShowCostCalculation] = useState(false);
@@ -246,8 +246,8 @@ export default function OrdersPage() {
       }
       // If converting from measurement, mark it
       if (convertingMeasurementId) {
-        apiRequest("POST", `/api/installer-measurements/${convertingMeasurementId}/convert`).catch(() => {});
-        queryClient.invalidateQueries({ queryKey: ["/api/installer-measurements"] });
+        apiRequest("POST", `/api/app-measurements/${convertingMeasurementId}/convert`).catch(() => {});
+        queryClient.invalidateQueries({ queryKey: ["/api/app-measurements"] });
         setConvertingMeasurementId(null);
       }
       setIsDialogOpen(false);
@@ -693,8 +693,8 @@ export default function OrdersPage() {
     });
   };
 
-  // Open order form pre-filled from installer measurement
-  const openFromMeasurement = (measurement: Measurement & { sashes: MeasurementSash[]; installerName?: string }) => {
+  // Open order form pre-filled from app measurement
+  const openFromMeasurement = (measurement: Measurement & { sashes: MeasurementSash[]; dealerName?: string }) => {
     setEditingOrder(null);
     setConvertingMeasurementId(measurement.id);
     setActiveTab("order");
@@ -702,7 +702,7 @@ export default function OrdersPage() {
 
     const clientParts = [measurement.clientName, measurement.clientPhone].filter(Boolean);
     const commentLines = [
-      `От монтажника: ${measurement.installerName || ""}`,
+      `Из приложения: ${measurement.dealerName || ""}`,
       clientParts.length > 0 ? `Клиент: ${clientParts.join(", ")}` : null,
       measurement.address ? `Адрес: ${measurement.address}` : null,
       measurement.comment ? `Примечание: ${measurement.comment}` : null,
@@ -1214,7 +1214,7 @@ export default function OrdersPage() {
       <Tabs
         value={orderTypeFilter}
         onValueChange={(v) =>
-          setOrderTypeFilter(v as "all" | "sash" | "product" | "installers")
+          setOrderTypeFilter(v as "all" | "sash" | "product" | "app")
         }
         className="w-full"
       >
@@ -1222,11 +1222,11 @@ export default function OrdersPage() {
           <TabsTrigger value="all">Все заказы</TabsTrigger>
           <TabsTrigger value="sash">Со створками</TabsTrigger>
           <TabsTrigger value="product">Комплектующие</TabsTrigger>
-          <TabsTrigger value="installers">От монтажников</TabsTrigger>
+          <TabsTrigger value="app">Из приложения</TabsTrigger>
         </TabsList>
 
-        {orderTypeFilter === "installers" ? (
-          <InstallerMeasurementsTab onConvertToOrder={openFromMeasurement} />
+        {orderTypeFilter === "app" ? (
+          <AppMeasurementsTab onConvertToOrder={openFromMeasurement} />
         ) : (
           <>
             <FilterBar

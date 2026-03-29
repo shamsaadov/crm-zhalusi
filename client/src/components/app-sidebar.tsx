@@ -42,7 +42,7 @@ const mainNavItems = [
   { title: "Склад", url: "/warehouse", icon: Warehouse },
   { title: "Справочники", url: "/lists", icon: ListTodo },
   { title: "История действий", url: "/audit-log", icon: History },
-  { title: "Уведомления монтажникам", url: "/installer-notifications", icon: Bell },
+  { title: "Уведомления в приложение", url: "/app-notifications", icon: Bell },
 ];
 
 const reportNavItems = [

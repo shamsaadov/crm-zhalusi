@@ -36,10 +36,10 @@ import type { Measurement, MeasurementSash } from "@shared/schema";
 
 type MeasurementWithSashes = Measurement & {
   sashes: MeasurementSash[];
-  installerName?: string;
+  dealerName?: string;
 };
 
-export function InstallerMeasurementsTab({
+export function AppMeasurementsTab({
   onConvertToOrder,
 }: {
   onConvertToOrder?: (m: MeasurementWithSashes) => void;
@@ -53,15 +53,15 @@ export function InstallerMeasurementsTab({
   const { data: measurements = [], isLoading } = useQuery<
     MeasurementWithSashes[]
   >({
-    queryKey: ["/api/installer-measurements"],
+    queryKey: ["/api/app-measurements"],
   });
 
   const convertMutation = useMutation({
     mutationFn: (id: string) =>
-      apiRequest("POST", `/api/installer-measurements/${id}/convert`),
+      apiRequest("POST", `/api/app-measurements/${id}/convert`),
     onSuccess: (_, id) => {
       queryClient.invalidateQueries({
-        queryKey: ["/api/installer-measurements"],
+        queryKey: ["/api/app-measurements"],
       });
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
       toast({ title: "Замер преобразован в заказ" });
@@ -77,10 +77,10 @@ export function InstallerMeasurementsTab({
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) =>
-      apiRequest("DELETE", `/api/installer-measurements/${id}`),
+      apiRequest("DELETE", `/api/app-measurements/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["/api/installer-measurements"],
+        queryKey: ["/api/app-measurements"],
       });
       toast({ title: "Замер удалён" });
       setDeleteId(null);
@@ -134,11 +134,11 @@ export function InstallerMeasurementsTab({
                 : "—",
           },
           {
-            key: "installer",
-            header: "Монтажник",
+            key: "dealer",
+            header: "Дилер",
             cell: (m: MeasurementWithSashes) => (
               <span className="font-medium">
-                {m.installerName || "—"}
+                {m.dealerName || "—"}
               </span>
             ),
           },
@@ -230,7 +230,7 @@ export function InstallerMeasurementsTab({
         ]}
         data={measurements}
         isLoading={isLoading}
-        emptyMessage="Нет замеров от монтажников"
+        emptyMessage="Нет замеров из приложения"
         getRowKey={(m) => m.id}
         onRowDoubleClick={(m) => {
           if (onConvertToOrder && !m.orderId) {
@@ -245,15 +245,15 @@ export function InstallerMeasurementsTab({
       <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
         <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Замер от монтажника</DialogTitle>
+            <DialogTitle>Замер из приложения</DialogTitle>
           </DialogHeader>
           {viewingMeasurement && (
             <div className="space-y-4">
-              {/* Installer */}
+              {/* Dealer */}
               <div className="flex items-center gap-2 text-sm">
                 <User className="h-4 w-4 text-muted-foreground" />
                 <span className="font-medium">
-                  Монтажник: {viewingMeasurement.installerName || "—"}
+                  Дилер: {viewingMeasurement.dealerName || "—"}
                 </span>
               </div>
 
