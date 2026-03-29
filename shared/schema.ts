@@ -98,8 +98,9 @@ export const dealers = pgTable("dealers", {
     .references(() => users.id),
 });
 
-export const dealersRelations = relations(dealers, ({ one }) => ({
+export const dealersRelations = relations(dealers, ({ one, many }) => ({
   user: one(users, { fields: [dealers.userId], references: [users.id] }),
+  measurements: many(measurements),
 }));
 
 export const insertDealerSchema = createInsertSchema(dealers).omit({
@@ -638,45 +639,6 @@ export const insertNotificationSchema = createInsertSchema(notifications).omit({
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type Notification = typeof notifications.$inferSelect;
 
-// Installer notifications — уведомления для монтажников от CRM
-export const installerNotifications = pgTable("installer_notifications", {
-  id: varchar("id")
-    .primaryKey()
-    .default(sql`gen_random_uuid()`),
-  installerId: varchar("installer_id")
-    .references(() => installers.id),
-  userId: varchar("user_id")
-    .notNull()
-    .references(() => users.id),
-  title: text("title").notNull(),
-  message: text("message").notNull(),
-  isBroadcast: boolean("is_broadcast").default(false),
-  isRead: boolean("is_read").default(false),
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
-export const installerNotificationsRelations = relations(
-  installerNotifications,
-  ({ one }) => ({
-    installer: one(installers, {
-      fields: [installerNotifications.installerId],
-      references: [installers.id],
-    }),
-    user: one(users, {
-      fields: [installerNotifications.userId],
-      references: [users.id],
-    }),
-  })
-);
-
-export const insertInstallerNotificationSchema = createInsertSchema(
-  installerNotifications
-).omit({ id: true });
-export type InsertInstallerNotification = z.infer<
-  typeof insertInstallerNotificationSchema
->;
-export type InstallerNotification =
-  typeof installerNotifications.$inferSelect;
 
 // Cutting layouts (раскрой рулона)
 export const cuttingLayouts = pgTable("cutting_layouts", {
@@ -735,7 +697,7 @@ export const insertCuttingLayoutRowSchema = createInsertSchema(cuttingLayoutRows
 export type InsertCuttingLayoutRow = z.infer<typeof insertCuttingLayoutRowSchema>;
 export type CuttingLayoutRow = typeof cuttingLayoutRows.$inferSelect;
 
-// ===== INSTALLER / MOBILE TABLES =====
+// ===== MOBILE APP TABLES =====
 
 // Measurement statuses
 export const MEASUREMENT_STATUSES = [
@@ -747,43 +709,14 @@ export const MEASUREMENT_STATUSES = [
 ] as const;
 export type MeasurementStatus = (typeof MEASUREMENT_STATUSES)[number];
 
-// Installers — учётные записи монтажников (отдельно от users!)
-export const installers = pgTable("installers", {
-  id: varchar("id")
-    .primaryKey()
-    .default(sql`gen_random_uuid()`),
-  login: text("login").notNull().unique(),
-  password: text("password").notNull(),
-  name: text("name").notNull(),
-  phone: text("phone"),
-  isActive: boolean("is_active").default(true),
-  userId: varchar("user_id")
-    .notNull()
-    .references(() => users.id),
-  dealerId: varchar("dealer_id").references(() => dealers.id, { onDelete: "set null" }),
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
-export const installersRelations = relations(installers, ({ one, many }) => ({
-  user: one(users, { fields: [installers.userId], references: [users.id] }),
-  dealer: one(dealers, { fields: [installers.dealerId], references: [dealers.id] }),
-  measurements: many(measurements),
-}));
-
-export const insertInstallerSchema = createInsertSchema(installers).omit({
-  id: true,
-});
-export type InsertInstaller = z.infer<typeof insertInstallerSchema>;
-export type Installer = typeof installers.$inferSelect;
-
-// Measurements — замеры монтажника
+// Measurements — замеры дилера
 export const measurements = pgTable("measurements", {
   id: varchar("id")
     .primaryKey()
     .default(sql`gen_random_uuid()`),
-  installerId: varchar("installer_id")
+  dealerId: varchar("dealer_id")
     .notNull()
-    .references(() => installers.id),
+    .references(() => dealers.id),
   clientName: text("client_name"),
   clientPhone: text("client_phone"),
   address: text("address"),
@@ -801,9 +734,9 @@ export const measurements = pgTable("measurements", {
 export const measurementsRelations = relations(
   measurements,
   ({ one, many }) => ({
-    installer: one(installers, {
-      fields: [measurements.installerId],
-      references: [installers.id],
+    dealer: one(dealers, {
+      fields: [measurements.dealerId],
+      references: [dealers.id],
     }),
     order: one(orders, {
       fields: [measurements.orderId],
