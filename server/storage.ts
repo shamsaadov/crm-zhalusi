@@ -34,7 +34,6 @@ import {
   notifications,
   cuttingLayouts,
   cuttingLayoutRows,
-  installers,
   measurements,
   measurementSashes,
   measurementPhotos,
@@ -80,17 +79,12 @@ import {
   type InsertCuttingLayout,
   type CuttingLayoutRow,
   type InsertCuttingLayoutRow,
-  type Installer,
-  type InsertInstaller,
   type Measurement,
   type InsertMeasurement,
   type MeasurementSash,
   type InsertMeasurementSash,
   type MeasurementPhoto,
   type InsertMeasurementPhoto,
-  installerNotifications,
-  type InstallerNotification,
-  type InsertInstallerNotification,
   installmentPlans,
   installmentPayments,
   type InstallmentPlan,
@@ -341,26 +335,8 @@ export interface IStorage {
   markNotificationRead(id: string): Promise<Notification | undefined>;
   markAllNotificationsRead(userId: string): Promise<void>;
 
-  // Installer Notifications
-  createInstallerNotification(data: InsertInstallerNotification): Promise<InstallerNotification>;
-  getInstallerNotifications(installerId: string, limit?: number): Promise<InstallerNotification[]>;
-  getInstallerUnreadCount(installerId: string): Promise<number>;
-  markAllInstallerNotificationsRead(installerId: string): Promise<void>;
-
-  // Installers
-  getInstallers(userId: string): Promise<Installer[]>;
-  getInstaller(id: string): Promise<Installer | undefined>;
-  getInstallerByLogin(login: string): Promise<Installer | undefined>;
-  getInstallerByDealerId(dealerId: string): Promise<Installer | undefined>;
-  createInstaller(installer: InsertInstaller): Promise<Installer>;
-  updateInstaller(
-    id: string,
-    installer: Partial<InsertInstaller>
-  ): Promise<Installer | undefined>;
-  deleteInstaller(id: string): Promise<void>;
-
   // Measurements
-  getMeasurements(installerId: string): Promise<Measurement[]>;
+  getMeasurements(dealerId: string): Promise<Measurement[]>;
   getMeasurement(id: string): Promise<Measurement | undefined>;
   createMeasurement(measurement: InsertMeasurement): Promise<Measurement>;
   updateMeasurement(
@@ -1491,65 +1467,6 @@ export class DatabaseStorage implements IStorage {
       );
   }
 
-  // Installer Notifications
-  async createInstallerNotification(
-    data: InsertInstallerNotification
-  ): Promise<InstallerNotification> {
-    const [created] = await db
-      .insert(installerNotifications)
-      .values(data)
-      .returning();
-    return created;
-  }
-
-  async getInstallerNotifications(
-    installerId: string,
-    limit: number = 50
-  ): Promise<InstallerNotification[]> {
-    return db
-      .select()
-      .from(installerNotifications)
-      .where(
-        or(
-          eq(installerNotifications.installerId, installerId),
-          eq(installerNotifications.isBroadcast, true)
-        )
-      )
-      .orderBy(desc(installerNotifications.createdAt))
-      .limit(limit);
-  }
-
-  async getInstallerUnreadCount(installerId: string): Promise<number> {
-    const result = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(installerNotifications)
-      .where(
-        and(
-          or(
-            eq(installerNotifications.installerId, installerId),
-            eq(installerNotifications.isBroadcast, true)
-          ),
-          eq(installerNotifications.isRead, false)
-        )
-      );
-    return Number(result[0]?.count || 0);
-  }
-
-  async markAllInstallerNotificationsRead(installerId: string): Promise<void> {
-    await db
-      .update(installerNotifications)
-      .set({ isRead: true })
-      .where(
-        and(
-          or(
-            eq(installerNotifications.installerId, installerId),
-            eq(installerNotifications.isBroadcast, true)
-          ),
-          eq(installerNotifications.isRead, false)
-        )
-      );
-  }
-
   // Cutting layouts
   async getCuttingLayoutsByOrder(orderId: string): Promise<CuttingLayout[]> {
     return db
@@ -1593,68 +1510,12 @@ export class DatabaseStorage implements IStorage {
     await db.delete(cuttingLayouts).where(eq(cuttingLayouts.orderId, orderId));
   }
 
-  // ===== INSTALLERS =====
-  async getInstallers(userId: string): Promise<Installer[]> {
-    return db
-      .select()
-      .from(installers)
-      .where(eq(installers.userId, userId));
-  }
-
-  async getInstaller(id: string): Promise<Installer | undefined> {
-    const [installer] = await db
-      .select()
-      .from(installers)
-      .where(eq(installers.id, id));
-    return installer || undefined;
-  }
-
-  async getInstallerByLogin(login: string): Promise<Installer | undefined> {
-    const [installer] = await db
-      .select()
-      .from(installers)
-      .where(eq(installers.login, login));
-    return installer || undefined;
-  }
-
-  async getInstallerByDealerId(dealerId: string): Promise<Installer | undefined> {
-    const [installer] = await db
-      .select()
-      .from(installers)
-      .where(eq(installers.dealerId, dealerId));
-    return installer || undefined;
-  }
-
-  async createInstaller(installer: InsertInstaller): Promise<Installer> {
-    const [created] = await db
-      .insert(installers)
-      .values(installer)
-      .returning();
-    return created;
-  }
-
-  async updateInstaller(
-    id: string,
-    data: Partial<InsertInstaller>
-  ): Promise<Installer | undefined> {
-    const [updated] = await db
-      .update(installers)
-      .set(data)
-      .where(eq(installers.id, id))
-      .returning();
-    return updated;
-  }
-
-  async deleteInstaller(id: string): Promise<void> {
-    await db.delete(installers).where(eq(installers.id, id));
-  }
-
   // ===== MEASUREMENTS =====
-  async getMeasurements(installerId: string): Promise<Measurement[]> {
+  async getMeasurements(dealerId: string): Promise<Measurement[]> {
     return db
       .select()
       .from(measurements)
-      .where(eq(measurements.installerId, installerId))
+      .where(eq(measurements.dealerId, dealerId))
       .orderBy(desc(measurements.createdAt));
   }
 
