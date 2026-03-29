@@ -24,7 +24,6 @@ import { eq, and, sql, desc } from "drizzle-orm";
 import pg from "pg";
 import { logAudit } from "./audit";
 import { generatePeriodicNotifications } from "./notifications";
-import { createMobileRouter } from "./routes/mobile";
 import { createDealerMobileRouter } from "./routes/dealer-mobile";
 import { createReferencesRouter } from "./routes/references";
 import { createFinanceRouter } from "./routes/finance";
@@ -1551,137 +1550,25 @@ ${dbContext}`,
     }
   );
 
-  // ===== INSTALLERS (CRM admin CRUD) =====
+  // ===== APP MEASUREMENTS (CRM admin view) =====
+
+  // Get all measurements from all dealers belonging to this admin
   app.get(
-    "/api/installers",
+    "/api/app-measurements",
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
-        const data = await storage.getInstallers(req.userId!);
-        // Return without password
-        res.json(
-          data.map(({ password, ...rest }) => rest)
-        );
-      } catch (error) {
-        console.error(`[${req.method} ${req.path}]`, error);
-        res.status(500).json({ message: "Ошибка сервера" });
-      }
-    }
-  );
-
-  app.post(
-    "/api/installers",
-    authMiddleware,
-    async (req: AuthRequest, res: Response) => {
-      try {
-        const { login, password, name, phone } = req.body;
-        if (!login || !password || !name) {
-          return res
-            .status(400)
-            .json({ message: "Логин, пароль и имя обязательны" });
-        }
-
-        const existing = await storage.getInstallerByLogin(login);
-        if (existing) {
-          return res
-            .status(400)
-            .json({ message: "Монтажник с таким логином уже существует" });
-        }
-
-        const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
-        const installer = await storage.createInstaller({
-          login,
-          password: hashedPassword,
-          name,
-          phone: phone || null,
-          userId: req.userId!,
-        });
-
-        await logAudit({
-          userId: req.userId!,
-          action: "create",
-          entityType: "installer",
-          entityId: installer.id,
-          after: { login, name, phone },
-        });
-
-        const { password: _, ...safe } = installer;
-        res.json(safe);
-      } catch (error) {
-        console.error("Create installer error:", error);
-        res.status(500).json({ message: "Ошибка сервера" });
-      }
-    }
-  );
-
-  app.patch(
-    "/api/installers/:id",
-    authMiddleware,
-    async (req: AuthRequest, res: Response) => {
-      try {
-        const updateData: Record<string, any> = {};
-        const { name, phone, isActive, password, login } = req.body;
-
-        if (name !== undefined) updateData.name = name;
-        if (phone !== undefined) updateData.phone = phone;
-        if (isActive !== undefined) updateData.isActive = isActive;
-        if (login !== undefined) updateData.login = login;
-        if (password) {
-          updateData.password = await bcrypt.hash(password, SALT_ROUNDS);
-        }
-
-        const installer = await storage.updateInstaller(
-          req.params.id,
-          updateData
-        );
-        if (!installer) {
-          return res
-            .status(404)
-            .json({ message: "Монтажник не найден" });
-        }
-
-        const { password: _, ...safe } = installer;
-        res.json(safe);
-      } catch (error) {
-        console.error(`[${req.method} ${req.path}]`, error);
-        res.status(500).json({ message: "Ошибка сервера" });
-      }
-    }
-  );
-
-  app.delete(
-    "/api/installers/:id",
-    authMiddleware,
-    async (req: AuthRequest, res: Response) => {
-      try {
-        await storage.deleteInstaller(req.params.id);
-        res.json({ success: true });
-      } catch (error) {
-        console.error(`[${req.method} ${req.path}]`, error);
-        res.status(500).json({ message: "Ошибка сервера" });
-      }
-    }
-  );
-
-  // ===== INSTALLER MEASUREMENTS (CRM admin view) =====
-
-  // Get all measurements from all installers belonging to this admin
-  app.get(
-    "/api/installer-measurements",
-    authMiddleware,
-    async (req: AuthRequest, res: Response) => {
-      try {
-        const installerList = await storage.getInstallers(req.userId!);
+        const dealerList = await storage.getDealers(req.userId!);
         const allMeasurements = [];
 
-        for (const inst of installerList) {
-          const measurements = await storage.getMeasurements(inst.id);
-          for (const m of measurements) {
+        for (const dealer of dealerList) {
+          const dealerMeasurements = await storage.getMeasurements(dealer.id);
+          for (const m of dealerMeasurements) {
             const sashes = await storage.getMeasurementSashes(m.id);
             allMeasurements.push({
               ...m,
               sashes,
-              installerName: inst.name,
+              dealerName: dealer.fullName,
             });
           }
         }
@@ -1689,13 +1576,13 @@ ${dbContext}`,
         // Sort by createdAt desc
         allMeasurements.sort((a, b) => {
           const da = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-          const db = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-          return db - da;
+          const dbTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return dbTime - da;
         });
 
         res.json(allMeasurements);
       } catch (error) {
-        console.error("Get installer measurements error:", error);
+        console.error("Get app measurements error:", error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }
@@ -1703,7 +1590,7 @@ ${dbContext}`,
 
   // Mark measurement as converted (called after order created via form)
   app.post(
-    "/api/installer-measurements/:id/convert",
+    "/api/app-measurements/:id/convert",
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
@@ -1730,7 +1617,7 @@ ${dbContext}`,
 
   // Delete measurement (admin)
   app.delete(
-    "/api/installer-measurements/:id",
+    "/api/app-measurements/:id",
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
@@ -1743,15 +1630,15 @@ ${dbContext}`,
     }
   );
 
-  // ===== INSTALLER NOTIFICATIONS (CRM admin sends to installers) =====
+  // ===== DEALER NOTIFICATIONS (CRM admin sends to dealers) =====
 
-  // Send notification to installers
+  // Send notification to dealers
   app.post(
-    "/api/installer-notifications/send",
+    "/api/dealer-notifications/send",
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
-        const { title, message, installerIds } = req.body;
+        const { title, message, dealerIds, sendToAll } = req.body;
         if (!title || !message) {
           return res
             .status(400)
@@ -1760,13 +1647,13 @@ ${dbContext}`,
 
         const userId = req.userId!;
 
-        if (!installerIds || installerIds === "all") {
-          // Broadcast to all installers
-          const allInstallers = await storage.getInstallers(userId);
-          for (const inst of allInstallers) {
-            if (!inst.isActive) continue;
-            await storage.createInstallerNotification({
-              installerId: inst.id,
+        if (sendToAll) {
+          // Broadcast to all dealers with login
+          const allDealers = await storage.getDealers(userId);
+          const activeDealers = allDealers.filter((d) => d.isActive && d.login);
+          for (const dealer of activeDealers) {
+            await storage.createDealerNotification({
+              dealerId: dealer.id,
               userId,
               title,
               message,
@@ -1776,16 +1663,16 @@ ${dbContext}`,
           }
           res.json({
             success: true,
-            count: allInstallers.filter((i) => i.isActive).length,
+            count: activeDealers.length,
           });
         } else {
-          // Send to specific installers
-          const ids = Array.isArray(installerIds)
-            ? installerIds
-            : [installerIds];
-          for (const installerId of ids) {
-            await storage.createInstallerNotification({
-              installerId,
+          // Send to specific dealers
+          const ids = Array.isArray(dealerIds)
+            ? dealerIds
+            : [dealerIds];
+          for (const dealerId of ids) {
+            await storage.createDealerNotification({
+              dealerId,
               userId,
               title,
               message,
@@ -1802,20 +1689,18 @@ ${dbContext}`,
     }
   );
 
-  // Get sent installer notifications history
+  // Get sent dealer notifications history
   app.get(
-    "/api/installer-notifications",
+    "/api/dealer-notifications/history",
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
-        const { installerNotifications } = await import("@shared/schema");
-        const { desc, eq } = await import("drizzle-orm");
-        const { db } = await import("./db");
+        const { dealerNotifications } = await import("@shared/schema");
         const list = await db
           .select()
-          .from(installerNotifications)
-          .where(eq(installerNotifications.userId, req.userId!))
-          .orderBy(desc(installerNotifications.createdAt))
+          .from(dealerNotifications)
+          .where(eq(dealerNotifications.userId, req.userId!))
+          .orderBy(desc(dealerNotifications.createdAt))
           .limit(100);
         res.json(list);
       } catch (error) {
@@ -1825,8 +1710,7 @@ ${dbContext}`,
     }
   );
 
-  // ===== MOBILE API (installer + dealer sub-routers) =====
-  app.use("/api/mobile", createMobileRouter());
+  // ===== MOBILE API (dealer sub-router) =====
   app.use("/api/mobile/dealer", createDealerMobileRouter());
 
   // ===== REFERENCE CRUD ROUTES (mounted as sub-router) =====
