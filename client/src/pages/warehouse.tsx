@@ -860,6 +860,7 @@ export default function WarehousePage() {
                             {globalItemType === "fabric" ? (
                               <>
                                 <FormField
+                                  key={`linearMeters-${index}-${field.id}`}
                                   control={form.control}
                                   name={`items.${index}.linearMeters`}
                                   render={({ field }) => (
@@ -898,6 +899,7 @@ export default function WarehousePage() {
                                   )}
                                 />
                                 <FormField
+                                  key={`fabric-qty-${index}-${field.id}`}
                                   control={form.control}
                                   name={`items.${index}.quantity`}
                                   render={({ field }) => (
@@ -916,6 +918,7 @@ export default function WarehousePage() {
                                   )}
                                 />
                                 <FormField
+                                  key={`fabric-price-${index}-${field.id}`}
                                   control={form.control}
                                   name={`items.${index}.price`}
                                   render={({ field }) => (
@@ -934,6 +937,7 @@ export default function WarehousePage() {
                                   )}
                                 />
                                 <FormField
+                                  key={`fabric-total-${index}-${field.id}`}
                                   control={form.control}
                                   name={`items.${index}.total`}
                                   render={({ field }) => (
@@ -955,6 +959,7 @@ export default function WarehousePage() {
                             ) : (
                               <>
                                 <FormField
+                                  key={`comp-qty-${index}-${field.id}`}
                                   control={form.control}
                                   name={`items.${index}.quantity`}
                                   render={({ field }) => (
@@ -974,6 +979,7 @@ export default function WarehousePage() {
                                   )}
                                 />
                                 <FormField
+                                  key={`comp-price-${index}-${field.id}`}
                                   control={form.control}
                                   name={`items.${index}.price`}
                                   render={({ field }) => (
@@ -993,6 +999,7 @@ export default function WarehousePage() {
                                   )}
                                 />
                                 <FormField
+                                  key={`comp-total-${index}-${field.id}`}
                                   control={form.control}
                                   name={`items.${index}.total`}
                                   render={({ field }) => (
