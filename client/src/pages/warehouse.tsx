@@ -64,9 +64,11 @@ const itemSchema = z.object({
   itemType: z.enum(["fabric", "component"]),
   componentId: z.string().optional(),
   fabricId: z.string().optional(),
-  quantity: z.string().min(1, "Обязательное поле"),
-  // Для тканей: total обязателен (вводится), price вычисляется
-  // Для комплектующих: price обязателен (вводится), total вычисляется
+  quantity: z.string().min(1, "Обязательное поле"), // для тканей: кв.м (авто), для компл.: кол-во (ввод)
+  // Для тканей: linearMeters + pricePerLinearMeter (ввод) → quantity, price, total (авто)
+  // Для комплектующих: price (ввод) → total (авто)
+  linearMeters: z.string().optional(), // пог. метры (только ткани)
+  pricePerLinearMeter: z.string().optional(), // цена за пог. метр (только ткани)
   total: z.string().optional(),
   price: z.string().optional(),
 });
@@ -257,6 +259,8 @@ export default function WarehousePage() {
           componentId: "",
           fabricId: "",
           quantity: "",
+          linearMeters: "",
+          pricePerLinearMeter: "",
           price: "",
           total: "",
         },
@@ -282,23 +286,38 @@ export default function WarehousePage() {
   });
 
   // Автоматический расчёт:
-  // - Ткани: цена = сумма / количество (пользователь вводит сумму и кол-во)
-  // - Комплектующие: сумма = цена * количество (пользователь вводит цену и кол-во)
+  // - Ткани: пог.м × ширина = кв.м, цена за пог.м ÷ ширина = цена/м², пог.м × цена за пог.м = сумма
+  // - Комплектующие: сумма = цена * количество
   useEffect(() => {
     watchedItems?.forEach((item, index) => {
-      const qty = parseFloat(item.quantity || "0");
-      
       if (item.itemType === "fabric") {
-        // Для тканей: вычисляем цену из суммы
-        const total = parseFloat(item.total || "0");
-        if (qty > 0 && total > 0) {
-          const calculatedPrice = (total / qty).toFixed(2);
-          if (item.price !== calculatedPrice) {
-            form.setValue(`items.${index}.price`, calculatedPrice);
+        const linearM = parseFloat(item.linearMeters || "0");
+        const priceLM = parseFloat(item.pricePerLinearMeter || "0");
+        // Найти ширину выбранной ткани (в БД хранится в см, переводим в метры)
+        const selectedFabric = fabrics?.find((f: Fabric) => f.id === item.fabricId);
+        const rawWidth = selectedFabric?.width ? parseFloat(selectedFabric.width.toString()) : 0;
+        const fabricWidth = rawWidth > 10 ? rawWidth / 100 : rawWidth; // если > 10, значит в см
+
+        if (linearM > 0 && fabricWidth > 0) {
+          const sqMeters = (linearM * fabricWidth).toFixed(2);
+          if (item.quantity !== sqMeters) {
+            form.setValue(`items.${index}.quantity`, sqMeters);
+          }
+        }
+        if (linearM > 0 && priceLM > 0) {
+          const totalCost = (linearM * priceLM).toFixed(2);
+          if (item.total !== totalCost) {
+            form.setValue(`items.${index}.total`, totalCost);
+          }
+        }
+        if (priceLM > 0 && fabricWidth > 0) {
+          const pricePerSqM = (priceLM / fabricWidth).toFixed(2);
+          if (item.price !== pricePerSqM) {
+            form.setValue(`items.${index}.price`, pricePerSqM);
           }
         }
       } else {
-        // Для комплектующих: вычисляем сумму из цены
+        const qty = parseFloat(item.quantity || "0");
         const price = parseFloat(item.price || "0");
         const calculatedTotal = (qty * price).toFixed(2);
         if (item.total !== calculatedTotal) {
@@ -306,7 +325,7 @@ export default function WarehousePage() {
         }
       }
     });
-  }, [watchedItems, form]);
+  }, [watchedItems, form, fabrics]);
 
   const createMutation = useMutation({
     mutationFn: (data: WarehouseFormValues) => {
@@ -773,14 +792,6 @@ export default function WarehousePage() {
                   </div>
 
                   {fields.map((field, index) => {
-                    // Sync itemType with globalItemType
-                    if (
-                      form.getValues(`items.${index}.itemType`) !==
-                      globalItemType
-                    ) {
-                      form.setValue(`items.${index}.itemType`, globalItemType);
-                    }
-
                     return (
                       <div
                         key={field.id}
@@ -846,43 +857,58 @@ export default function WarehousePage() {
                               />
                             )}
 
-                            <FormField
-                              control={form.control}
-                              name={`items.${index}.quantity`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormControl>
-                                    <Input
-                                      type="number"
-                                      step="0.01"
-                                      placeholder="Кол-во (м²)"
-                                      className="h-7 text-xs"
-                                      {...field}
-                                      data-testid={`input-quantity-${index}`}
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-
-                            {/* Для тканей: Сумма покупки (ввод) → Цена/м² (авто) */}
-                            {/* Для комплектующих: Цена (ввод) → Сумма (авто) */}
                             {globalItemType === "fabric" ? (
                               <>
                                 <FormField
                                   control={form.control}
-                                  name={`items.${index}.total`}
+                                  name={`items.${index}.linearMeters`}
                                   render={({ field }) => (
                                     <FormItem>
                                       <FormControl>
                                         <Input
                                           type="number"
                                           step="0.01"
-                                          placeholder="Сумма покупки"
+                                          placeholder="Пог. метры"
                                           className="h-7 text-xs"
                                           {...field}
-                                          data-testid={`input-total-${index}`}
+                                          data-testid={`input-linear-${index}`}
+                                        />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                                <FormField
+                                  control={form.control}
+                                  name={`items.${index}.pricePerLinearMeter`}
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormControl>
+                                        <Input
+                                          type="number"
+                                          step="0.01"
+                                          placeholder="Цена/пог.м"
+                                          className="h-7 text-xs"
+                                          {...field}
+                                          data-testid={`input-price-lm-${index}`}
+                                        />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                                <FormField
+                                  control={form.control}
+                                  name={`items.${index}.quantity`}
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormControl>
+                                        <Input
+                                          {...field}
+                                          disabled
+                                          placeholder="Кв.м (авто)"
+                                          className="bg-muted h-7 text-xs"
+                                          data-testid={`input-quantity-${index}`}
                                         />
                                       </FormControl>
                                       <FormMessage />
@@ -907,9 +933,46 @@ export default function WarehousePage() {
                                     </FormItem>
                                   )}
                                 />
+                                <FormField
+                                  control={form.control}
+                                  name={`items.${index}.total`}
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormControl>
+                                        <Input
+                                          {...field}
+                                          disabled
+                                          placeholder="Сумма (авто)"
+                                          className="bg-muted h-7 text-xs"
+                                          data-testid={`input-total-${index}`}
+                                        />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
                               </>
                             ) : (
                               <>
+                                <FormField
+                                  control={form.control}
+                                  name={`items.${index}.quantity`}
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormControl>
+                                        <Input
+                                          type="number"
+                                          step="0.01"
+                                          placeholder="Кол-во"
+                                          className="h-7 text-xs"
+                                          {...field}
+                                          data-testid={`input-quantity-${index}`}
+                                        />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
                                 <FormField
                                   control={form.control}
                                   name={`items.${index}.price`}
@@ -989,6 +1052,21 @@ export default function WarehousePage() {
                     <Plus className="h-4 w-4 mr-2" />
                     Добавить позицию
                   </Button>
+
+                  {/* Итого сумма */}
+                  {(() => {
+                    const grandTotal = (watchedItems || []).reduce((sum, item) => {
+                      return sum + parseFloat(item.total || "0");
+                    }, 0);
+                    return grandTotal > 0 ? (
+                      <div className="flex items-center justify-between px-2 py-2 bg-primary/5 rounded-lg border">
+                        <span className="text-sm font-medium">Итого:</span>
+                        <span className="text-base font-bold text-primary">
+                          {formatCurrency(grandTotal)} ₽
+                        </span>
+                      </div>
+                    ) : null;
+                  })()}
                 </div>
 
                 <Separator />
