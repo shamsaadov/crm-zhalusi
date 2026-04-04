@@ -30,6 +30,7 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
     fabricColorId?: string;
     sashPrice?: string;
     sashCost?: string;
+    coefficient?: string;
     room?: number;
     roomName?: string;
   }) => ({
@@ -42,6 +43,7 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
     fabricColorId: sash.fabricColorId || null,
     sashPrice: sash.sashPrice || "0",
     sashCost: sash.sashCost || "0",
+    coefficient: sash.coefficient || null,
     room: sash.room || 1,
     roomName: sash.roomName || null,
   });

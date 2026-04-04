@@ -56,9 +56,11 @@ export function DealersTab({ search }: { search: string }) {
         openingBalance: z.string().optional(),
         login: z.string().optional(),
         password: z.string().optional(),
+        workshopRateRulon: z.string().optional(),
+        workshopRateZebra: z.string().optional(),
       })
     ),
-    defaultValues: { fullName: "", city: "", phone: "", openingBalance: "0", login: "", password: "" },
+    defaultValues: { fullName: "", city: "", phone: "", openingBalance: "0", login: "", password: "", workshopRateRulon: "28", workshopRateZebra: "28" },
   });
 
   const createMutation = useMutation({
@@ -140,6 +142,8 @@ export function DealersTab({ search }: { search: string }) {
       openingBalance: item.openingBalance?.toString() || "0",
       login: (item as any).login || "",
       password: "",
+      workshopRateRulon: (item as any).workshopRateRulon?.toString() || "28",
+      workshopRateZebra: (item as any).workshopRateZebra?.toString() || "28",
     });
     setIsDialogOpen(true);
   };
@@ -261,6 +265,34 @@ export function DealersTab({ search }: { search: string }) {
                     </FormItem>
                   )}
                 />
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField
+                    control={form.control}
+                    name="workshopRateRulon"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Цена цеха (рулон)</FormLabel>
+                        <FormControl>
+                          <Input {...field} type="number" step="0.01" placeholder="28" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="workshopRateZebra"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Цена цеха (зебра)</FormLabel>
+                        <FormControl>
+                          <Input {...field} type="number" step="0.01" placeholder="28" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
                 <Button
                   type="submit"
                   className="w-full"

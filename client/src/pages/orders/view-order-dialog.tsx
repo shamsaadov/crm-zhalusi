@@ -4,6 +4,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -11,6 +12,8 @@ import {
   formatCurrency,
   BalanceBadge,
 } from "@/components/status-badge";
+import { Pencil } from "lucide-react";
+import { useLocation } from "wouter";
 import { format } from "date-fns";
 import type { OrderStatus } from "@shared/schema";
 import type { OrderWithRelations } from "./types";
@@ -26,11 +29,27 @@ export function ViewOrderDialog({
   onOpenChange,
   order,
 }: ViewOrderDialogProps) {
+  const [, navigate] = useLocation();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Заказ #{order?.orderNumber}</DialogTitle>
+          <div className="flex items-center justify-between pr-8">
+            <DialogTitle>Заказ #{order?.orderNumber}</DialogTitle>
+            {order && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  onOpenChange(false);
+                  navigate(`/orders?edit=${order.id}`);
+                }}
+              >
+                <Pencil className="h-4 w-4 mr-1.5" />
+                Редактировать
+              </Button>
+            )}
+          </div>
         </DialogHeader>
         {order && (
           <div className="space-y-4">

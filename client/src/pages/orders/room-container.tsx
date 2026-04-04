@@ -52,7 +52,7 @@ export function RoomContainer({
     id: droppableId,
   });
 
-  const displayName = isDefault ? "Общее" : roomName;
+  const displayName = isDefault ? "" : roomName;
 
   return (
     <div
@@ -101,13 +101,13 @@ export function RoomContainer({
           </form>
         ) : (
           <span
-            className="text-sm font-medium cursor-default"
+            className={cn("text-sm cursor-default", displayName ? "font-medium" : "text-muted-foreground italic")}
             onDoubleClick={() => {
               setEditName(displayName);
               setEditing(true);
             }}
           >
-            {displayName}
+            {displayName || "Название комнаты (двойной клик)"}
           </span>
         )}
 
@@ -132,7 +132,7 @@ export function RoomContainer({
                 type="button"
                 onClick={onDeleteRoom}
                 className="text-muted-foreground hover:text-red-500"
-                title="Удалить комнату (створки переместятся в Общее)"
+                title="Удалить комнату (створки переместятся в основную группу)"
               >
                 <Trash2 className="h-3 w-3" />
               </button>

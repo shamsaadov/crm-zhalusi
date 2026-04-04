@@ -615,12 +615,12 @@ export function createDealerMobileRouter(): Router {
           salePrice: measurement.totalCoefficient || "0",
         });
 
-        // Create orderSashes from measurementSashes
+        // Create orderSashes from measurementSashes (strip trailing zeros)
         for (const s of sashes) {
           await storage.createOrderSash({
             orderId: order.id,
-            width: s.width || "0",
-            height: s.height || "0",
+            width: parseFloat(s.width?.toString() || "0").toString(),
+            height: parseFloat(s.height?.toString() || "0").toString(),
             controlSide: s.control,
             room: s.room,
             roomName: s.roomName,
@@ -687,6 +687,60 @@ export function createDealerMobileRouter(): Router {
           parseFloat(width),
           parseFloat(height)
         );
+        res.json(result);
+      } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // ===== FABRICS & SYSTEMS =====
+
+  // GET /fabrics — list fabrics for dealer's user
+  router.get(
+    "/fabrics",
+    dealerMobileAuthMiddleware,
+    async (req: DealerMobileAuthRequest, res: Response) => {
+      try {
+        const dealer = await storage.getDealer(req.dealerId!);
+        if (!dealer) return res.status(401).json({ message: "Дилер не найден" });
+
+        const allFabrics = await storage.getFabrics(dealer.userId);
+        const colors = await storage.getColors(dealer.userId);
+        const colorMap = new Map(colors.map((c) => [c.id, c.name]));
+
+        const result = allFabrics.map((f) => ({
+          ...f,
+          colorName: f.colorId ? colorMap.get(f.colorId) || null : null,
+        }));
+        res.json(result);
+      } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // GET /systems — list systems for dealer's user
+  router.get(
+    "/systems",
+    dealerMobileAuthMiddleware,
+    async (req: DealerMobileAuthRequest, res: Response) => {
+      try {
+        const dealer = await storage.getDealer(req.dealerId!);
+        if (!dealer) return res.status(401).json({ message: "Дилер не найден" });
+
+        const allSystems = await storage.getSystems(dealer.userId);
+        const multipliers = await storage.getMultipliers(dealer.userId);
+        const multMap = new Map(multipliers.map((m) => [m.id, parseFloat(m.value?.toString() || "0")]));
+
+        const result = allSystems.map((s) => ({
+          id: s.id,
+          name: s.name,
+          systemKey: s.systemKey,
+          multiplierValue: s.multiplierId ? multMap.get(s.multiplierId) || null : null,
+        }));
         res.json(result);
       } catch (error) {
         console.error(`[${req.method} ${req.path}]`, error);

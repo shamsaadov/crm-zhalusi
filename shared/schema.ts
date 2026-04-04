@@ -60,6 +60,7 @@ export const fabrics = pgTable("fabrics", {
   name: text("name").notNull(),
   width: decimal("width", { precision: 10, scale: 2 }),
   fabricType: text("fabric_type"), // "zebra" или "roll"
+  price: decimal("price", { precision: 12, scale: 2 }),
   colorId: varchar("color_id").references(() => colors.id),
   category: text("category"), // 1,2,3,4,5,E
   userId: varchar("user_id")
@@ -92,6 +93,8 @@ export const dealers = pgTable("dealers", {
   }).default("0"),
   login: text("login").unique(),
   password: text("password"),
+  workshopRateRulon: decimal("workshop_rate_rulon", { precision: 12, scale: 2 }).default("28"),
+  workshopRateZebra: decimal("workshop_rate_zebra", { precision: 12, scale: 2 }).default("28"),
   isActive: boolean("is_active").default(true),
   userId: varchar("user_id")
     .notNull()
@@ -348,6 +351,7 @@ export const orderSashes = pgTable("order_sashes", {
   }), // Для заказов товара
   sashPrice: decimal("sash_price", { precision: 12, scale: 2 }).default("0"),
   sashCost: decimal("sash_cost", { precision: 12, scale: 2 }).default("0"),
+  coefficient: decimal("coefficient", { precision: 12, scale: 2 }),
   room: integer("room").default(1), // Номер комнаты для группировки
   roomName: text("room_name"), // Название комнаты (опционально)
 });

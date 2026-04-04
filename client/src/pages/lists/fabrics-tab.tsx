@@ -61,6 +61,7 @@ export function FabricsTab({ search }: { search: string }) {
       z.object({
         name: z.string().min(1),
         width: z.string().optional(),
+        price: z.string().optional(),
         fabricType: z.string().optional(),
         colorId: z.string().optional(),
         category: z.string().optional(),
@@ -69,6 +70,7 @@ export function FabricsTab({ search }: { search: string }) {
     defaultValues: {
       name: "",
       width: "",
+      price: "",
       fabricType: "roll",
       colorId: "",
       category: "",
@@ -142,6 +144,7 @@ export function FabricsTab({ search }: { search: string }) {
     form.reset({
       name: item.name,
       width: item.width?.toString() || "",
+      price: (item as any).price?.toString() || "",
       fabricType: (item as any).fabricType || "roll",
       colorId: item.colorId || "",
       category: item.category || "",
@@ -200,7 +203,7 @@ export function FabricsTab({ search }: { search: string }) {
                     </FormItem>
                   )}
                 />
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <FormField
                     control={form.control}
                     name="width"
@@ -210,10 +213,29 @@ export function FabricsTab({ search }: { search: string }) {
                           <Input
                             type="number"
                             step="0.01"
-                            placeholder="Ширина"
+                            placeholder="Ширина (м)"
                             className="h-9"
                             {...field}
                             data-testid="input-fabric-width"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="price"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            placeholder="Цена/м²"
+                            className="h-9"
+                            {...field}
+                            data-testid="input-fabric-price"
                           />
                         </FormControl>
                         <FormMessage />
@@ -338,6 +360,11 @@ export function FabricsTab({ search }: { search: string }) {
             key: "width",
             header: "Ширина",
             cell: (f: Fabric) => f.width || "-",
+          },
+          {
+            key: "price",
+            header: "Цена/м²",
+            cell: (f: Fabric) => (f as any).price ? `${parseFloat((f as any).price).toFixed(2)} ₽` : "-",
           },
           {
             key: "fabricType",

@@ -1034,7 +1034,7 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(financeOperations)
       .where(whereClause)
-      .orderBy(desc(financeOperations.date));
+      .orderBy(desc(financeOperations.date), desc(financeOperations.id));
   }
 
   async getFinanceOperationsPaginated(

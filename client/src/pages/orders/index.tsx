@@ -65,6 +65,7 @@ export default function OrdersPage() {
   const { toast } = useToast();
   const coefficientCalculator = useCoefficientCalculator();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editFromUrl, setEditFromUrl] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"order" | "product">("order");
   const [editingOrder, setEditingOrder] = useState<OrderWithRelations | null>(
     null
@@ -487,6 +488,7 @@ export default function OrdersPage() {
           fabricId: sash.fabricId,
           sashPrice: sash.sashPrice,
           sashCost: sash.sashCost,
+          coefficient: sash.coefficient,
           room: sash.room || 1,
           roomName: sash.roomName || undefined,
         }));
@@ -548,7 +550,7 @@ export default function OrdersPage() {
         fabricId: s.fabricId || "",
         sashPrice: s.sashPrice?.toString() || "",
         sashCost: s.sashCost?.toString() || "",
-        coefficient: "",
+        coefficient: (s as any).coefficient?.toString() || "",
         isCalculating: false,
         quantity: "1",
         room: (s as any).room || 1,
@@ -584,10 +586,13 @@ export default function OrdersPage() {
               ],
       });
 
-      // Пересчитываем только коэффициенты для каждой створки после загрузки
+      // Пересчитываем коэффициенты ТОЛЬКО для створок, у которых нет сохранённого коэффициента
       // НО НЕ МЕНЯЕМ sashPrice и salePrice - они уже сохранены в базе
       setTimeout(() => {
         sashesData.forEach((sash, index) => {
+          // Если коэффициент уже есть из БД - пропускаем пересчёт
+          if (sash.coefficient && parseFloat(sash.coefficient) > 0) return;
+
           const width = parseFloat(sash.width || "0");
           const height = parseFloat(sash.height || "0");
           const systemId = sash.systemId;
@@ -651,6 +656,27 @@ export default function OrdersPage() {
     setOrderToDelete(order);
     setIsDeleteDialogOpen(true);
   };
+
+  // Handle ?edit=orderId from URL (e.g. from kanban)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const editId = params.get("edit");
+    if (editId && !editFromUrl) {
+      setEditFromUrl(editId);
+      // Clean URL
+      window.history.replaceState({}, "", window.location.pathname);
+      // Open edit dialog
+      (async () => {
+        try {
+          const response = await fetch(`/api/orders/${editId}`, { credentials: "include" });
+          const fullOrder: OrderWithRelations = await response.json();
+          openEditDialog(fullOrder);
+        } catch {
+          toast({ title: "Ошибка загрузки заказа", variant: "destructive" });
+        }
+      })();
+    }
+  }, []);
 
   const resetForms = () => {
     setEditingOrder(null);
@@ -724,7 +750,7 @@ export default function OrdersPage() {
 
     form.reset({
       date: format(new Date(), "yyyy-MM-dd"),
-      dealerId: "",
+      dealerId: measurement.dealerId || "",
       status: "Новый",
       salePrice: measurement.totalCoefficient?.toString() || "",
       costPrice: "",

@@ -878,9 +878,9 @@ export async function printCustomerInvoice(
         ? unitPriceRaw
         : unitFallback;
 
-    // Вычисляем коэффициент: sashPrice / multiplier
-    const multiplierValue = getMultiplierValue(sash.systemId);
-    const coefficient = multiplierValue > 0 ? unitPrice / multiplierValue : 0;
+    // Берём сохранённый коэффициент (не вычисляем из цены)
+    const savedCoefficient = parseFloat((sash as any).coefficient || "0");
+    const coefficient = savedCoefficient;
 
     sashLines.push({
       width: widthNum,

@@ -20,7 +20,7 @@ import {
   financeOperations,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, sql, desc } from "drizzle-orm";
+import { eq, and, sql, desc, sum } from "drizzle-orm";
 import pg from "pg";
 import { logAudit } from "./audit";
 import { generatePeriodicNotifications } from "./notifications";
@@ -493,10 +493,49 @@ export async function registerRoutes(
         const dealerList = await storage.getDealers(req.userId!);
         const supplierList = await storage.getSuppliers(req.userId!);
 
-        // AR = dealers who owe us (negative balance)
+        // Calculate shipped-only balance for each dealer
+        const dealersWithShipped = await Promise.all(
+          dealerList.map(async (dealer) => {
+            const shippedTotals = await db
+              .select({ total: sum(orders.salePrice) })
+              .from(orders)
+              .where(
+                and(
+                  eq(orders.dealerId, dealer.id),
+                  eq(orders.userId, req.userId!),
+                  eq(orders.status, "Отгружен")
+                )
+              );
+
+            const paymentTotals = await db
+              .select({ total: sum(financeOperations.amount) })
+              .from(financeOperations)
+              .where(
+                and(
+                  eq(financeOperations.dealerId, dealer.id),
+                  eq(financeOperations.type, "income"),
+                  eq(financeOperations.isDraft, false)
+                )
+              );
+
+            const opening = parseFloat(dealer.openingBalance?.toString() || "0");
+            const shippedTotal = parseFloat(shippedTotals[0]?.total?.toString() || "0");
+            const paymentTotal = parseFloat(paymentTotals[0]?.total?.toString() || "0");
+            const shippedBalance = -(opening + shippedTotal - paymentTotal);
+
+            return { ...dealer, shippedBalance };
+          })
+        );
+
+        // AR = dealers who owe us (negative balance = with all orders)
         const totalAR = dealerList
           .filter((d) => d.balance < 0)
           .reduce((sum, d) => sum + Math.abs(d.balance), 0);
+
+        // AR shipped only
+        const totalARShipped = dealersWithShipped
+          .filter((d) => d.shippedBalance < 0)
+          .reduce((sum, d) => sum + Math.abs(d.shippedBalance), 0);
 
         // AP = suppliers we owe (positive balance)
         const totalAP = supplierList
@@ -504,9 +543,10 @@ export async function registerRoutes(
           .reduce((sum, s) => sum + s.balance, 0);
 
         res.json({
-          dealers: dealerList,
+          dealers: dealersWithShipped,
           suppliers: supplierList,
           totalAR,
+          totalARShipped,
           totalAP,
         });
       } catch (error) {
