@@ -129,56 +129,21 @@ export function useRoomGroups(
   );
 
   /**
-   * Remove a room.
-   * - If `moveSashesTo` is a number — reassigns all affected sashes to that room.
-   * - If `moveSashesTo === null` — removes the affected sashes from the array.
-   * - If the room has no sashes — neither parameter matters; the room is just dropped.
+   * Remove a room and all sashes that belong to it.
    *
    * Refuses to remove the last remaining room (form always needs at least one).
    */
   const removeRoom = useCallback(
-    (roomId: number, moveSashesTo?: number | null) => {
+    (roomId: number) => {
       if (rooms.length <= 1) return;
       const current = form.getValues("sashes");
-      const belongsToDeleted = (idx: number) =>
-        (current[idx]?.room ?? 1) === roomId;
       const affectedIndices = current
-        .map((_, i) => i)
-        .filter((i) => belongsToDeleted(i));
+        .map((s, i) => ((s?.room ?? 1) === roomId ? i : -1))
+        .filter((i) => i >= 0);
 
-      if (affectedIndices.length === 0) {
-        setRooms((prev) => prev.filter((r) => r.id !== roomId));
-        return;
-      }
-
-      if (moveSashesTo === null) {
+      if (affectedIndices.length > 0) {
         fieldArray.remove(affectedIndices);
-      } else if (typeof moveSashesTo === "number") {
-        const target = rooms.find((r) => r.id === moveSashesTo);
-        if (!target) return; // refuse rather than silently orphan sashes
-        const targetName = target.name ?? "";
-        affectedIndices.forEach((i) => {
-          form.setValue(`sashes.${i}.room`, moveSashesTo, {
-            shouldValidate: false,
-          });
-          form.setValue(`sashes.${i}.roomName`, targetName, {
-            shouldValidate: false,
-          });
-        });
-      } else {
-        // Safety: if caller forgot to specify, treat as "move to first other room".
-        const fallback = rooms.find((r) => r.id !== roomId);
-        if (!fallback) return;
-        affectedIndices.forEach((i) => {
-          form.setValue(`sashes.${i}.room`, fallback.id, {
-            shouldValidate: false,
-          });
-          form.setValue(`sashes.${i}.roomName`, fallback.name, {
-            shouldValidate: false,
-          });
-        });
       }
-
       setRooms((prev) => prev.filter((r) => r.id !== roomId));
     },
     [fieldArray, form, rooms]

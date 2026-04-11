@@ -56,8 +56,6 @@ import type {
 import { RoomContainer } from "./room-container";
 import { useRoomGroups } from "./use-room-groups";
 import { calculateCostPrice } from "./utils";
-import { DeleteRoomDialog } from "./delete-room-dialog";
-import type { Room } from "./types";
 
 interface OrderFormProps {
   form: UseFormReturn<OrderFormValues>;
@@ -112,11 +110,6 @@ export function OrderForm({
     autoEditRoomId,
     clearAutoEdit,
   } = useRoomGroups(form, fieldArray);
-
-  const [deleteDialog, setDeleteDialog] = useState<{
-    room: Room;
-    sashCount: number;
-  } | null>(null);
 
   useEffect(() => {
     seedRooms(form.getValues("sashes"));
@@ -420,82 +413,68 @@ export function OrderForm({
                 {fields.length} {fields.length !== 1 ? "позиций" : "позиция"}
               </Badge>
             </h3>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="gap-1.5"
-                onClick={() => {
-                  addRoom();
-                }}
-              >
-                <Home className="h-3.5 w-3.5" />
-                Комната
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleTestCalculation}
-                className="gap-2"
-              >
-                <Info className="h-4 w-4" />
-                Подробности заказа
-              </Button>
-            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleTestCalculation}
+              className="gap-2"
+            >
+              <Info className="h-4 w-4" />
+              Подробности заказа
+            </Button>
           </div>
 
           <DndContext sensors={sensors} onDragEnd={handleDragEnd} collisionDetection={pointerWithin}>
             <div className="space-y-3">
-              {roomGroups.map((group) => {
-                const sashCount = group.sashIndices.length;
-                return (
-                  <RoomContainer
-                    key={`room-${group.room.id}`}
-                    roomId={group.room.id}
-                    roomName={group.room.name}
-                    sashIndices={group.sashIndices}
-                    fields={fields}
-                    form={form}
-                    systems={systems}
-                    fabrics={fabrics}
-                    totalFields={fields.length}
-                    autoEdit={autoEditRoomId === group.room.id}
-                    canDelete={rooms.length > 1}
-                    onRemoveSash={handleSashRemove}
-                    onRenameRoom={(newName) => renameRoom(group.room.id, newName)}
-                    onDeleteRoom={() => {
-                      if (rooms.length <= 1) return;
-                      if (sashCount === 0) {
-                        removeRoom(group.room.id);
-                      } else {
-                        setDeleteDialog({ room: group.room, sashCount });
-                      }
-                    }}
-                    onAddSash={() => {
-                      const sashes = form.getValues("sashes");
-                      const lastSash = sashes[sashes.length - 1];
-                      append({
-                        width: "",
-                        height: "",
-                        quantity: "1",
-                        systemId: lastSash?.systemId || "",
-                        controlSide: "",
-                        fabricId: lastSash?.fabricId || "",
-                        sashPrice: "",
-                        sashCost: "",
-                        coefficient: "",
-                        isCalculating: false,
-                        room: group.room.id,
-                        roomName: group.room.name,
-                      });
-                    }}
-                    onAutoEditConsumed={clearAutoEdit}
-                    calculatingSashes={calculatingSashes}
-                  />
-                );
-              })}
+              {roomGroups.map((group) => (
+                <RoomContainer
+                  key={`room-${group.room.id}`}
+                  roomId={group.room.id}
+                  roomName={group.room.name}
+                  sashIndices={group.sashIndices}
+                  fields={fields}
+                  form={form}
+                  systems={systems}
+                  fabrics={fabrics}
+                  totalFields={fields.length}
+                  autoEdit={autoEditRoomId === group.room.id}
+                  canDelete={rooms.length > 1}
+                  onRemoveSash={handleSashRemove}
+                  onRenameRoom={(newName) => renameRoom(group.room.id, newName)}
+                  onDeleteRoom={() => removeRoom(group.room.id)}
+                  onAddSash={() => {
+                    const sashes = form.getValues("sashes");
+                    const lastSash = sashes[sashes.length - 1];
+                    append({
+                      width: "",
+                      height: "",
+                      quantity: "1",
+                      systemId: lastSash?.systemId || "",
+                      controlSide: "",
+                      fabricId: lastSash?.fabricId || "",
+                      sashPrice: "",
+                      sashCost: "",
+                      coefficient: "",
+                      isCalculating: false,
+                      room: group.room.id,
+                      roomName: group.room.name,
+                    });
+                  }}
+                  onAutoEditConsumed={clearAutoEdit}
+                  calculatingSashes={calculatingSashes}
+                />
+              ))}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full gap-1.5 border-dashed"
+                onClick={() => addRoom()}
+              >
+                <Home className="h-3.5 w-3.5" />
+                Добавить комнату
+              </Button>
             </div>
           </DndContext>
         </div>
@@ -643,21 +622,6 @@ export function OrderForm({
             {isEditing ? "Сохранить" : "Создать"}
           </Button>
         </div>
-        <DeleteRoomDialog
-          open={deleteDialog !== null}
-          onOpenChange={(open) => {
-            if (!open) setDeleteDialog(null);
-          }}
-          room={deleteDialog?.room ?? null}
-          sashCount={deleteDialog?.sashCount ?? 0}
-          otherRooms={rooms.filter((r) => r.id !== deleteDialog?.room.id)}
-          onConfirm={(moveSashesTo) => {
-            if (deleteDialog) {
-              removeRoom(deleteDialog.room.id, moveSashesTo);
-            }
-            setDeleteDialog(null);
-          }}
-        />
       </form>
     </Form>
   );
