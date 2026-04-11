@@ -94,3 +94,8 @@ export interface CostCalculationDetails {
     totalSashCost: number;
   }>;
 }
+
+export interface Room {
+  id: number;
+  name: string;
+}
