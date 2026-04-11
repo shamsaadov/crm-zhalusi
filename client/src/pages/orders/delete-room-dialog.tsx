@@ -41,12 +41,16 @@ export function DeleteRoomDialog({
   const [selected, setSelected] = useState<string>(DELETE_VALUE);
 
   useEffect(() => {
-    if (open) {
-      setSelected(
-        otherRooms.length > 0 ? String(otherRooms[0].id) : DELETE_VALUE
-      );
-    }
-  }, [open, otherRooms]);
+    if (!open) return;
+    setSelected(
+      otherRooms.length > 0 ? String(otherRooms[0].id) : DELETE_VALUE
+    );
+    // Intentionally depend only on `open`: we want to reset the selection once
+    // per dialog opening, not every time the parent re-renders a fresh
+    // `otherRooms` reference. If the selected room is removed from
+    // `otherRooms` mid-dialog (very unlikely), the next `open` cycle fixes it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   if (!room) return null;
 
