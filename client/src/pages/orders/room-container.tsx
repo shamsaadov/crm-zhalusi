@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import type { UseFormReturn } from "react-hook-form";
 import { Button } from "@/components/ui/button";
@@ -12,47 +12,60 @@ import type { SystemWithComponents } from "./types";
 import { SashFields } from "./sash-fields";
 
 interface RoomContainerProps {
+  roomId: number;
   roomName: string;
-  droppableId: string;
-  isDefault: boolean;
   sashIndices: number[];
   fields: { id: string }[];
   form: UseFormReturn<OrderFormValues>;
   systems: SystemWithComponents[];
   fabrics: Fabric[];
   totalFields: number;
+  autoEdit: boolean;
+  canDelete: boolean;
   onRemoveSash: (index: number) => void;
   onRenameRoom: (newName: string) => void;
   onDeleteRoom: () => void;
   onAddSash: () => void;
+  onAutoEditConsumed: () => void;
   calculatingSashes?: Set<number>;
 }
 
 export function RoomContainer({
+  roomId,
   roomName,
-  droppableId,
-  isDefault,
   sashIndices,
   fields,
   form,
   systems,
   fabrics,
   totalFields,
+  autoEdit,
+  canDelete,
   onRemoveSash,
   onRenameRoom,
   onDeleteRoom,
   onAddSash,
+  onAutoEditConsumed,
   calculatingSashes,
 }: RoomContainerProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(roomName);
 
-  const { isOver, setNodeRef } = useDroppable({
-    id: droppableId,
-  });
+  const droppableId = `room-${roomId}`;
+  const { isOver, setNodeRef } = useDroppable({ id: droppableId });
 
-  const displayName = isDefault ? "" : roomName;
+  // Enter edit mode exactly once when parent signals autoEdit=true,
+  // then notify parent to clear the flag so we don't re-trigger.
+  useEffect(() => {
+    if (autoEdit) {
+      setEditName("");
+      setEditing(true);
+      onAutoEditConsumed();
+    }
+  }, [autoEdit, onAutoEditConsumed]);
+
+  const isNamed = roomName !== "";
 
   return (
     <div
@@ -79,9 +92,7 @@ export function RoomContainer({
             className="flex items-center gap-1"
             onSubmit={(e) => {
               e.preventDefault();
-              if (editName.trim() && editName.trim() !== roomName) {
-                onRenameRoom(editName.trim());
-              }
+              onRenameRoom(editName.trim());
               setEditing(false);
             }}
           >
@@ -91,9 +102,7 @@ export function RoomContainer({
               className="h-6 w-32 text-xs"
               autoFocus
               onBlur={() => {
-                if (editName.trim() && editName.trim() !== roomName) {
-                  onRenameRoom(editName.trim());
-                }
+                onRenameRoom(editName.trim());
                 setEditing(false);
               }}
             />
@@ -101,13 +110,13 @@ export function RoomContainer({
           </form>
         ) : (
           <span
-            className={cn("text-sm cursor-default", displayName ? "font-medium" : "text-muted-foreground italic")}
+            className={cn("text-sm cursor-default", isNamed ? "font-medium" : "text-muted-foreground italic")}
             onDoubleClick={() => {
-              setEditName(displayName);
+              setEditName(roomName);
               setEditing(true);
             }}
           >
-            {displayName || "Название комнаты (двойной клик)"}
+            {isNamed ? roomName : "Название комнаты (двойной клик)"}
           </span>
         )}
 
@@ -121,22 +130,21 @@ export function RoomContainer({
           <>
             <button
               type="button"
-              onClick={() => { setEditName(displayName); setEditing(true); }}
+              onClick={() => { setEditName(roomName); setEditing(true); }}
               className="text-muted-foreground hover:text-foreground"
               title="Переименовать"
             >
               <Pencil className="h-3 w-3" />
             </button>
-            {!isDefault && (
-              <button
-                type="button"
-                onClick={onDeleteRoom}
-                className="text-muted-foreground hover:text-red-500"
-                title="Удалить комнату (створки переместятся в основную группу)"
-              >
-                <Trash2 className="h-3 w-3" />
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={onDeleteRoom}
+              disabled={!canDelete}
+              className="text-muted-foreground hover:text-red-500 disabled:opacity-40 disabled:cursor-not-allowed"
+              title={canDelete ? "Удалить комнату" : "Это единственная комната — её нельзя удалить"}
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
           </>
         )}
       </div>

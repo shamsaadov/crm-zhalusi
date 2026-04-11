@@ -60,6 +60,7 @@ import {
   printCustomerInvoice,
 } from "./utils";
 import { AppMeasurementsTab } from "./app-measurements-tab";
+import { normalizeSashRooms } from "./normalize-sash-rooms";
 
 export default function OrdersPage() {
   const { toast } = useToast();
@@ -97,6 +98,7 @@ export default function OrdersPage() {
     new Set()
   );
   const [isManualSalePrice, setIsManualSalePrice] = useState(false);
+  const [resetToken, setResetToken] = useState(0);
   const [showProfit, setShowProfit] = useState(() => sessionStorage.getItem("forsa-show-profit") === "true");
   const [profitPasswordInput, setProfitPasswordInput] = useState("");
   const [profitUnlocking, setProfitUnlocking] = useState(false);
@@ -201,6 +203,7 @@ export default function OrdersPage() {
           sashCost: "",
           coefficient: "",
           room: 1,
+          roomName: "",
         },
       ],
     },
@@ -542,7 +545,7 @@ export default function OrdersPage() {
       setEditingOrder(fullOrder);
 
       // Каждая створка — отдельная строка, без группировки
-      const sashesData = (fullOrder.sashes || []).map((s) => ({
+      const rawSashesData = (fullOrder.sashes || []).map((s) => ({
         width: s.width != null ? parseFloat(s.width.toString()).toString() : "",
         height: s.height != null ? parseFloat(s.height.toString()).toString() : "",
         systemId: s.systemId || "",
@@ -556,6 +559,7 @@ export default function OrdersPage() {
         room: (s as any).room || 1,
         roomName: (s as any).roomName || "",
       }));
+      const sashesData = normalizeSashRooms(rawSashesData);
 
       form.reset({
         date: fullOrder.date,
@@ -582,9 +586,11 @@ export default function OrdersPage() {
                   coefficient: "",
                   isCalculating: false,
                   room: 1,
+                  roomName: "",
                 },
               ],
       });
+      setResetToken((t) => t + 1);
 
       // Пересчитываем коэффициенты ТОЛЬКО для створок, у которых нет сохранённого коэффициента
       // НО НЕ МЕНЯЕМ sashPrice и salePrice - они уже сохранены в базе
@@ -703,9 +709,11 @@ export default function OrdersPage() {
           sashCost: "",
           coefficient: "",
           room: 1,
+          roomName: "",
         },
       ],
     });
+    setResetToken((t) => t + 1);
     productForm.reset({
       date: format(new Date(), "yyyy-MM-dd"),
       dealerId: "",
@@ -734,7 +742,7 @@ export default function OrdersPage() {
       measurement.comment ? `Примечание: ${measurement.comment}` : null,
     ].filter(Boolean).join("\n");
 
-    const sashes = (measurement.sashes || []).map((s) => ({
+    const rawSashes = (measurement.sashes || []).map((s) => ({
       width: s.width?.toString() || "",
       height: s.height?.toString() || "",
       quantity: "1",
@@ -745,8 +753,9 @@ export default function OrdersPage() {
       sashCost: "",
       coefficient: s.coefficient?.toString() || "",
       room: s.room || 1,
-      roomName: s.roomName || undefined,
+      roomName: s.roomName || "",
     }));
+    const sashes = normalizeSashRooms(rawSashes);
 
     form.reset({
       date: format(new Date(), "yyyy-MM-dd"),
@@ -757,8 +766,9 @@ export default function OrdersPage() {
       comment: commentLines,
       isPaid: false,
       cashboxId: "",
-      sashes: sashes.length > 0 ? sashes : [{ width: "", height: "", quantity: "1", systemId: "", controlSide: "", fabricId: "", sashPrice: "", sashCost: "", coefficient: "", room: 1 }],
+      sashes: sashes.length > 0 ? sashes : [{ width: "", height: "", quantity: "1", systemId: "", controlSide: "", fabricId: "", sashPrice: "", sashCost: "", coefficient: "", room: 1, roomName: "" }],
     });
+    setResetToken((t) => t + 1);
 
     setIsDialogOpen(true);
   };
@@ -1136,6 +1146,7 @@ export default function OrdersPage() {
                     cashboxes={cashboxes}
                     isEditing={false}
                     isPending={createMutation.isPending}
+                    resetToken={resetToken}
                     onSubmit={onSubmit}
                     onCancel={() => { resetForms(); setIsDialogOpen(false); }}
                     onShowCostCalculation={(details) => {
@@ -1176,6 +1187,7 @@ export default function OrdersPage() {
                 cashboxes={cashboxes}
                 isEditing={true}
                 isPending={updateMutation.isPending}
+                resetToken={resetToken}
                 onSubmit={onSubmit}
                 onCancel={() => { resetForms(); setIsDialogOpen(false); }}
                 onShowCostCalculation={(details) => {

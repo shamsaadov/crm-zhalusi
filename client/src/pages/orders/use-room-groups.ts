@@ -1,127 +1,213 @@
-import { useState, useCallback, useEffect } from "react";
-import type { UseFormReturn } from "react-hook-form";
-import type { FieldArrayWithId } from "react-hook-form";
-import type { OrderFormValues } from "./schemas";
+import { useCallback, useState } from "react";
+import {
+  useWatch,
+  type UseFormReturn,
+  type UseFieldArrayReturn,
+} from "react-hook-form";
+import type { OrderFormValues, SashFormValues } from "./schemas";
+import type { Room } from "./types";
 
-interface RoomGroup {
-  name: string; // "" = default room
+export interface RoomGroup {
+  room: Room;
   sashIndices: number[];
 }
 
+const DEFAULT_ROOM: Room = { id: 1, name: "" };
+
+/**
+ * Управляет группировкой створок по комнатам в форме заказа.
+ *
+ * Внутреннее состояние: массив `Room[]` с уникальными integer-ID.
+ * Группировка идёт по `sash.room` (integer), а не по `sash.roomName`,
+ * что даёт стабильную идентичность комнаты — rename не создаёт «клона».
+ *
+ * См. spec: docs/superpowers/specs/2026-04-11-room-grouping-stable-id-design.md
+ */
 export function useRoomGroups(
   form: UseFormReturn<OrderFormValues>,
-  fields: FieldArrayWithId<OrderFormValues, "sashes">[]
+  fieldArray: UseFieldArrayReturn<OrderFormValues, "sashes">
 ) {
-  const [createdRooms, setCreatedRooms] = useState<string[]>([]);
-  // Counter to force recalculation when roomName changes
-  const [version, setVersion] = useState(0);
+  const [rooms, setRooms] = useState<Room[]>([DEFAULT_ROOM]);
+  const [autoEditRoomId, setAutoEditRoomId] = useState<number | null>(null);
 
-  // Seed created rooms from existing sash data
-  useEffect(() => {
-    const sashes = form.getValues("sashes");
-    const existingNames = new Set<string>();
-    sashes.forEach((s) => {
-      if (s.roomName && s.roomName.trim()) existingNames.add(s.roomName);
-    });
-    if (existingNames.size > 0) {
-      setCreatedRooms((prev) => {
-        const merged = new Set([...prev, ...Array.from(existingNames)]);
-        return Array.from(merged);
-      });
+  // Reactive subscription to sashes — rerenders the hook's consumers on any
+  // sash mutation (room change, append, remove). Without this, moveSash()
+  // would update form values without triggering a rerender.
+  const watchedSashes =
+    (useWatch({ control: form.control, name: "sashes" }) as
+      | SashFormValues[]
+      | undefined) ?? [];
+
+  const nextRoomId = useCallback((): number => {
+    if (rooms.length === 0) return 1;
+    return Math.max(...rooms.map((r) => r.id)) + 1;
+  }, [rooms]);
+
+  // Derived every render from `rooms` + watched sashes.
+  const roomGroups: RoomGroup[] = rooms.map((room) => ({
+    room,
+    sashIndices: watchedSashes
+      .map((s, i) => ((s?.room ?? 1) === room.id ? i : -1))
+      .filter((i) => i >= 0),
+  }));
+
+  /**
+   * Rebuild the `rooms` state from the given sashes. Call after `form.reset()`.
+   * Groups by `sash.room` (integer); uses the first sash's `roomName` per
+   * group. If no sashes — falls back to a single empty default room.
+   */
+  const seedRooms = useCallback((loaded: SashFormValues[] | undefined) => {
+    if (!loaded || loaded.length === 0) {
+      setRooms([DEFAULT_ROOM]);
+      setAutoEditRoomId(null);
+      return;
     }
-  }, [fields.length]);
-
-  // Build rooms from current form state (recalculates on version/fields/createdRooms change)
-  const buildRooms = (): RoomGroup[] => {
-    const sashes = form.getValues("sashes");
-    const defaultRoom: RoomGroup = { name: "", sashIndices: [] };
-    const namedRooms = new Map<string, RoomGroup>();
-
-    createdRooms.forEach((name) => {
-      namedRooms.set(name, { name, sashIndices: [] });
+    const byId = new Map<number, string>();
+    loaded.forEach((s) => {
+      const id = s.room ?? 1;
+      if (!byId.has(id)) byId.set(id, s.roomName ?? "");
     });
-
-    sashes.forEach((sash, index) => {
-      if (index >= fields.length) return;
-      const roomName = sash?.roomName || "";
-      if (!roomName) {
-        defaultRoom.sashIndices.push(index);
-      } else {
-        if (!namedRooms.has(roomName)) {
-          namedRooms.set(roomName, { name: roomName, sashIndices: [] });
-        }
-        namedRooms.get(roomName)!.sashIndices.push(index);
-      }
-    });
-
-    return [defaultRoom, ...Array.from(namedRooms.values())];
-  };
-
-  // Force rebuild when version, fields length, or createdRooms change
-  const [rooms, setRooms] = useState<RoomGroup[]>(() => buildRooms());
-
-  useEffect(() => {
-    setRooms(buildRooms());
-  }, [version, fields.length, createdRooms]);
-
-  const bump = () => setVersion((v) => v + 1);
-
-  const addRoom = useCallback((name: string) => {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    setCreatedRooms((prev) =>
-      prev.includes(trimmed) ? prev : [...prev, trimmed]
-    );
+    const derived: Room[] = Array.from(byId.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.id - b.id);
+    setRooms(derived.length > 0 ? derived : [DEFAULT_ROOM]);
+    setAutoEditRoomId(null);
   }, []);
 
+  /**
+   * Create a new room with a fresh ID and append one empty sash belonging
+   * to it. Returns the new room ID. The caller (OrderForm) uses the returned
+   * ID to auto-focus the rename input via `autoEditRoomId`.
+   */
+  const addRoom = useCallback((): number => {
+    const id = nextRoomId();
+    const current = form.getValues("sashes");
+    const last = current[current.length - 1];
+    fieldArray.append({
+      width: "",
+      height: "",
+      quantity: "1",
+      systemId: last?.systemId || "",
+      controlSide: "",
+      fabricId: last?.fabricId || "",
+      sashPrice: "",
+      sashCost: "",
+      coefficient: "",
+      isCalculating: false,
+      room: id,
+      roomName: "",
+    });
+    setRooms((prev) => [...prev, { id, name: "" }]);
+    setAutoEditRoomId(id);
+    return id;
+  }, [fieldArray, form, nextRoomId]);
+
+  /**
+   * Rename a room by ID. Updates display name in `rooms` state and syncs
+   * `sash.roomName` for every sash belonging to this room.
+   */
   const renameRoom = useCallback(
-    (oldName: string, newName: string) => {
+    (roomId: number, newName: string) => {
       const trimmed = newName.trim();
-      const sashes = form.getValues("sashes");
-      sashes.forEach((s, i) => {
-        if ((s.roomName || "") === oldName) {
+      setRooms((prev) =>
+        prev.map((r) => (r.id === roomId ? { ...r, name: trimmed } : r))
+      );
+      const current = form.getValues("sashes");
+      current.forEach((s, i) => {
+        if ((s.room ?? 1) === roomId) {
           form.setValue(`sashes.${i}.roomName`, trimmed, {
             shouldValidate: false,
           });
         }
       });
-      setCreatedRooms((prev) => {
-        // Если переименовываем дефолтную комнату (oldName=""), добавляем новое имя
-        if (!oldName || !prev.includes(oldName)) {
-          return prev.includes(trimmed) ? prev : [...prev, trimmed];
-        }
-        return prev.map((n) => (n === oldName ? trimmed : n));
-      });
-      bump();
     },
     [form]
   );
 
+  /**
+   * Remove a room.
+   * - If `moveSashesTo` is a number — reassigns all affected sashes to that room.
+   * - If `moveSashesTo === null` — removes the affected sashes from the array.
+   * - If the room has no sashes — neither parameter matters; the room is just dropped.
+   *
+   * Refuses to remove the last remaining room (form always needs at least one).
+   */
   const removeRoom = useCallback(
-    (name: string) => {
-      const sashes = form.getValues("sashes");
-      sashes.forEach((s, i) => {
-        if ((s.roomName || "") === name) {
-          form.setValue(`sashes.${i}.roomName`, "", {
+    (roomId: number, moveSashesTo?: number | null) => {
+      if (rooms.length <= 1) return;
+      const current = form.getValues("sashes");
+      const belongsToDeleted = (idx: number) =>
+        (current[idx]?.room ?? 1) === roomId;
+      const affectedIndices = current
+        .map((_, i) => i)
+        .filter((i) => belongsToDeleted(i));
+
+      if (affectedIndices.length === 0) {
+        setRooms((prev) => prev.filter((r) => r.id !== roomId));
+        return;
+      }
+
+      if (moveSashesTo === null) {
+        fieldArray.remove(affectedIndices);
+      } else if (typeof moveSashesTo === "number") {
+        const target = rooms.find((r) => r.id === moveSashesTo);
+        const targetName = target?.name ?? "";
+        affectedIndices.forEach((i) => {
+          form.setValue(`sashes.${i}.room`, moveSashesTo, {
             shouldValidate: false,
           });
-        }
-      });
-      setCreatedRooms((prev) => prev.filter((n) => n !== name));
-      bump();
+          form.setValue(`sashes.${i}.roomName`, targetName, {
+            shouldValidate: false,
+          });
+        });
+      } else {
+        // Safety: if caller forgot to specify, treat as "move to first other room".
+        const fallback = rooms.find((r) => r.id !== roomId);
+        if (!fallback) return;
+        affectedIndices.forEach((i) => {
+          form.setValue(`sashes.${i}.room`, fallback.id, {
+            shouldValidate: false,
+          });
+          form.setValue(`sashes.${i}.roomName`, fallback.name, {
+            shouldValidate: false,
+          });
+        });
+      }
+
+      setRooms((prev) => prev.filter((r) => r.id !== roomId));
     },
-    [form]
+    [fieldArray, form, rooms]
   );
 
+  /**
+   * Move a single sash to a different room by updating `sash.room` and
+   * `sash.roomName`. Used by drag-and-drop.
+   */
   const moveSash = useCallback(
-    (sashIndex: number, targetRoomName: string) => {
-      form.setValue(`sashes.${sashIndex}.roomName`, targetRoomName, {
+    (sashIndex: number, targetRoomId: number) => {
+      const target = rooms.find((r) => r.id === targetRoomId);
+      if (!target) return;
+      form.setValue(`sashes.${sashIndex}.room`, targetRoomId, {
         shouldValidate: false,
       });
-      bump();
+      form.setValue(`sashes.${sashIndex}.roomName`, target.name ?? "", {
+        shouldValidate: false,
+      });
     },
-    [form]
+    [form, rooms]
   );
 
-  return { rooms, addRoom, renameRoom, removeRoom, moveSash, bump };
+  const clearAutoEdit = useCallback(() => setAutoEditRoomId(null), []);
+
+  return {
+    roomGroups,
+    rooms,
+    addRoom,
+    renameRoom,
+    removeRoom,
+    moveSash,
+    seedRooms,
+    autoEditRoomId,
+    clearAutoEdit,
+  };
 }
