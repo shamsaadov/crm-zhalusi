@@ -103,10 +103,10 @@ export function DeleteRoomDialog({
         </RadioGroup>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Отмена
           </Button>
-          <Button onClick={handleApply}>Применить</Button>
+          <Button type="button" onClick={handleApply}>Применить</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

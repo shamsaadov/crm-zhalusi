@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   useWatch,
   type UseFormReturn,
@@ -29,6 +29,9 @@ export function useRoomGroups(
 ) {
   const [rooms, setRooms] = useState<Room[]>([DEFAULT_ROOM]);
   const [autoEditRoomId, setAutoEditRoomId] = useState<number | null>(null);
+  // Monotonic room ID counter; survives closures so rapid addRoom() calls
+  // never collide. Initialized to 2 because DEFAULT_ROOM uses id=1.
+  const nextIdRef = useRef<number>(2);
 
   // Reactive subscription to sashes — rerenders the hook's consumers on any
   // sash mutation (room change, append, remove). Without this, moveSash()
@@ -37,11 +40,6 @@ export function useRoomGroups(
     (useWatch({ control: form.control, name: "sashes" }) as
       | SashFormValues[]
       | undefined) ?? [];
-
-  const nextRoomId = useCallback((): number => {
-    if (rooms.length === 0) return 1;
-    return Math.max(...rooms.map((r) => r.id)) + 1;
-  }, [rooms]);
 
   // Derived every render from `rooms` + watched sashes.
   const roomGroups: RoomGroup[] = rooms.map((room) => ({
@@ -60,6 +58,7 @@ export function useRoomGroups(
     if (!loaded || loaded.length === 0) {
       setRooms([DEFAULT_ROOM]);
       setAutoEditRoomId(null);
+      nextIdRef.current = 2;
       return;
     }
     const byId = new Map<number, string>();
@@ -70,8 +69,13 @@ export function useRoomGroups(
     const derived: Room[] = Array.from(byId.entries())
       .map(([id, name]) => ({ id, name }))
       .sort((a, b) => a.id - b.id);
-    setRooms(derived.length > 0 ? derived : [DEFAULT_ROOM]);
+    const finalRooms = derived.length > 0 ? derived : [DEFAULT_ROOM];
+    setRooms(finalRooms);
     setAutoEditRoomId(null);
+    nextIdRef.current =
+      finalRooms.length === 0
+        ? 2
+        : Math.max(...finalRooms.map((r) => r.id)) + 1;
   }, []);
 
   /**
@@ -80,7 +84,7 @@ export function useRoomGroups(
    * ID to auto-focus the rename input via `autoEditRoomId`.
    */
   const addRoom = useCallback((): number => {
-    const id = nextRoomId();
+    const id = nextIdRef.current++;
     const current = form.getValues("sashes");
     const last = current[current.length - 1];
     fieldArray.append({
@@ -100,7 +104,7 @@ export function useRoomGroups(
     setRooms((prev) => [...prev, { id, name: "" }]);
     setAutoEditRoomId(id);
     return id;
-  }, [fieldArray, form, nextRoomId]);
+  }, [fieldArray, form]);
 
   /**
    * Rename a room by ID. Updates display name in `rooms` state and syncs
@@ -151,7 +155,8 @@ export function useRoomGroups(
         fieldArray.remove(affectedIndices);
       } else if (typeof moveSashesTo === "number") {
         const target = rooms.find((r) => r.id === moveSashesTo);
-        const targetName = target?.name ?? "";
+        if (!target) return; // refuse rather than silently orphan sashes
+        const targetName = target.name ?? "";
         affectedIndices.forEach((i) => {
           form.setValue(`sashes.${i}.room`, moveSashesTo, {
             shouldValidate: false,

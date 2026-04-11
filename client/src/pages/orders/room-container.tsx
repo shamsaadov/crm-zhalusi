@@ -88,26 +88,37 @@ export function RoomContainer({
         <Home className="h-3.5 w-3.5 text-muted-foreground" />
 
         {editing ? (
-          <form
-            className="flex items-center gap-1"
-            onSubmit={(e) => {
-              e.preventDefault();
-              onRenameRoom(editName.trim());
-              setEditing(false);
-            }}
-          >
+          <div className="flex items-center gap-1">
             <Input
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
               className="h-6 w-32 text-xs"
               autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  onRenameRoom(editName.trim());
+                  setEditing(false);
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  setEditing(false);
+                }
+              }}
               onBlur={() => {
                 onRenameRoom(editName.trim());
                 setEditing(false);
               }}
             />
-            <button type="submit"><Check className="h-3.5 w-3.5 text-green-600" /></button>
-          </form>
+            <button
+              type="button"
+              onClick={() => {
+                onRenameRoom(editName.trim());
+                setEditing(false);
+              }}
+            >
+              <Check className="h-3.5 w-3.5 text-green-600" />
+            </button>
+          </div>
         ) : (
           <span
             className={cn("text-sm cursor-default", isNamed ? "font-medium" : "text-muted-foreground italic")}
