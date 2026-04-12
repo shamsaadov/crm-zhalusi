@@ -54,7 +54,9 @@ export function BalanceBadge({ balance, className }: BalanceBadgeProps) {
 }
 
 export function formatCurrency(value: number | string | null | undefined): string {
-  if (value === null || value === undefined) return "0.00";
+  if (value === null || value === undefined) return "0";
   const numValue = typeof value === "string" ? parseFloat(value) : value;
-  return numValue.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (Number.isNaN(numValue)) return "0";
+  // Strip trailing zeros: 100.00 → 100, 5.50 → 5,5
+  return numValue.toLocaleString("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }

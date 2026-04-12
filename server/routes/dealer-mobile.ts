@@ -453,14 +453,18 @@ export function createDealerMobileRouter(): Router {
     }
   );
 
-  // POST /measurements (create or update measurement with sashes)
+  // POST /measurements — atomic "send to workshop".
+  //
+  // The mobile app no longer pushes drafts to the server: drafts live in the
+  // device's SQLite, and a single POST creates the measurement, its sashes,
+  // the order and its sashes in one request. There is no draft state on the
+  // server anymore — everything that arrives here is final.
   router.post(
     "/measurements",
     dealerMobileAuthMiddleware,
     async (req: DealerMobileAuthRequest, res: Response) => {
       try {
         const {
-          id,
           clientName,
           clientPhone,
           address,
@@ -472,120 +476,10 @@ export function createDealerMobileRouter(): Router {
           sashes,
         } = req.body;
 
-        let measurement;
-
-        if (id) {
-          // Update existing
-          const existing = await storage.getMeasurement(id);
-          if (!existing || existing.dealerId !== req.dealerId) {
-            return res.status(404).json({ message: "Замер не найден" });
-          }
-
-          measurement = await storage.updateMeasurement(id, {
-            clientName,
-            clientPhone,
-            address,
-            latitude,
-            longitude,
-            comment,
-            totalCoefficient,
-            signatureUrl,
-          });
-
-          // Replace sashes
-          if (sashes && Array.isArray(sashes)) {
-            await storage.deleteMeasurementSashesByMeasurementId(id);
-            for (const s of sashes) {
-              await storage.createMeasurementSash({
-                measurementId: id,
-                width: s.width,
-                height: s.height,
-                systemName: s.systemName,
-                category: s.category,
-                control: s.control,
-                coefficient: s.coefficient,
-                room: s.room,
-                roomName: s.roomName,
-                photoUrl: s.photoUrl,
-              });
-            }
-          }
-        } else {
-          // Create new
-          measurement = await storage.createMeasurement({
-            dealerId: req.dealerId!,
-            clientName,
-            clientPhone,
-            address,
-            latitude,
-            longitude,
-            comment,
-            totalCoefficient,
-            signatureUrl,
-          });
-
-          if (sashes && Array.isArray(sashes)) {
-            for (const s of sashes) {
-              await storage.createMeasurementSash({
-                measurementId: measurement.id,
-                width: s.width,
-                height: s.height,
-                systemName: s.systemName,
-                category: s.category,
-                control: s.control,
-                coefficient: s.coefficient,
-                room: s.room,
-                roomName: s.roomName,
-                photoUrl: s.photoUrl,
-              });
-            }
-          }
-        }
-
-        // Return with sashes
-        const savedSashes = await storage.getMeasurementSashes(measurement!.id);
-        res.json({ ...measurement, sashes: savedSashes });
-      } catch (error) {
-        console.error("Save measurement error:", error);
-        res.status(500).json({ message: "Ошибка сервера" });
-      }
-    }
-  );
-
-  // DELETE /measurements/:id (only draft)
-  router.delete(
-    "/measurements/:id",
-    dealerMobileAuthMiddleware,
-    async (req: DealerMobileAuthRequest, res: Response) => {
-      try {
-        const measurement = await storage.getMeasurement(req.params.id);
-        if (!measurement || measurement.dealerId !== req.dealerId) {
-          return res.status(404).json({ message: "Замер не найден" });
-        }
-        if (measurement.status !== "draft") {
-          return res.status(400).json({ message: "Можно удалить только черновик" });
-        }
-        await storage.deleteMeasurement(req.params.id);
-        res.json({ success: true });
-      } catch (error) {
-        console.error(`[${req.method} ${req.path}]`, error);
-        res.status(500).json({ message: "Ошибка сервера" });
-      }
-    }
-  );
-
-  // POST /measurements/:id/send (send measurement to CRM, creates order)
-  router.post(
-    "/measurements/:id/send",
-    dealerMobileAuthMiddleware,
-    async (req: DealerMobileAuthRequest, res: Response) => {
-      try {
-        const measurement = await storage.getMeasurement(req.params.id);
-        if (!measurement || measurement.dealerId !== req.dealerId) {
-          return res.status(404).json({ message: "Замер не найден" });
-        }
-        if (measurement.status !== "draft") {
-          return res.status(400).json({ message: "Замер уже отправлен" });
+        if (!Array.isArray(sashes) || sashes.length === 0) {
+          return res
+            .status(400)
+            .json({ message: "Замер должен содержать хотя бы одну створку" });
         }
 
         const dealer = await storage.getDealer(req.dealerId!);
@@ -593,17 +487,48 @@ export function createDealerMobileRouter(): Router {
           return res.status(401).json({ message: "Дилер не найден" });
         }
 
-        const sashes = await storage.getMeasurementSashes(measurement.id);
+        // 1) Create the measurement up-front so we have an id for the FK.
+        //    Status starts as "sent" because every POST is a final submission.
+        const sentAt = new Date();
+        const measurement = await storage.createMeasurement({
+          dealerId: req.dealerId!,
+          clientName,
+          clientPhone,
+          address,
+          latitude,
+          longitude,
+          comment,
+          totalCoefficient,
+          signatureUrl,
+          status: "sent",
+          sentAt,
+        });
 
-        // Create order under admin user
+        // 2) Persist sashes attached to the measurement (catalogue snapshot).
+        for (const s of sashes) {
+          await storage.createMeasurementSash({
+            measurementId: measurement.id,
+            width: s.width,
+            height: s.height,
+            systemName: s.systemName,
+            systemType: s.systemType,
+            category: s.category,
+            control: s.control,
+            coefficient: s.coefficient,
+            room: s.room,
+            roomName: s.roomName,
+            photoUrl: s.photoUrl,
+            fabricName: s.fabricName,
+          });
+        }
+
+        // 3) Create the workshop order under the admin user that owns this dealer.
         const adminUserId = dealer.userId;
         const orderNumber = await storage.getNextOrderNumber(adminUserId);
-        const today = new Date().toISOString().split("T")[0];
-
-        const clientInfo = [measurement.clientName, measurement.clientPhone]
-          .filter(Boolean)
-          .join(", ");
-        const orderComment = `Дилер: ${dealer.fullName} | ${clientInfo} | ${measurement.address || ""}`.trim();
+        const today = sentAt.toISOString().split("T")[0];
+        const clientInfo = [clientName, clientPhone].filter(Boolean).join(", ");
+        const orderComment =
+          `Дилер: ${dealer.fullName} | ${clientInfo} | ${address || ""}`.trim();
 
         const order = await storage.createOrder({
           orderNumber,
@@ -612,59 +537,73 @@ export function createDealerMobileRouter(): Router {
           comment: orderComment,
           userId: adminUserId,
           dealerId: dealer.id,
-          salePrice: measurement.totalCoefficient || "0",
+          salePrice: totalCoefficient || "0",
         });
 
-        // Create orderSashes from measurementSashes (strip trailing zeros)
+        // 4) Mirror measurement sashes into orderSashes. systemName /
+        //    systemType / category / fabricName arrive as plain strings from
+        //    the mobile app — store them in the fallback columns so the admin
+        //    UI can render the dealer's selection without FK ids into the
+        //    systems/fabrics catalogues.
         for (const s of sashes) {
           await storage.createOrderSash({
             orderId: order.id,
             width: parseFloat(s.width?.toString() || "0").toString(),
             height: parseFloat(s.height?.toString() || "0").toString(),
             controlSide: s.control,
+            coefficient: s.coefficient?.toString(),
             room: s.room,
             roomName: s.roomName,
+            systemName: s.systemName,
+            systemType: s.systemType,
+            category: s.category,
+            fabricName: s.fabricName,
           });
         }
 
-        // Update measurement status
+        // 5) Link the measurement back to its order.
         await storage.updateMeasurement(measurement.id, {
-          status: "sent",
-          sentAt: new Date(),
           orderId: order.id,
         });
 
-        // Notify admin
-        await notify({
-          userId: adminUserId,
-          type: "measurement_sent",
-          title: "Новый замер из приложения",
-          message: `${dealer.fullName} отправил замер: ${clientInfo || "без имени"}, ${measurement.address || "без адреса"}`,
-          entityType: "order",
-          entityId: order.id,
-        });
+        // 6) Notify the admin and write the audit trail (best-effort, outside
+        //    the persistence path so a failure here does not roll back the order).
+        try {
+          await notify({
+            userId: adminUserId,
+            type: "measurement_sent",
+            title: "Новый замер из приложения",
+            message: `${dealer.fullName} отправил замер: ${clientInfo || "без имени"}, ${address || "без адреса"}`,
+            entityType: "order",
+            entityId: order.id,
+          });
+        } catch (notifyError) {
+          console.error("notify failed for measurement send:", notifyError);
+        }
 
-        // Audit log
-        await logAudit({
-          userId: adminUserId,
-          action: "create",
-          entityType: "measurement",
-          entityId: measurement.id,
-          metadata: {
-            source: "mobile",
-            dealerName: dealer.fullName,
-            orderId: order.id,
-          },
-        });
+        try {
+          await logAudit({
+            userId: adminUserId,
+            action: "create",
+            entityType: "measurement",
+            entityId: measurement.id,
+            metadata: {
+              source: "mobile",
+              dealerName: dealer.fullName,
+              orderId: order.id,
+            },
+          });
+        } catch (auditError) {
+          console.error("logAudit failed for measurement send:", auditError);
+        }
 
         res.json({
-          success: true,
+          measurementId: measurement.id,
           orderId: order.id,
           orderNumber,
-          status: "sent",
         });
       } catch (error) {
-        console.error("Send measurement error:", error);
+        console.error("Save measurement error:", error);
         res.status(500).json({ message: "Ошибка сервера" });
       }
     }

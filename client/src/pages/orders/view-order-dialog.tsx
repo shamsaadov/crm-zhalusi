@@ -24,6 +24,16 @@ interface ViewOrderDialogProps {
   order: OrderWithRelations | null;
 }
 
+// Strip trailing ".00" from PG decimal strings: "150.00" → "150", "200.50" → "200.5".
+// Order sashes store width/height as decimal(10,2) so whole-cm values arrive
+// padded with zeros, which looked noisy in the order view.
+function fmtNum(v: string | number | null | undefined): string {
+  if (v == null || v === "") return "—";
+  const n = typeof v === "string" ? parseFloat(v) : v;
+  if (Number.isNaN(n)) return String(v);
+  return n.toString();
+}
+
 export function ViewOrderDialog({
   open,
   onOpenChange,
@@ -80,30 +90,45 @@ export function ViewOrderDialog({
               <h4 className="font-medium mb-2">
                 Створки ({order.sashes?.length || 0})
               </h4>
-              {order.sashes?.map((sash) => (
-                <Card key={sash.id} className="mb-2">
-                  <CardContent className="py-3">
-                    <div className="grid grid-cols-4 gap-2 text-sm">
-                      <div>
-                        <span className="text-muted-foreground">Размеры:</span>{" "}
-                        {sash.width}x{sash.height}
+              {order.sashes?.map((sash) => {
+                // For orders converted from mobile measurements the catalogue
+                // FKs (systemId/fabricId) are NULL — fall back to the raw
+                // strings the dealer entered in the app.
+                const systemLabel = sash.system?.name || sash.systemName || "-";
+                const fabricLabel = sash.fabric?.name || sash.fabricName || "-";
+                const hasMobileMeta = sash.systemType || sash.category;
+                return (
+                  <Card key={sash.id} className="mb-2">
+                    <CardContent className="py-3">
+                      <div className="grid grid-cols-4 gap-2 text-sm">
+                        <div>
+                          <span className="text-muted-foreground">Размеры:</span>{" "}
+                          {fmtNum(sash.width)}x{fmtNum(sash.height)}
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Система:</span>{" "}
+                          {systemLabel}
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Ткань:</span>{" "}
+                          {fabricLabel}
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Цена:</span>{" "}
+                          {formatCurrency(sash.sashPrice)}
+                        </div>
                       </div>
-                      <div>
-                        <span className="text-muted-foreground">Система:</span>{" "}
-                        {sash.system?.name || "-"}
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Ткань:</span>{" "}
-                        {sash.fabric?.name || "-"}
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Цена:</span>{" "}
-                        {formatCurrency(sash.sashPrice)}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                      {hasMobileMeta && (
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {sash.systemType && <span>тип: {sash.systemType}</span>}
+                          {sash.systemType && sash.category && <span> · </span>}
+                          {sash.category && <span>категория: {sash.category}</span>}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
             <Separator />
             <div className="grid grid-cols-3 gap-4">

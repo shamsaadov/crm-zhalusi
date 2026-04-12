@@ -354,6 +354,14 @@ export const orderSashes = pgTable("order_sashes", {
   coefficient: decimal("coefficient", { precision: 12, scale: 2 }),
   room: integer("room").default(1), // Номер комнаты для группировки
   roomName: text("room_name"), // Название комнаты (опционально)
+  // Mobile-app fallback fields: when an order is created from a mobile measurement,
+  // the dealer's selection comes as plain strings (not FK ids in the systems/fabrics
+  // catalogues). Storing them here lets the admin UI render the dealer's choice
+  // even when systemId/fabricId are NULL.
+  systemName: text("system_name"),
+  systemType: text("system_type"),
+  category: text("category"),
+  fabricName: text("fabric_name"),
 });
 
 export const orderSashesRelations = relations(orderSashes, ({ one }) => ({
@@ -768,12 +776,14 @@ export const measurementSashes = pgTable("measurement_sashes", {
   width: decimal("width", { precision: 10, scale: 2 }),
   height: decimal("height", { precision: 10, scale: 2 }),
   systemName: text("system_name"),
+  systemType: text("system_type"),
   category: text("category"),
   control: text("control"),
   coefficient: decimal("coefficient", { precision: 12, scale: 2 }),
   room: integer("room"),
   roomName: text("room_name"),
   photoUrl: text("photo_url"),
+  fabricName: text("fabric_name"),
 });
 
 export const measurementSashesRelations = relations(

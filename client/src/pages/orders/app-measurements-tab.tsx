@@ -39,6 +39,16 @@ type MeasurementWithSashes = Measurement & {
   dealerName?: string;
 };
 
+// Strip trailing ".00"/".0" from PG decimal strings: "150.00" → "150",
+// "1.50" → "1.5". MeasurementSash width/height/coefficient are decimal(10,2)
+// so whole numbers arrive padded with zeros.
+function fmtNum(v: string | number | null | undefined): string {
+  if (v == null || v === "") return "—";
+  const n = typeof v === "string" ? parseFloat(v) : v;
+  if (Number.isNaN(n)) return String(v);
+  return n.toString();
+}
+
 export function AppMeasurementsTab({
   onConvertToOrder,
 }: {
@@ -170,7 +180,7 @@ export function AppMeasurementsTab({
             header: "Коэф.",
             cell: (m: MeasurementWithSashes) => (
               <span className="font-semibold text-green-600">
-                {parseFloat(m.totalCoefficient?.toString() || "0").toFixed(2)}
+                {fmtNum(m.totalCoefficient)}
               </span>
             ),
             className: "text-right",
@@ -295,28 +305,35 @@ export function AppMeasurementsTab({
                   {viewingMeasurement.sashes?.map((s, i) => (
                     <div
                       key={s.id || i}
-                      className="flex items-center justify-between text-sm py-1 border-b last:border-0"
+                      className="flex flex-col gap-0.5 text-sm py-1 border-b last:border-0"
                     >
-                      <div>
-                        <span className="font-medium">
-                          {s.width}×{s.height} см
-                        </span>
-                        <span className="text-muted-foreground ml-2">
-                          {s.systemName} · {s.category} · {s.control}
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="font-medium">
+                            {fmtNum(s.width)}×{fmtNum(s.height)} см
+                          </span>
+                          <span className="text-muted-foreground ml-2">
+                            {s.systemName} · {s.category} · {s.control}
+                          </span>
+                        </div>
+                        <span className="font-semibold text-green-600">
+                          {fmtNum(s.coefficient)}
                         </span>
                       </div>
-                      <span className="font-semibold text-green-600">
-                        {parseFloat(s.coefficient?.toString() || "0").toFixed(2)}
-                      </span>
+                      {(s.systemType || s.fabricName) && (
+                        <div className="text-xs text-muted-foreground ml-1">
+                          {s.systemType && <span>тип: {s.systemType}</span>}
+                          {s.systemType && s.fabricName && <span> · </span>}
+                          {s.fabricName && <span>ткань: {s.fabricName}</span>}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
                 <div className="mt-2 pt-2 border-t flex justify-between">
                   <span className="font-semibold">Итого:</span>
                   <span className="font-bold text-green-600">
-                    {parseFloat(
-                      viewingMeasurement.totalCoefficient?.toString() || "0"
-                    ).toFixed(2)}
+                    {fmtNum(viewingMeasurement.totalCoefficient)}
                   </span>
                 </div>
               </div>

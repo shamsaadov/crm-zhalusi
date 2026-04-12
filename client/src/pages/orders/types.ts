@@ -20,6 +20,13 @@ export interface OrderSash {
   controlSide: string | null;
   sashPrice: string | null;
   sashCost: string | null;
+  // Mobile-app fallback fields: populated when an order is created from a
+  // mobile measurement and the dealer's selection doesn't map to a catalogue
+  // entry (systemId/fabricId stay NULL).
+  systemName: string | null;
+  systemType: string | null;
+  category: string | null;
+  fabricName: string | null;
   system?: System;
   systemColor?: Color;
   fabric?: Fabric;
