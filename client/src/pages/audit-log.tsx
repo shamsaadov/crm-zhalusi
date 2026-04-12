@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { parseMoscow } from "@/lib/date";
+import { formatDistanceToNow } from "date-fns";
+import { ru } from "date-fns/locale";
+import { useLocation } from "wouter";
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,19 +14,20 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { Badge } from "@/components/ui/badge";
+import { Loader2, Plus, Pencil, Trash2, ArrowRight } from "lucide-react";
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+  ENTITY_TYPE_LABELS,
+  ACTION_CONFIG,
+  getFieldLabel,
+  formatAuditValue,
+  parseChanges,
+} from "@/lib/audit-labels";
 
 interface AuditLog {
   id: string;
@@ -35,6 +38,7 @@ interface AuditLog {
   changes: string | null;
   metadata: string | null;
   createdAt: string;
+  entityDisplayName: string;
 }
 
 interface PaginatedResult {
@@ -43,88 +47,81 @@ interface PaginatedResult {
   hasMore: boolean;
 }
 
-const actionLabels: Record<string, string> = {
-  create: "Создание",
-  update: "Изменение",
-  delete: "Удаление",
-  status_change: "Смена статуса",
+const ACTION_ICONS: Record<string, React.ElementType> = {
+  create: Plus,
+  update: Pencil,
+  delete: Trash2,
+  status_change: ArrowRight,
 };
 
-const entityTypeLabels: Record<string, string> = {
-  order: "Заказ",
-  finance: "Финансы",
-  warehouse_receipt: "Поступление",
-  dealer: "Дилер",
-  supplier: "Поставщик",
-  color: "Цвет",
-  fabric: "Ткань",
-  component: "Комплектующая",
-  system: "Система",
-  cashbox: "Касса",
-  expense_type: "Тип расхода",
-  multiplier: "Множитель",
-};
+function ChangesTable({
+  changes,
+  entityType,
+  action,
+}: {
+  changes: string | null;
+  entityType: string;
+  action: string;
+}) {
+  const parsed = parseChanges(changes);
 
-function ChangesView({ changes }: { changes: string | null }) {
-  const [open, setOpen] = useState(false);
-
-  if (!changes) return <span className="text-muted-foreground">-</span>;
-
-  let parsed: { before?: any; after?: any };
-  try {
-    parsed = JSON.parse(changes);
-  } catch {
-    return <span className="text-muted-foreground">-</span>;
+  if (!parsed) {
+    return (
+      <p className="text-sm text-muted-foreground py-2">
+        Нет данных об изменениях
+      </p>
+    );
   }
 
+  const showBefore = action !== "create";
+  const showAfter = action !== "delete";
+
   return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-auto py-0.5 px-1 text-xs">
-          {open ? (
-            <ChevronDown className="h-3 w-3 mr-1" />
-          ) : (
-            <ChevronRight className="h-3 w-3 mr-1" />
-          )}
-          Подробнее
-        </Button>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="mt-2 space-y-2 text-xs">
-          {parsed.before && (
-            <div>
-              <span className="font-medium text-destructive">До:</span>
-              <pre className="mt-1 rounded bg-muted p-2 overflow-x-auto max-w-md">
-                {JSON.stringify(parsed.before, null, 2)}
-              </pre>
-            </div>
-          )}
-          {parsed.after && (
-            <div>
-              <span className="font-medium text-green-600">После:</span>
-              <pre className="mt-1 rounded bg-muted p-2 overflow-x-auto max-w-md">
-                {JSON.stringify(parsed.after, null, 2)}
-              </pre>
-            </div>
-          )}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b text-left">
+            <th className="py-1.5 pr-4 font-medium text-muted-foreground">
+              Поле
+            </th>
+            {showBefore && (
+              <th className="py-1.5 pr-4 font-medium text-muted-foreground">
+                Было
+              </th>
+            )}
+            {showAfter && (
+              <th className="py-1.5 font-medium text-muted-foreground">
+                Стало
+              </th>
+            )}
+          </tr>
+        </thead>
+        <tbody>
+          {parsed.map(({ field, before, after }) => (
+            <tr key={field} className="border-b last:border-0">
+              <td className="py-1.5 pr-4 text-muted-foreground">
+                {getFieldLabel(entityType, field)}
+              </td>
+              {showBefore && (
+                <td className="py-1.5 pr-4 text-red-600/70 dark:text-red-400/70">
+                  {formatAuditValue(before)}
+                </td>
+              )}
+              {showAfter && (
+                <td className="py-1.5 font-medium">
+                  {formatAuditValue(after)}
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
-function MetadataLabel({ metadata }: { metadata: string | null }) {
-  if (!metadata) return null;
-  try {
-    const parsed = JSON.parse(metadata);
-    if (parsed.orderNumber) return <span>#{parsed.orderNumber}</span>;
-    return null;
-  } catch {
-    return null;
-  }
-}
-
 export default function AuditLogPage() {
+  const [, navigate] = useLocation();
   const [entityType, setEntityType] = useState("all");
   const [action, setAction] = useState("all");
   const [from, setFrom] = useState("");
@@ -145,7 +142,9 @@ export default function AuditLogPage() {
     queryKey: [`/api/audit-logs?${params.toString()}`],
   });
 
-  const displayData = cursor ? [...allData, ...(data?.data || [])] : (data?.data || []);
+  const displayData = cursor
+    ? [...allData, ...(data?.data || [])]
+    : data?.data || [];
 
   const handleLoadMore = () => {
     if (data?.nextCursor) {
@@ -159,9 +158,16 @@ export default function AuditLogPage() {
     setCursor(null);
   };
 
+  const handleEntityClick = (log: AuditLog) => {
+    if (log.entityType === "order") {
+      navigate(`/orders?edit=${log.entityId}`);
+    }
+  };
+
   return (
     <Layout title="История действий">
       <div className="space-y-4">
+        {/* Фильтры */}
         <div className="flex flex-wrap gap-3">
           <Select
             value={entityType}
@@ -175,7 +181,7 @@ export default function AuditLogPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Все типы</SelectItem>
-              {Object.entries(entityTypeLabels).map(([key, label]) => (
+              {Object.entries(ENTITY_TYPE_LABELS).map(([key, label]) => (
                 <SelectItem key={key} value={key}>
                   {label}
                 </SelectItem>
@@ -195,9 +201,9 @@ export default function AuditLogPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Все действия</SelectItem>
-              {Object.entries(actionLabels).map(([key, label]) => (
+              {Object.entries(ACTION_CONFIG).map(([key, config]) => (
                 <SelectItem key={key} value={key}>
-                  {label}
+                  {config.label}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -225,6 +231,7 @@ export default function AuditLogPage() {
           />
         </div>
 
+        {/* Содержимое */}
         {isLoading && allData.length === 0 ? (
           <div className="flex justify-center py-8">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -235,52 +242,84 @@ export default function AuditLogPage() {
           </div>
         ) : (
           <>
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[160px]">Дата</TableHead>
-                    <TableHead className="w-[120px]">Действие</TableHead>
-                    <TableHead className="w-[140px]">Тип</TableHead>
-                    <TableHead className="w-[100px]">Сущность</TableHead>
-                    <TableHead>Изменения</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {displayData.map((log) => (
-                    <TableRow key={log.id}>
-                      <TableCell className="text-xs">
-                        {parseMoscow(log.createdAt).toLocaleString("ru-RU")}
-                      </TableCell>
-                      <TableCell>
-                        <span
-                          className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${
-                            log.action === "create"
-                              ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                              : log.action === "delete"
-                              ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-                              : log.action === "status_change"
-                              ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
-                              : "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
-                          }`}
+            <Accordion type="multiple" className="space-y-2">
+              {displayData.map((log) => {
+                const config = ACTION_CONFIG[log.action] ?? {
+                  label: log.action,
+                  color: "text-muted-foreground",
+                  bgColor: "bg-muted",
+                };
+                const Icon = ACTION_ICONS[log.action] ?? Pencil;
+                const entityLabel =
+                  ENTITY_TYPE_LABELS[log.entityType] ?? log.entityType;
+                const isClickable = log.entityType === "order";
+                const timeAgo = formatDistanceToNow(
+                  new Date(log.createdAt),
+                  { addSuffix: true, locale: ru }
+                );
+
+                return (
+                  <AccordionItem
+                    key={log.id}
+                    value={log.id}
+                    className="border rounded-lg px-4 data-[state=open]:bg-muted/30"
+                  >
+                    <AccordionTrigger className="hover:no-underline py-3 gap-3">
+                      <div className="flex items-center gap-3 flex-1 min-w-0 text-left">
+                        <div
+                          className={`shrink-0 rounded-full p-1.5 ${config.bgColor}`}
                         >
-                          {actionLabels[log.action] || log.action}
+                          <Icon className={`h-3.5 w-3.5 ${config.color}`} />
+                        </div>
+
+                        <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span
+                              className={`font-medium text-sm truncate ${
+                                isClickable
+                                  ? "text-primary hover:underline cursor-pointer"
+                                  : ""
+                              }`}
+                              onClick={
+                                isClickable
+                                  ? (e) => {
+                                      e.stopPropagation();
+                                      handleEntityClick(log);
+                                    }
+                                  : undefined
+                              }
+                            >
+                              {log.entityDisplayName}
+                            </span>
+                            <Badge
+                              variant="secondary"
+                              className="text-[10px] px-1.5 py-0 shrink-0"
+                            >
+                              {entityLabel}
+                            </Badge>
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            {config.label}
+                          </span>
+                        </div>
+
+                        <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+                          {timeAgo}
                         </span>
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {entityTypeLabels[log.entityType] || log.entityType}
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        <MetadataLabel metadata={log.metadata} />
-                      </TableCell>
-                      <TableCell>
-                        <ChangesView changes={log.changes} />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                      </div>
+                    </AccordionTrigger>
+
+                    <AccordionContent className="pt-0 pb-3">
+                      <ChangesTable
+                        changes={log.changes}
+                        entityType={log.entityType}
+                        action={log.action}
+                      />
+                    </AccordionContent>
+                  </AccordionItem>
+                );
+              })}
+            </Accordion>
 
             {data?.hasMore && (
               <div className="flex justify-center">
@@ -289,9 +328,9 @@ export default function AuditLogPage() {
                   onClick={handleLoadMore}
                   disabled={isLoading}
                 >
-                  {isLoading ? (
+                  {isLoading && (
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  ) : null}
+                  )}
                   Загрузить ещё
                 </Button>
               </div>
