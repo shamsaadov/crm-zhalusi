@@ -107,8 +107,10 @@ export function AppMeasurementsTab({
     switch (s) {
       case "draft":
         return { label: "Черновик", color: "bg-yellow-100 text-yellow-700" };
+      case "pending":
+        return { label: "На рассмотрении", color: "bg-orange-100 text-orange-700" };
       case "sent":
-        return { label: "Отправлен", color: "bg-blue-100 text-blue-700" };
+        return { label: "Принят", color: "bg-blue-100 text-blue-700" };
       case "in_production":
         return {
           label: "В производстве",
@@ -212,18 +214,18 @@ export function AppMeasurementsTab({
                 >
                   <Eye className="h-4 w-4" />
                 </Button>
-                {m.status === "sent" && !m.orderId && (
+                {(m.status === "pending" || m.status === "sent") && !m.orderId && (
                   <Button
                     size="icon"
                     variant="ghost"
                     onClick={() => convertMutation.mutate(m.id)}
-                    title="Преобразовать в заказ"
+                    title="Принять и создать заказ"
                     disabled={convertMutation.isPending}
                   >
                     {convertMutation.isPending ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                      <ArrowRight className="h-4 w-4 text-blue-600" />
+                      <ArrowRight className="h-4 w-4 text-green-600" />
                     )}
                   </Button>
                 )}
@@ -338,7 +340,7 @@ export function AppMeasurementsTab({
                 </div>
               </div>
 
-              {/* Convert button */}
+              {/* Approve / convert button */}
               {!viewingMeasurement.orderId && (
                   <Button
                     className="w-full"
@@ -355,7 +357,7 @@ export function AppMeasurementsTab({
                     {convertMutation.isPending && (
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     )}
-                    Оформить заказ
+                    Принять и создать заказ
                   </Button>
                 )}
 

@@ -1632,7 +1632,8 @@ ${dbContext}`,
     }
   );
 
-  // Mark measurement as converted (called after order created via form)
+  // Approve a pending measurement: create workshop order + order sashes,
+  // then link the measurement to the new order and mark it as "sent".
   app.post(
     "/api/app-measurements/:id/convert",
     authMiddleware,
@@ -1647,11 +1648,76 @@ ${dbContext}`,
           return res.json({ success: true, alreadyConverted: true });
         }
 
-        await storage.updateMeasurement(measurement.id, {
-          status: "in_production",
+        // Fetch dealer to build the order comment
+        const dealer = measurement.dealerId
+          ? await storage.getDealer(measurement.dealerId)
+          : null;
+        const dealerName = dealer?.fullName || "—";
+        const clientInfo = [measurement.clientName, measurement.clientPhone]
+          .filter(Boolean)
+          .join(", ");
+        const orderComment =
+          `Дилер: ${dealerName} | ${clientInfo} | ${measurement.address || ""}`.trim();
+
+        // Create the workshop order
+        const orderNumber = await storage.getNextOrderNumber(req.userId!);
+        const today = new Date().toISOString().split("T")[0];
+        const order = await storage.createOrder({
+          orderNumber,
+          date: today,
+          status: "Новый",
+          comment: orderComment,
+          userId: req.userId!,
+          dealerId: measurement.dealerId,
+          salePrice: measurement.totalCoefficient || "0",
         });
 
-        res.json({ success: true });
+        // Mirror measurement sashes into order sashes
+        const mSashes = await storage.getMeasurementSashes(measurement.id);
+        for (const s of mSashes) {
+          await storage.createOrderSash({
+            orderId: order.id,
+            width: parseFloat(s.width?.toString() || "0").toString(),
+            height: parseFloat(s.height?.toString() || "0").toString(),
+            controlSide: s.control,
+            coefficient: s.coefficient?.toString(),
+            room: s.room,
+            roomName: s.roomName,
+            systemName: s.systemName,
+            systemType: s.systemType,
+            category: s.category,
+            fabricName: s.fabricName,
+          });
+        }
+
+        // Link measurement to the order
+        await storage.updateMeasurement(measurement.id, {
+          status: "sent",
+          sentAt: new Date(),
+          orderId: order.id,
+        });
+
+        // Audit
+        try {
+          await logAudit({
+            userId: req.userId!,
+            action: "create",
+            entityType: "order",
+            entityId: order.id,
+            metadata: {
+              source: "measurement_approve",
+              measurementId: measurement.id,
+              dealerName,
+              orderNumber,
+            },
+          });
+        } catch (_) {}
+
+        res.json({
+          success: true,
+          orderId: order.id,
+          orderNumber,
+        });
       } catch (error) {
         console.error("Convert measurement error:", error);
         res.status(500).json({ message: "Ошибка сервера" });

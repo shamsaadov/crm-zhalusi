@@ -714,6 +714,7 @@ export type CuttingLayoutRow = typeof cuttingLayoutRows.$inferSelect;
 // Measurement statuses
 export const MEASUREMENT_STATUSES = [
   "draft",
+  "pending",
   "sent",
   "in_production",
   "ready",

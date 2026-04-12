@@ -487,9 +487,9 @@ export function createDealerMobileRouter(): Router {
           return res.status(401).json({ message: "Дилер не найден" });
         }
 
-        // 1) Create the measurement up-front so we have an id for the FK.
-        //    Status starts as "sent" because every POST is a final submission.
-        const sentAt = new Date();
+        // 1) Create the measurement with status "pending" — it stays on
+        //    review until the admin approves it in the CRM, at which point
+        //    the convert endpoint creates the workshop order.
         const measurement = await storage.createMeasurement({
           dealerId: req.dealerId!,
           clientName,
@@ -500,11 +500,10 @@ export function createDealerMobileRouter(): Router {
           comment,
           totalCoefficient,
           signatureUrl,
-          status: "sent",
-          sentAt,
+          status: "pending",
         });
 
-        // 2) Persist sashes attached to the measurement (catalogue snapshot).
+        // 2) Persist sashes attached to the measurement.
         for (const s of sashes) {
           await storage.createMeasurementSash({
             measurementId: measurement.id,
@@ -522,60 +521,16 @@ export function createDealerMobileRouter(): Router {
           });
         }
 
-        // 3) Create the workshop order under the admin user that owns this dealer.
-        const adminUserId = dealer.userId;
-        const orderNumber = await storage.getNextOrderNumber(adminUserId);
-        const today = sentAt.toISOString().split("T")[0];
+        // 3) Notify the admin (best-effort).
         const clientInfo = [clientName, clientPhone].filter(Boolean).join(", ");
-        const orderComment =
-          `Дилер: ${dealer.fullName} | ${clientInfo} | ${address || ""}`.trim();
-
-        const order = await storage.createOrder({
-          orderNumber,
-          date: today,
-          status: "Новый",
-          comment: orderComment,
-          userId: adminUserId,
-          dealerId: dealer.id,
-          salePrice: totalCoefficient || "0",
-        });
-
-        // 4) Mirror measurement sashes into orderSashes. systemName /
-        //    systemType / category / fabricName arrive as plain strings from
-        //    the mobile app — store them in the fallback columns so the admin
-        //    UI can render the dealer's selection without FK ids into the
-        //    systems/fabrics catalogues.
-        for (const s of sashes) {
-          await storage.createOrderSash({
-            orderId: order.id,
-            width: parseFloat(s.width?.toString() || "0").toString(),
-            height: parseFloat(s.height?.toString() || "0").toString(),
-            controlSide: s.control,
-            coefficient: s.coefficient?.toString(),
-            room: s.room,
-            roomName: s.roomName,
-            systemName: s.systemName,
-            systemType: s.systemType,
-            category: s.category,
-            fabricName: s.fabricName,
-          });
-        }
-
-        // 5) Link the measurement back to its order.
-        await storage.updateMeasurement(measurement.id, {
-          orderId: order.id,
-        });
-
-        // 6) Notify the admin and write the audit trail (best-effort, outside
-        //    the persistence path so a failure here does not roll back the order).
         try {
           await notify({
-            userId: adminUserId,
+            userId: dealer.userId,
             type: "measurement_sent",
-            title: "Новый замер из приложения",
+            title: "Новый замер на рассмотрение",
             message: `${dealer.fullName} отправил замер: ${clientInfo || "без имени"}, ${address || "без адреса"}`,
-            entityType: "order",
-            entityId: order.id,
+            entityType: "measurement",
+            entityId: measurement.id,
           });
         } catch (notifyError) {
           console.error("notify failed for measurement send:", notifyError);
@@ -583,14 +538,13 @@ export function createDealerMobileRouter(): Router {
 
         try {
           await logAudit({
-            userId: adminUserId,
+            userId: dealer.userId,
             action: "create",
             entityType: "measurement",
             entityId: measurement.id,
             metadata: {
               source: "mobile",
               dealerName: dealer.fullName,
-              orderId: order.id,
             },
           });
         } catch (auditError) {
@@ -599,8 +553,7 @@ export function createDealerMobileRouter(): Router {
 
         res.json({
           measurementId: measurement.id,
-          orderId: order.id,
-          orderNumber,
+          status: "pending",
         });
       } catch (error) {
         console.error("Save measurement error:", error);
