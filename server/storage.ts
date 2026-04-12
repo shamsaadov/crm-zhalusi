@@ -330,7 +330,7 @@ export interface IStorage {
   ): Promise<PaginatedResult<AuditLog>>;
   enrichAuditLogsWithEntityNames(
     logs: AuditLog[]
-  ): Promise<(AuditLog & { entityDisplayName: string })[]>;
+  ): Promise<(AuditLog & { entityDisplayName: string; resolvedIds: Record<string, string> })[]>;
 
   // Notifications
   createNotification(data: InsertNotification): Promise<Notification>;
@@ -1420,7 +1420,7 @@ export class DatabaseStorage implements IStorage {
    */
   async enrichAuditLogsWithEntityNames(
     logs: AuditLog[]
-  ): Promise<(AuditLog & { entityDisplayName: string })[]> {
+  ): Promise<(AuditLog & { entityDisplayName: string; resolvedIds: Record<string, string> })[]> {
     if (logs.length === 0) return [];
 
     // Группируем entityId по типу
@@ -1464,6 +1464,51 @@ export class DatabaseStorage implements IStorage {
       resolve("multiplier", multipliers, multipliers.id, (r) => r.name),
     ]);
 
+    // Резолвим ID-значения внутри changes JSON (dealerId → имя дилера, и т.д.)
+    // Маппинг: суффикс поля → таблица + колонка имени
+    const idFieldResolvers: Record<string, { table: any; idCol: any; nameExpr: (r: any) => string }> = {
+      dealerId: { table: dealers, idCol: dealers.id, nameExpr: (r) => r.fullName },
+      supplierId: { table: suppliers, idCol: suppliers.id, nameExpr: (r) => r.name },
+      cashboxId: { table: cashboxes, idCol: cashboxes.id, nameExpr: (r) => r.name },
+      fabricId: { table: fabrics, idCol: fabrics.id, nameExpr: (r) => r.name },
+      systemId: { table: systems, idCol: systems.id, nameExpr: (r) => r.name },
+    };
+
+    // Собираем все UUID из changes по типу поля
+    const changeIds = new Map<string, Set<string>>(); // fieldName → Set<uuid>
+    for (const log of logs) {
+      if (!log.changes) continue;
+      try {
+        const parsed: { before?: Record<string, unknown>; after?: Record<string, unknown> } = JSON.parse(log.changes);
+        for (const obj of [parsed.before, parsed.after]) {
+          if (!obj) continue;
+          for (const [field, value] of Object.entries(obj)) {
+            if (field in idFieldResolvers && typeof value === "string" && value.length > 0) {
+              const set = changeIds.get(field) ?? new Set();
+              set.add(value);
+              changeIds.set(field, set);
+            }
+          }
+        }
+      } catch {}
+    }
+
+    // Batch-resolve ID-значения из changes
+    const idValueMap = new Map<string, string>(); // uuid → display name
+    await Promise.all(
+      Array.from(changeIds.entries()).map(async ([field, ids]) => {
+        const resolver = idFieldResolvers[field];
+        if (!resolver || ids.size === 0) return;
+        const rows = await db
+          .select()
+          .from(resolver.table)
+          .where(inArray(resolver.idCol, Array.from(ids)));
+        for (const row of rows) {
+          idValueMap.set(row.id, resolver.nameExpr(row));
+        }
+      })
+    );
+
     // Собираем результат
     return logs.map((log) => {
       const key = `${log.entityType}:${log.entityId}`;
@@ -1484,7 +1529,11 @@ export class DatabaseStorage implements IStorage {
         displayName = `#${log.entityId.slice(0, 8)}`;
       }
 
-      return { ...log, entityDisplayName: displayName };
+      return {
+        ...log,
+        entityDisplayName: displayName,
+        resolvedIds: Object.fromEntries(idValueMap),
+      };
     });
   }
 

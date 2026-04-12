@@ -39,6 +39,7 @@ interface AuditLog {
   metadata: string | null;
   createdAt: string;
   entityDisplayName: string;
+  resolvedIds: Record<string, string>;
 }
 
 interface PaginatedResult {
@@ -58,10 +59,12 @@ function ChangesTable({
   changes,
   entityType,
   action,
+  resolvedIds,
 }: {
   changes: string | null;
   entityType: string;
   action: string;
+  resolvedIds: Record<string, string>;
 }) {
   const parsed = parseChanges(changes);
 
@@ -97,23 +100,29 @@ function ChangesTable({
           </tr>
         </thead>
         <tbody>
-          {parsed.map(({ field, before, after }) => (
-            <tr key={field} className="border-b last:border-0">
-              <td className="py-1.5 pr-4 text-muted-foreground">
-                {getFieldLabel(entityType, field)}
-              </td>
-              {showBefore && (
-                <td className="py-1.5 pr-4 text-red-600/70 dark:text-red-400/70">
-                  {formatAuditValue(before)}
+          {parsed.map(({ field, before, after }) => {
+            const resolveFn = (v: unknown) => {
+              if (typeof v === "string" && resolvedIds[v]) return resolvedIds[v];
+              return formatAuditValue(v);
+            };
+            return (
+              <tr key={field} className="border-b last:border-0">
+                <td className="py-1.5 pr-4 text-muted-foreground">
+                  {getFieldLabel(entityType, field)}
                 </td>
-              )}
-              {showAfter && (
-                <td className="py-1.5 font-medium">
-                  {formatAuditValue(after)}
-                </td>
-              )}
-            </tr>
-          ))}
+                {showBefore && (
+                  <td className="py-1.5 pr-4 text-red-600/70 dark:text-red-400/70">
+                    {resolveFn(before)}
+                  </td>
+                )}
+                {showAfter && (
+                  <td className="py-1.5 font-medium">
+                    {resolveFn(after)}
+                  </td>
+                )}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -314,6 +323,7 @@ export default function AuditLogPage() {
                         changes={log.changes}
                         entityType={log.entityType}
                         action={log.action}
+                        resolvedIds={log.resolvedIds ?? {}}
                       />
                     </AccordionContent>
                   </AccordionItem>
