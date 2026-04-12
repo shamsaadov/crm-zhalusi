@@ -10,6 +10,7 @@ import {
   ne,
   or,
   ilike,
+  inArray,
 } from "drizzle-orm";
 import { db } from "./db";
 import {
@@ -327,6 +328,9 @@ export interface IStorage {
     params: PaginationParams,
     filters?: AuditLogFilters
   ): Promise<PaginatedResult<AuditLog>>;
+  enrichAuditLogsWithEntityNames(
+    logs: AuditLog[]
+  ): Promise<(AuditLog & { entityDisplayName: string })[]>;
 
   // Notifications
   createNotification(data: InsertNotification): Promise<Notification>;
@@ -1408,6 +1412,80 @@ export class DatabaseStorage implements IStorage {
     const nextCursor = hasMore && lastItem ? lastItem.id : null;
 
     return { data: results, nextCursor, hasMore };
+  }
+
+  /**
+   * Обогащает записи аудит-лога человеческими именами сущностей.
+   * Пакетно резолвит имена из соответствующих таблиц по entityType + entityId.
+   */
+  async enrichAuditLogsWithEntityNames(
+    logs: AuditLog[]
+  ): Promise<(AuditLog & { entityDisplayName: string })[]> {
+    if (logs.length === 0) return [];
+
+    // Группируем entityId по типу
+    const idsByType = new Map<string, Set<string>>();
+    for (const log of logs) {
+      const set = idsByType.get(log.entityType) ?? new Set();
+      set.add(log.entityId);
+      idsByType.set(log.entityType, set);
+    }
+
+    // Batch-resolve имена из каждой таблицы
+    const nameMap = new Map<string, string>(); // `${entityType}:${entityId}` → display name
+
+    const resolve = async (
+      entityType: string,
+      table: any,
+      idCol: any,
+      nameExpr: (row: any) => string
+    ) => {
+      const ids = idsByType.get(entityType);
+      if (!ids || ids.size === 0) return;
+      const rows = await db
+        .select()
+        .from(table)
+        .where(inArray(idCol, Array.from(ids)));
+      for (const row of rows) {
+        nameMap.set(`${entityType}:${row.id}`, nameExpr(row));
+      }
+    };
+
+    await Promise.all([
+      resolve("order", orders, orders.id, (r) => `Заказ #${r.orderNumber}`),
+      resolve("dealer", dealers, dealers.id, (r) => r.fullName),
+      resolve("supplier", suppliers, suppliers.id, (r) => r.name),
+      resolve("fabric", fabrics, fabrics.id, (r) => r.name),
+      resolve("system", systems, systems.id, (r) => r.name),
+      resolve("component", components, components.id, (r) => r.name),
+      resolve("cashbox", cashboxes, cashboxes.id, (r) => r.name),
+      resolve("color", colors, colors.id, (r) => r.name),
+      resolve("expense_type", expenseTypes, expenseTypes.id, (r) => r.name),
+      resolve("multiplier", multipliers, multipliers.id, (r) => r.name),
+    ]);
+
+    // Собираем результат
+    return logs.map((log) => {
+      const key = `${log.entityType}:${log.entityId}`;
+      let displayName = nameMap.get(key);
+
+      if (!displayName) {
+        // Фолбэк: проверяем metadata (для заказов может быть orderNumber)
+        if (log.metadata) {
+          try {
+            const meta = JSON.parse(log.metadata);
+            if (meta.orderNumber) displayName = `Заказ #${meta.orderNumber}`;
+          } catch {}
+        }
+      }
+
+      if (!displayName) {
+        // Финальный фолбэк: короткий ID
+        displayName = `#${log.entityId.slice(0, 8)}`;
+      }
+
+      return { ...log, entityDisplayName: displayName };
+    });
   }
 
   // Notifications

@@ -1524,7 +1524,11 @@ ${dbContext}`,
           { entityType, action, from, to }
         );
 
-        res.json(result);
+        const enrichedData = await storage.enrichAuditLogsWithEntityNames(
+          result.data
+        );
+
+        res.json({ ...result, data: enrichedData });
       } catch (error) {
         console.error("Audit logs error:", error);
         res.status(500).json({ message: "Ошибка сервера" });
