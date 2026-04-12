@@ -49,11 +49,11 @@ const FIELD_LABELS: Record<string, Record<string, string>> = {
     status: "Статус",
     salePrice: "Цена продажи",
     costPrice: "Себестоимость",
-    dealerId: "Дилер (ID)",
+    dealerId: "Дилер",
     date: "Дата",
     comment: "Комментарий",
     isPaid: "Оплачено",
-    cashboxId: "Касса (ID)",
+    cashboxId: "Касса",
     orderNumber: "Номер заказа",
     dealerDebt: "Долг дилера",
   },
@@ -76,14 +76,14 @@ const FIELD_LABELS: Record<string, Record<string, string>> = {
     amount: "Сумма",
     type: "Тип",
     description: "Описание",
-    dealerId: "Дилер (ID)",
-    supplierId: "Поставщик (ID)",
-    cashboxId: "Касса (ID)",
+    dealerId: "Дилер",
+    supplierId: "Поставщик",
+    cashboxId: "Касса",
     date: "Дата",
   },
   warehouse_receipt: {
     date: "Дата",
-    supplierId: "Поставщик (ID)",
+    supplierId: "Поставщик",
     totalAmount: "Сумма",
     comment: "Комментарий",
   },
@@ -115,11 +115,23 @@ const FIELD_LABELS: Record<string, Record<string, string>> = {
   },
 };
 
+/** Общие лейблы для полей, встречающихся в любом типе сущности */
+const COMMON_LABELS: Record<string, string> = {
+  userId: "Пользователь",
+  dealerId: "Дилер",
+  supplierId: "Поставщик",
+  cashboxId: "Касса",
+  fabricId: "Ткань",
+  systemId: "Система",
+  createdAt: "Дата создания",
+  updatedAt: "Дата изменения",
+};
+
 /**
  * Получить русский лейбл для поля. Фолбэк — raw имя поля.
  */
 export function getFieldLabel(entityType: string, field: string): string {
-  return FIELD_LABELS[entityType]?.[field] ?? field;
+  return FIELD_LABELS[entityType]?.[field] ?? COMMON_LABELS[field] ?? field;
 }
 
 /**

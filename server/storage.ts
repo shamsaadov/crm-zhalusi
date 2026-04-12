@@ -1467,6 +1467,7 @@ export class DatabaseStorage implements IStorage {
     // Резолвим ID-значения внутри changes JSON (dealerId → имя дилера, и т.д.)
     // Маппинг: суффикс поля → таблица + колонка имени
     const idFieldResolvers: Record<string, { table: any; idCol: any; nameExpr: (r: any) => string }> = {
+      userId: { table: users, idCol: users.id, nameExpr: (r) => r.name || r.email },
       dealerId: { table: dealers, idCol: dealers.id, nameExpr: (r) => r.fullName },
       supplierId: { table: suppliers, idCol: suppliers.id, nameExpr: (r) => r.name },
       cashboxId: { table: cashboxes, idCol: cashboxes.id, nameExpr: (r) => r.name },
