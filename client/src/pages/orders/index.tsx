@@ -785,6 +785,11 @@ export default function OrdersPage() {
       return "";
     };
 
+    // Calculate actual sale price: coefficient × dealer's workshop rate
+    const dealer = dealers.find((d) => d.id === measurement.dealerId);
+    const rateRulon = parseFloat(dealer?.workshopRateRulon?.toString() || "28");
+    const rateZebra = parseFloat(dealer?.workshopRateZebra?.toString() || "28");
+
     const rawSashes = (measurement.sashes || []).map((s) => {
       const coef = s.coefficient != null ? parseFloat(s.coefficient.toString()) : 0;
       const isZebra = (s.systemType || "").includes("zebra");
@@ -805,10 +810,6 @@ export default function OrdersPage() {
     });
     const sashes = normalizeSashRooms(rawSashes);
 
-    // Calculate actual sale price: coefficient × dealer's workshop rate
-    const dealer = dealers.find((d) => d.id === measurement.dealerId);
-    const rateRulon = parseFloat(dealer?.workshopRateRulon?.toString() || "28");
-    const rateZebra = parseFloat(dealer?.workshopRateZebra?.toString() || "28");
     let calculatedPrice = 0;
     for (const s of measurement.sashes || []) {
       const coef = parseFloat(s.coefficient?.toString() || "0");
