@@ -3,8 +3,8 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { storage } from "../storage";
 import { db } from "../db";
-import { eq } from "drizzle-orm";
-import { installmentPlans as installmentPlansTable } from "@shared/schema";
+import { eq, inArray } from "drizzle-orm";
+import { installmentPlans as installmentPlansTable, measurements, systems, fabrics } from "@shared/schema";
 import { notify } from "../notifications";
 import { logAudit } from "../audit";
 
@@ -149,8 +149,33 @@ export function createDealerMobileRouter(): Router {
         const from = typeof req.query.from === "string" ? req.query.from : undefined;
         const to = typeof req.query.to === "string" ? req.query.to : undefined;
         const search = typeof req.query.search === "string" ? req.query.search : undefined;
-        const orderList = await storage.getDealerOrders(req.dealerId!, { status, from, to, search });
-        res.json(orderList);
+        // Fetch orders without search filter — we'll filter after enriching with clientName
+        const orderList = await storage.getDealerOrders(req.dealerId!, { status, from, to });
+
+        // Enrich orders with clientName from linked measurements
+        const orderIds = orderList.map((o) => o.id);
+        let clientMap = new Map<string, string>();
+        if (orderIds.length > 0) {
+          const linked = await db
+            .select({ orderId: measurements.orderId, clientName: measurements.clientName })
+            .from(measurements)
+            .where(inArray(measurements.orderId, orderIds));
+          for (const m of linked) {
+            if (m.orderId && m.clientName) clientMap.set(m.orderId, m.clientName);
+          }
+        }
+
+        let enriched = orderList.map((o) => ({ ...o, clientName: clientMap.get(o.id) || null }));
+
+        // Filter by order number or client name
+        if (search) {
+          const q = search.toLowerCase();
+          enriched = enriched.filter(
+            (o) => String(o.orderNumber).includes(q) || (o.clientName && o.clientName.toLowerCase().includes(q))
+          );
+        }
+
+        res.json(enriched);
       } catch (error) {
         console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
@@ -168,8 +193,33 @@ export function createDealerMobileRouter(): Router {
         if (!order || order.dealerId !== req.dealerId) {
           return res.status(404).json({ message: "Заказ не найден" });
         }
-        const sashes = await storage.getOrderSashes(order.id);
-        res.json({ ...order, sashes });
+        const rawSashes = await storage.getOrderSashes(order.id);
+
+        // Enrich sashes with system/fabric names from FK joins
+        const systemIds = rawSashes.map(s => s.systemId).filter(Boolean) as string[];
+        const fabricIds = rawSashes.map(s => s.fabricId).filter(Boolean) as string[];
+        const systemMap = new Map<string, string>();
+        const fabricMap = new Map<string, string>();
+        if (systemIds.length > 0) {
+          const sysList = await db.select({ id: systems.id, name: systems.name }).from(systems).where(inArray(systems.id, systemIds));
+          for (const s of sysList) systemMap.set(s.id, s.name);
+        }
+        if (fabricIds.length > 0) {
+          const fabList = await db.select({ id: fabrics.id, name: fabrics.name }).from(fabrics).where(inArray(fabrics.id, fabricIds));
+          for (const f of fabList) fabricMap.set(f.id, f.name);
+        }
+        const sashes = rawSashes.map(s => ({
+          ...s,
+          systemName: s.systemName || (s.systemId ? systemMap.get(s.systemId) : null) || null,
+          fabricName: s.fabricName || (s.fabricId ? fabricMap.get(s.fabricId) : null) || null,
+        }));
+
+        // Enrich with clientName from linked measurement
+        const [linked] = await db
+          .select({ clientName: measurements.clientName })
+          .from(measurements)
+          .where(eq(measurements.orderId, order.id));
+        res.json({ ...order, sashes, clientName: linked?.clientName || null });
       } catch (error) {
         console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });

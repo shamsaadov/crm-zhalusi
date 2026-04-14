@@ -1659,6 +1659,17 @@ ${dbContext}`,
         const orderComment =
           `Дилер: ${dealerName} | ${clientInfo} | ${measurement.address || ""}`.trim();
 
+        // Fetch sashes once and calculate actual sale price: coefficient × dealer's workshop rate
+        const mSashes = await storage.getMeasurementSashes(measurement.id);
+        const rateRulon = parseFloat(dealer?.workshopRateRulon?.toString() || "28");
+        const rateZebra = parseFloat(dealer?.workshopRateZebra?.toString() || "28");
+        let calculatedPrice = 0;
+        for (const s of mSashes) {
+          const coef = parseFloat(s.coefficient?.toString() || "0");
+          const isZebra = (s.systemType || "").includes("zebra");
+          calculatedPrice += coef * (isZebra ? rateZebra : rateRulon);
+        }
+
         // Create the workshop order
         const orderNumber = await storage.getNextOrderNumber(req.userId!);
         const today = new Date().toISOString().split("T")[0];
@@ -1669,20 +1680,64 @@ ${dbContext}`,
           comment: orderComment,
           userId: req.userId!,
           dealerId: measurement.dealerId,
-          salePrice: measurement.totalCoefficient || "0",
+          salePrice: calculatedPrice > 0 ? calculatedPrice.toFixed(2) : (measurement.totalCoefficient || "0"),
         });
 
-        // Mirror measurement sashes into order sashes
-        const mSashes = await storage.getMeasurementSashes(measurement.id);
+        // Mirror measurement sashes into order sashes, matching system/fabric by name
+        const allSystems = await storage.getSystems(req.userId!);
+        const allFabrics = await storage.getFabrics(req.userId!);
+
+        // App systemType → CRM systemKey mapping
+        const typeToKey: Record<string, string> = {
+          "mini-rulons": "mini_roll",
+          "mini-zebra": "mini_zebra",
+          "uni-1": "uni1_roll",
+          "uni-1-zebra": "uni1_zebra",
+          "uni-2": "uni2_roll",
+          "uni-2-zebra": "uni2_zebra",
+        };
+
         for (const s of mSashes) {
+          // Match system: first by direct ID, then by systemType→systemKey
+          let systemId: string | undefined;
+          if (s.systemName) {
+            const byId = allSystems.find((sys) => sys.id === s.systemName);
+            if (byId) systemId = byId.id;
+          }
+          if (!systemId && s.systemType) {
+            const crmKey = typeToKey[s.systemType] || s.systemType.replace(/-/g, "_");
+            const byKey = allSystems.find((sys) => sys.systemKey === crmKey);
+            if (byKey) systemId = byKey.id;
+          }
+
+          // Match fabric by name (strip "(colorName)" suffix from app's displayName)
+          let fabricId: string | undefined;
+          if (s.fabricName) {
+            const exact = allFabrics.find((f) => f.name === s.fabricName);
+            if (exact) {
+              fabricId = exact.id;
+            } else {
+              const base = s.fabricName.replace(/\s*\(.*\)\s*$/, "").trim();
+              const byBase = allFabrics.find((f) => f.name === base);
+              if (byBase) fabricId = byBase.id;
+            }
+          }
+
+          const sashCoef = parseFloat(s.coefficient?.toString() || "0");
+          const sashIsZebra = (s.systemType || "").includes("zebra");
+          const sashPrice = sashCoef * (sashIsZebra ? rateZebra : rateRulon);
+
           await storage.createOrderSash({
             orderId: order.id,
             width: parseFloat(s.width?.toString() || "0").toString(),
             height: parseFloat(s.height?.toString() || "0").toString(),
-            controlSide: s.control,
+            controlSide: s.control === "Л" ? "ЛР" : s.control,
             coefficient: s.coefficient?.toString(),
+            sashPrice: sashPrice > 0 ? sashPrice.toFixed(2) : undefined,
             room: s.room,
             roomName: s.roomName,
+            systemId,
+            fabricId,
             systemName: s.systemName,
             systemType: s.systemType,
             category: s.category,

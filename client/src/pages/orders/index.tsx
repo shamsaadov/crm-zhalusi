@@ -551,9 +551,9 @@ export default function OrdersPage() {
         systemId: s.systemId || "",
         controlSide: s.controlSide || "",
         fabricId: s.fabricId || "",
-        sashPrice: s.sashPrice?.toString() || "",
-        sashCost: s.sashCost?.toString() || "",
-        coefficient: (s as any).coefficient?.toString() || "",
+        sashPrice: s.sashPrice != null ? parseFloat(s.sashPrice.toString()).toString() : "",
+        sashCost: s.sashCost != null ? parseFloat(s.sashCost.toString()).toString() : "",
+        coefficient: (s as any).coefficient != null ? parseFloat((s as any).coefficient.toString()).toString() : "",
         isCalculating: false,
         quantity: "1",
         room: (s as any).room || 1,
@@ -565,8 +565,8 @@ export default function OrdersPage() {
         date: fullOrder.date,
         dealerId: fullOrder.dealerId || "",
         status: fullOrder.status || "Новый",
-        salePrice: fullOrder.salePrice?.toString() || "",
-        costPrice: fullOrder.costPrice?.toString() || "",
+        salePrice: fullOrder.salePrice != null ? parseFloat(fullOrder.salePrice.toString()).toString() : "",
+        costPrice: fullOrder.costPrice != null ? parseFloat(fullOrder.costPrice.toString()).toString() : "",
         comment: fullOrder.comment || "",
         isPaid: fullOrder.isPaid || false,
         cashboxId: fullOrder.cashboxId || "",
@@ -742,26 +742,85 @@ export default function OrdersPage() {
       measurement.comment ? `Примечание: ${measurement.comment}` : null,
     ].filter(Boolean).join("\n");
 
-    const rawSashes = (measurement.sashes || []).map((s) => ({
-      width: s.width?.toString() || "",
-      height: s.height?.toString() || "",
-      quantity: "1",
-      systemId: "",
-      controlSide: s.control || "",
-      fabricId: "",
-      sashPrice: s.coefficient?.toString() || "",
-      sashCost: "",
-      coefficient: s.coefficient?.toString() || "",
-      room: s.room || 1,
-      roomName: s.roomName || "",
-    }));
+    // App systemType → CRM systemKey mapping (reverse of _systemKeyToType in mobile app)
+    const typeToKey: Record<string, string> = {
+      "mini-rulons": "mini_roll",
+      "mini-zebra": "mini_zebra",
+      "uni-1": "uni1_roll",
+      "uni-1-zebra": "uni1_zebra",
+      "uni-2": "uni2_roll",
+      "uni-2-zebra": "uni2_zebra",
+    };
+
+    const findSystemId = (s: MeasurementSash): string => {
+      // 1. Direct ID match (app loaded systems from server → systemName is UUID)
+      if (s.systemName) {
+        const byId = systems.find((sys) => sys.id === s.systemName);
+        if (byId) return byId.id;
+      }
+      // 2. Match by systemType → systemKey
+      if (s.systemType) {
+        const crmKey = typeToKey[s.systemType] || s.systemType.replace(/-/g, "_");
+        const byKey = systems.find((sys) => sys.systemKey === crmKey);
+        if (byKey) return byKey.id;
+      }
+      return "";
+    };
+
+    const findFabricId = (fabricName: string | null | undefined): string => {
+      if (!fabricName) return "";
+      // Exact match
+      const exact = fabrics.find((f) => f.name === fabricName);
+      if (exact) return exact.id;
+      // Strip "(colorName)" suffix from app's displayName: "Fabric (White)" → "Fabric"
+      const base = fabricName.replace(/\s*\(.*\)\s*$/, "").trim();
+      if (base !== fabricName) {
+        const byBase = fabrics.find((f) => f.name === base);
+        if (byBase) return byBase.id;
+      }
+      // Case-insensitive fallback
+      const lower = fabricName.toLowerCase();
+      const ci = fabrics.find((f) => f.name.toLowerCase() === lower);
+      if (ci) return ci.id;
+      return "";
+    };
+
+    const rawSashes = (measurement.sashes || []).map((s) => {
+      const coef = s.coefficient != null ? parseFloat(s.coefficient.toString()) : 0;
+      const isZebra = (s.systemType || "").includes("zebra");
+      const price = coef * (isZebra ? rateZebra : rateRulon);
+      return {
+        width: s.width != null ? parseFloat(s.width.toString()).toString() : "",
+        height: s.height != null ? parseFloat(s.height.toString()).toString() : "",
+        quantity: "1",
+        systemId: findSystemId(s),
+        controlSide: s.control === "Л" ? "ЛР" : (s.control || ""),
+        fabricId: findFabricId(s.fabricName),
+        sashPrice: price > 0 ? price.toFixed(2) : "",
+        sashCost: "",
+        coefficient: coef > 0 ? coef.toString() : "",
+        room: s.room || 1,
+        roomName: s.roomName || "",
+      };
+    });
     const sashes = normalizeSashRooms(rawSashes);
+
+    // Calculate actual sale price: coefficient × dealer's workshop rate
+    const dealer = dealers.find((d) => d.id === measurement.dealerId);
+    const rateRulon = parseFloat(dealer?.workshopRateRulon?.toString() || "28");
+    const rateZebra = parseFloat(dealer?.workshopRateZebra?.toString() || "28");
+    let calculatedPrice = 0;
+    for (const s of measurement.sashes || []) {
+      const coef = parseFloat(s.coefficient?.toString() || "0");
+      const isZebra = (s.systemType || "").includes("zebra");
+      calculatedPrice += coef * (isZebra ? rateZebra : rateRulon);
+    }
 
     form.reset({
       date: format(new Date(), "yyyy-MM-dd"),
       dealerId: measurement.dealerId || "",
       status: "Новый",
-      salePrice: measurement.totalCoefficient?.toString() || "",
+      salePrice: calculatedPrice > 0 ? calculatedPrice.toFixed(2) : "",
       costPrice: "",
       comment: commentLines,
       isPaid: false,
