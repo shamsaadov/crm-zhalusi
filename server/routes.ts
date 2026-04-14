@@ -23,7 +23,7 @@ import { db } from "./db";
 import { eq, and, sql, desc, sum } from "drizzle-orm";
 import pg from "pg";
 import { logAudit } from "./audit";
-import { generatePeriodicNotifications } from "./notifications";
+import { generatePeriodicNotifications, notifyDealer } from "./notifications";
 import { createDealerMobileRouter } from "./routes/dealer-mobile";
 import { createReferencesRouter } from "./routes/references";
 import { createFinanceRouter } from "./routes/finance";
@@ -1652,12 +1652,11 @@ ${dbContext}`,
         const dealer = measurement.dealerId
           ? await storage.getDealer(measurement.dealerId)
           : null;
-        const dealerName = dealer?.fullName || "—";
         const clientInfo = [measurement.clientName, measurement.clientPhone]
           .filter(Boolean)
           .join(", ");
         const orderComment =
-          `Дилер: ${dealerName} | ${clientInfo} | ${measurement.address || ""}`.trim();
+          [clientInfo, measurement.address].filter(Boolean).join(" | ").trim() || "";
 
         // Fetch sashes once and calculate actual sale price: coefficient × dealer's workshop rate
         const mSashes = await storage.getMeasurementSashes(measurement.id);
@@ -1673,6 +1672,7 @@ ${dbContext}`,
         // Create the workshop order
         const orderNumber = await storage.getNextOrderNumber(req.userId!);
         const today = new Date().toISOString().split("T")[0];
+        const priceStr = calculatedPrice > 0 ? calculatedPrice.toFixed(2) : (measurement.totalCoefficient || "0");
         const order = await storage.createOrder({
           orderNumber,
           date: today,
@@ -1680,7 +1680,8 @@ ${dbContext}`,
           comment: orderComment,
           userId: req.userId!,
           dealerId: measurement.dealerId,
-          salePrice: calculatedPrice > 0 ? calculatedPrice.toFixed(2) : (measurement.totalCoefficient || "0"),
+          salePrice: priceStr,
+          costPrice: priceStr,
         });
 
         // Mirror measurement sashes into order sashes, matching system/fabric by name
@@ -1752,6 +1753,20 @@ ${dbContext}`,
           orderId: order.id,
         });
 
+        // Notify dealer that their measurement was approved
+        if (measurement.dealerId) {
+          try {
+            await notifyDealer({
+              dealerId: measurement.dealerId,
+              userId: req.userId!,
+              title: "Заказ принят",
+              message: `Ваш замер принят и создан заказ №${orderNumber}`,
+              entityType: "order",
+              entityId: order.id,
+            });
+          } catch (_) {}
+        }
+
         // Audit
         try {
           await logAudit({
@@ -1762,7 +1777,7 @@ ${dbContext}`,
             metadata: {
               source: "measurement_approve",
               measurementId: measurement.id,
-              dealerName,
+              dealerName: dealer?.fullName || "—",
               orderNumber,
             },
           });
