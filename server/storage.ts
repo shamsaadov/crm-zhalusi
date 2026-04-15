@@ -174,6 +174,11 @@ export interface IStorage {
     dealer: Partial<InsertDealer>
   ): Promise<Dealer | undefined>;
   deleteDealer(id: string): Promise<void>;
+  updateBulkDealerRates(
+    userId: string,
+    workshopRateRulon: string,
+    workshopRateZebra: string
+  ): Promise<number>;
 
   // Cashboxes
   getCashboxes(userId: string): Promise<(Cashbox & { balance: number })[]>;
@@ -529,6 +534,19 @@ export class DatabaseStorage implements IStorage {
 
   async deleteDealer(id: string): Promise<void> {
     await db.delete(dealers).where(eq(dealers.id, id));
+  }
+
+  async updateBulkDealerRates(
+    userId: string,
+    workshopRateRulon: string,
+    workshopRateZebra: string
+  ): Promise<number> {
+    const updated = await db
+      .update(dealers)
+      .set({ workshopRateRulon, workshopRateZebra })
+      .where(eq(dealers.userId, userId))
+      .returning();
+    return updated.length;
   }
 
   // Cashboxes with balance calculation
@@ -1834,14 +1852,24 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(orders.date));
   }
 
-  async getDealerBalance(dealerId: string): Promise<{ balance: number; openingBalance: number; totalOrders: number; totalPayments: number }> {
+  async getDealerBalance(dealerId: string): Promise<{ balance: number; shippedBalance: number; openingBalance: number; totalOrders: number; totalShippedOrders: number; totalPayments: number }> {
     const [dealer] = await db.select().from(dealers).where(eq(dealers.id, dealerId));
-    if (!dealer) return { balance: 0, openingBalance: 0, totalOrders: 0, totalPayments: 0 };
+    if (!dealer) return { balance: 0, shippedBalance: 0, openingBalance: 0, totalOrders: 0, totalShippedOrders: 0, totalPayments: 0 };
 
     const [orderTotals] = await db
       .select({ total: sum(orders.salePrice) })
       .from(orders)
       .where(eq(orders.dealerId, dealerId));
+
+    const [shippedOrderTotals] = await db
+      .select({ total: sum(orders.salePrice) })
+      .from(orders)
+      .where(
+        and(
+          eq(orders.dealerId, dealerId),
+          eq(orders.status, "Отгружен")
+        )
+      );
 
     const [paymentTotals] = await db
       .select({ total: sum(financeOperations.amount) })
@@ -1856,10 +1884,12 @@ export class DatabaseStorage implements IStorage {
 
     const opening = parseFloat(dealer.openingBalance?.toString() || "0");
     const totalOrd = parseFloat(orderTotals?.total?.toString() || "0");
+    const totalShipped = parseFloat(shippedOrderTotals?.total?.toString() || "0");
     const totalPay = parseFloat(paymentTotals?.total?.toString() || "0");
     const balance = opening + totalOrd - totalPay;
+    const shippedBalance = opening + totalShipped - totalPay;
 
-    return { balance, openingBalance: opening, totalOrders: totalOrd, totalPayments: totalPay };
+    return { balance, shippedBalance, openingBalance: opening, totalOrders: totalOrd, totalShippedOrders: totalShipped, totalPayments: totalPay };
   }
 
   async getDealerPayments(dealerId: string): Promise<FinanceOperation[]> {

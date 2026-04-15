@@ -33,6 +33,12 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
     coefficient?: string;
     room?: number;
     roomName?: string;
+    // Mobile-app fallback fields: preserved so that editing an order created
+    // from a mobile measurement doesn't lose the dealer's original selection.
+    systemName?: string;
+    systemType?: string;
+    category?: string;
+    fabricName?: string;
   }) => ({
     width: sash.width,
     height: sash.height,
@@ -46,6 +52,10 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
     coefficient: sash.coefficient || null,
     room: sash.room || 1,
     roomName: sash.roomName || null,
+    systemName: sash.systemName || null,
+    systemType: sash.systemType || null,
+    category: sash.category || null,
+    fabricName: sash.fabricName || null,
   });
 
   // Helper function to calculate current stock levels

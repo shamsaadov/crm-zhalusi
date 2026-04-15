@@ -176,6 +176,14 @@ export default function OrdersPage() {
     queryKey: ["/api/cashboxes"],
   });
 
+  // Pending app-measurements count for the tab badge
+  const { data: appMeasurements = [] } = useQuery<{ id: string; status: string | null; orderId: string | null }[]>({
+    queryKey: ["/api/app-measurements"],
+  });
+  const pendingAppCount = appMeasurements.filter(
+    (m) => m.status === "pending" && !m.orderId
+  ).length;
+
   const fabricStock = stockData?.fabrics || [];
   const componentStock = stockData?.components || [];
 
@@ -494,6 +502,11 @@ export default function OrdersPage() {
           coefficient: sash.coefficient,
           room: sash.room || 1,
           roomName: sash.roomName || undefined,
+          // Preserve mobile-app fallback fields through edit round-trips
+          systemName: (sash as any).systemName || undefined,
+          systemType: (sash as any).systemType || undefined,
+          category: (sash as any).category || undefined,
+          fabricName: (sash as any).fabricName || undefined,
         }));
     });
 
@@ -558,6 +571,11 @@ export default function OrdersPage() {
         quantity: "1",
         room: (s as any).room || 1,
         roomName: (s as any).roomName || "",
+        // Preserve mobile-app fallback fields so they survive edit round-trips
+        systemName: s.systemName || "",
+        systemType: s.systemType || "",
+        category: s.category || "",
+        fabricName: s.fabricName || "",
       }));
       const sashesData = normalizeSashRooms(rawSashesData);
 
@@ -736,7 +754,6 @@ export default function OrdersPage() {
 
     const clientParts = [measurement.clientName, measurement.clientPhone].filter(Boolean);
     const commentLines = [
-      `Из приложения: ${measurement.dealerName || ""}`,
       clientParts.length > 0 ? `Клиент: ${clientParts.join(", ")}` : null,
       measurement.address ? `Адрес: ${measurement.address}` : null,
       measurement.comment ? `Примечание: ${measurement.comment}` : null,
@@ -1320,7 +1337,14 @@ export default function OrdersPage() {
           <TabsTrigger value="all">Все заказы</TabsTrigger>
           <TabsTrigger value="sash">Со створками</TabsTrigger>
           <TabsTrigger value="product">Комплектующие</TabsTrigger>
-          <TabsTrigger value="app">Из приложения</TabsTrigger>
+          <TabsTrigger value="app" className="relative">
+            Из приложения
+            {pendingAppCount > 0 && (
+              <span className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium text-destructive-foreground">
+                {pendingAppCount}
+              </span>
+            )}
+          </TabsTrigger>
         </TabsList>
 
         {orderTypeFilter === "app" ? (

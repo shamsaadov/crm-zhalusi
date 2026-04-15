@@ -33,6 +33,8 @@ function getEntityLink(entityType?: string, entityId?: string): string | null {
     case "component":
     case "fabric":
       return "/warehouse";
+    case "measurement":
+      return "/orders";
     default:
       return null;
   }

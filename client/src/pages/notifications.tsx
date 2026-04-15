@@ -30,6 +30,7 @@ const typeLabels: Record<string, string> = {
   low_stock: "Низкий остаток",
   overdue_order: "Просрочка заказа",
   overdue_payment: "Просрочка оплаты",
+  measurement_sent: "Замер из приложения",
 };
 
 function getEntityLink(entityType?: string): string | null {
@@ -43,6 +44,8 @@ function getEntityLink(entityType?: string): string | null {
     case "component":
     case "fabric":
       return "/warehouse";
+    case "measurement":
+      return "/orders";
     default:
       return null;
   }

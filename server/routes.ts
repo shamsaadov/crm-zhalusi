@@ -219,6 +219,28 @@ export async function registerRoutes(
   );
 
   app.patch(
+    "/api/dealers/bulk-rates",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const { workshopRateRulon, workshopRateZebra } = req.body;
+        if (!workshopRateRulon || !workshopRateZebra) {
+          return res.status(400).json({ message: "Необходимы поля workshopRateRulon и workshopRateZebra" });
+        }
+        const count = await storage.updateBulkDealerRates(
+          req.userId!,
+          workshopRateRulon,
+          workshopRateZebra
+        );
+        res.json({ success: true, updatedCount: count });
+      } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  app.patch(
     "/api/dealers/:id",
     authMiddleware,
     async (req: AuthRequest, res: Response) => {

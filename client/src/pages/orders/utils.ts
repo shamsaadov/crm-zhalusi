@@ -452,8 +452,9 @@ export async function printInvoice(order: OrderWithRelations): Promise<void> {
       fabricParts.push("(зеб)");
     }
 
-    const systemText = systemParts.join(" ").trim() || "—";
-    const fabricText = fabricParts.join(" ").trim() || "—";
+    // Fall back to mobile-app string fields when catalogue relations are absent
+    const systemText = systemParts.join(" ").trim() || sash.systemName || "—";
+    const fabricText = fabricParts.join(" ").trim() || sash.fabricName || "—";
     const controlText = mapControlSide(sash.controlSide);
     const room = sash.room || 1;
     const roomName = sash.roomName || "";
@@ -866,8 +867,9 @@ export async function printCustomerInvoice(
       fabricParts.push("(зеб)");
     }
 
-    const systemText = systemParts.join(" ").trim() || "—";
-    const fabricText = fabricParts.join(" ").trim() || "—";
+    // Fall back to mobile-app string fields when catalogue relations are absent
+    const systemText = systemParts.join(" ").trim() || (sash as any).systemName || "—";
+    const fabricText = fabricParts.join(" ").trim() || (sash as any).fabricName || "—";
     const controlText = mapControlSide(sash.controlSide);
     const room = (sash as any).room || 1;
     const roomName = (sash as any).roomName || "";

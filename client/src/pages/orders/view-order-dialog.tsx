@@ -34,6 +34,21 @@ function fmtNum(v: string | number | null | undefined): string {
   return n.toString();
 }
 
+// Mobile app system types (slugs) → human-readable labels
+const systemTypeLabels: Record<string, string> = {
+  "mini-rulons": "Мини рулонная",
+  "mini-zebra": "Мини зебра",
+  "uni-1": "Уни-1 рулонная",
+  "uni-1-zebra": "Уни-1 зебра",
+  "uni-2": "Уни-2 рулонная",
+  "uni-2-zebra": "Уни-2 зебра",
+};
+
+function fmtSystemType(v: string | null | undefined): string {
+  if (!v) return "";
+  return systemTypeLabels[v] || v;
+}
+
 export function ViewOrderDialog({
   open,
   onOpenChange,
@@ -120,7 +135,7 @@ export function ViewOrderDialog({
                       </div>
                       {hasMobileMeta && (
                         <div className="mt-1 text-xs text-muted-foreground">
-                          {sash.systemType && <span>тип: {sash.systemType}</span>}
+                          {sash.systemType && <span>тип: {fmtSystemType(sash.systemType)}</span>}
                           {sash.systemType && sash.category && <span> · </span>}
                           {sash.category && <span>категория: {sash.category}</span>}
                         </div>

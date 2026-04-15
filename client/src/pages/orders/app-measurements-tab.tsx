@@ -49,6 +49,21 @@ function fmtNum(v: string | number | null | undefined): string {
   return n.toString();
 }
 
+// Mobile app system types (slugs) → human-readable labels
+const systemTypeLabels: Record<string, string> = {
+  "mini-rulons": "Мини рулонная",
+  "mini-zebra": "Мини зебра",
+  "uni-1": "Уни-1 рулонная",
+  "uni-1-zebra": "Уни-1 зебра",
+  "uni-2": "Уни-2 рулонная",
+  "uni-2-zebra": "Уни-2 зебра",
+};
+
+function fmtSystemType(v: string | null | undefined): string {
+  if (!v) return "";
+  return systemTypeLabels[v] || v;
+}
+
 export function AppMeasurementsTab({
   onConvertToOrder,
 }: {
@@ -324,7 +339,7 @@ export function AppMeasurementsTab({
                       </div>
                       {(s.systemType || s.fabricName) && (
                         <div className="text-xs text-muted-foreground ml-1">
-                          {s.systemType && <span>тип: {s.systemType}</span>}
+                          {s.systemType && <span>тип: {fmtSystemType(s.systemType)}</span>}
                           {s.systemType && s.fabricName && <span> · </span>}
                           {s.fabricName && <span>ткань: {s.fabricName}</span>}
                         </div>

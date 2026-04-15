@@ -32,7 +32,7 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Trash2, Loader2 } from "lucide-react";
+import { Plus, Trash2, Loader2, Settings2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Dealer } from "@shared/schema";
@@ -41,6 +41,7 @@ import { BalanceBadge } from "@/components/status-badge";
 export function DealersTab({ search }: { search: string }) {
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isBulkDialogOpen, setIsBulkDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Dealer | null>(null);
 
   const { data: dealers = [], isLoading } = useQuery<
@@ -123,6 +124,33 @@ export function DealersTab({ search }: { search: string }) {
       }),
   });
 
+  const bulkForm = useForm({
+    resolver: zodResolver(
+      z.object({
+        workshopRateRulon: z.string().min(1, "Обязательное поле"),
+        workshopRateZebra: z.string().min(1, "Обязательное поле"),
+      })
+    ),
+    defaultValues: { workshopRateRulon: "28", workshopRateZebra: "28" },
+  });
+
+  const bulkRatesMutation = useMutation({
+    mutationFn: (data: { workshopRateRulon: string; workshopRateZebra: string }) =>
+      apiRequest("PATCH", "/api/dealers/bulk-rates", data),
+    onSuccess: async (res) => {
+      const result = await res.json();
+      queryClient.invalidateQueries({ queryKey: ["/api/dealers"] });
+      setIsBulkDialogOpen(false);
+      toast({ title: `Цены цеха обновлены для ${result.updatedCount} дилеров` });
+    },
+    onError: (e: Error) =>
+      toast({
+        title: "Ошибка",
+        description: e.message,
+        variant: "destructive",
+      }),
+  });
+
   const onSubmit = (data: Record<string, unknown>) => {
     const payload = { ...data };
     // Only include password if non-empty
@@ -154,7 +182,69 @@ export function DealersTab({ search }: { search: string }) {
 
   return (
     <>
-      <div className="flex justify-end mb-4">
+      <div className="flex justify-end gap-2 mb-4">
+        <Dialog
+          open={isBulkDialogOpen}
+          onOpenChange={(open) => {
+            setIsBulkDialogOpen(open);
+            if (!open) bulkForm.reset();
+          }}
+        >
+          <DialogTrigger asChild>
+            <Button variant="outline">
+              <Settings2 className="h-4 w-4 mr-2" />
+              Цены цеха для всех
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Цены цеха для всех дилеров</DialogTitle>
+            </DialogHeader>
+            <Form {...bulkForm}>
+              <form
+                onSubmit={bulkForm.handleSubmit((data) => bulkRatesMutation.mutate(data))}
+                className="space-y-4"
+              >
+                <FormField
+                  control={bulkForm.control}
+                  name="workshopRateRulon"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Цена цеха (рулон)</FormLabel>
+                      <FormControl>
+                        <Input {...field} type="number" step="0.01" placeholder="28" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={bulkForm.control}
+                  name="workshopRateZebra"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Цена цеха (зебра)</FormLabel>
+                      <FormControl>
+                        <Input {...field} type="number" step="0.01" placeholder="28" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={bulkRatesMutation.isPending}
+                >
+                  {bulkRatesMutation.isPending && (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  )}
+                  Применить ко всем дилерам
+                </Button>
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
         <Dialog
           open={isDialogOpen}
           onOpenChange={(open) => {
