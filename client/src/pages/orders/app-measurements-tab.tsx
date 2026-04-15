@@ -193,6 +193,23 @@ export function AppMeasurementsTab({
             ),
           },
           {
+            key: "fabrics",
+            header: "Ткань",
+            cell: (m: MeasurementWithSashes) => {
+              const names = [...new Set(
+                (m.sashes || [])
+                  .map((s: any) => s.fabric?.name || s.fabricName)
+                  .filter(Boolean)
+              )];
+              if (names.length === 0) return <span className="text-muted-foreground">—</span>;
+              return (
+                <div className="text-xs max-w-[180px] truncate" title={names.join(", ")}>
+                  {names.join(", ")}
+                </div>
+              );
+            },
+          },
+          {
             key: "total",
             header: "Коэф.",
             cell: (m: MeasurementWithSashes) => (
@@ -337,11 +354,15 @@ export function AppMeasurementsTab({
                           {fmtNum(s.coefficient)}
                         </span>
                       </div>
-                      {(s.systemType || s.fabricName) && (
+                      {(s.systemType || s.fabricName || s.fabric || s.system) && (
                         <div className="text-xs text-muted-foreground ml-1">
-                          {s.systemType && <span>тип: {fmtSystemType(s.systemType)}</span>}
-                          {s.systemType && s.fabricName && <span> · </span>}
-                          {s.fabricName && <span>ткань: {s.fabricName}</span>}
+                          {(s.system?.name || s.systemType) && (
+                            <span>тип: {s.system?.name || fmtSystemType(s.systemType)}</span>
+                          )}
+                          {(s.system?.name || s.systemType) && (s.fabric?.name || s.fabricName) && <span> · </span>}
+                          {(s.fabric?.name || s.fabricName) && (
+                            <span>ткань: {s.fabric?.name || s.fabricName}</span>
+                          )}
                         </div>
                       )}
                     </div>

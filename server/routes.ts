@@ -1625,12 +1625,49 @@ ${dbContext}`,
     async (req: AuthRequest, res: Response) => {
       try {
         const dealerList = await storage.getDealers(req.userId!);
+        const allSystems = await storage.getSystems(req.userId!);
+        const allFabrics = await storage.getFabrics(req.userId!);
+        const typeToKey: Record<string, string> = {
+          "mini-rulons": "mini_roll",
+          "mini-zebra": "mini_zebra",
+          "uni-1": "uni1_roll",
+          "uni-1-zebra": "uni1_zebra",
+          "uni-2": "uni2_roll",
+          "uni-2-zebra": "uni2_zebra",
+        };
+
+        const matchFabric = (fabricName: string | null) => {
+          if (!fabricName) return undefined;
+          const exact = allFabrics.find((f) => f.name === fabricName);
+          if (exact) return exact;
+          const base = fabricName.replace(/\s*\([^)]*\)\s*$/, "").trim();
+          return allFabrics.find((f) => f.name === base);
+        };
+
+        const matchSystem = (systemName: string | null, systemType: string | null) => {
+          if (systemName) {
+            const byId = allSystems.find((sys) => sys.id === systemName);
+            if (byId) return byId;
+          }
+          if (systemType) {
+            const crmKey = typeToKey[systemType] || systemType.replace(/-/g, "_");
+            const byKey = allSystems.find((sys) => sys.systemKey === crmKey);
+            if (byKey) return byKey;
+          }
+          return undefined;
+        };
+
         const allMeasurements = [];
 
         for (const dealer of dealerList) {
           const dealerMeasurements = await storage.getMeasurements(dealer.id);
           for (const m of dealerMeasurements) {
-            const sashes = await storage.getMeasurementSashes(m.id);
+            const rawSashes = await storage.getMeasurementSashes(m.id);
+            const sashes = rawSashes.map((s) => ({
+              ...s,
+              fabric: matchFabric(s.fabricName),
+              system: matchSystem(s.systemName, s.systemType),
+            }));
             allMeasurements.push({
               ...m,
               sashes,
