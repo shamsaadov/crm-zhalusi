@@ -817,7 +817,7 @@ export default function OrdersPage() {
         quantity: "1",
         systemId: findSystemId(s),
         controlSide: s.control === "Л" ? "ЛР" : (s.control || ""),
-        fabricId: findFabricId(s.fabricName),
+        fabricId: (s as any).fabric?.id || findFabricId(s.fabricName),
         sashPrice: price > 0 ? price.toFixed(2) : "",
         sashCost: "",
         coefficient: coef > 0 ? coef.toString() : "",
