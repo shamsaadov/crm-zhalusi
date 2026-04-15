@@ -347,22 +347,16 @@ export function AppMeasurementsTab({
                             {fmtNum(s.width)}×{fmtNum(s.height)} см
                           </span>
                           <span className="text-muted-foreground ml-2">
-                            {s.systemName} · {s.category} · {s.control}
+                            {(s as any).system?.name || s.systemName} · {s.control}
                           </span>
                         </div>
                         <span className="font-semibold text-green-600">
                           {fmtNum(s.coefficient)}
                         </span>
                       </div>
-                      {(s.systemType || s.fabricName || s.fabric || s.system) && (
+                      {(s.fabric?.name || s.fabricName) && (
                         <div className="text-xs text-muted-foreground ml-1">
-                          {(s.system?.name || s.systemType) && (
-                            <span>тип: {s.system?.name || fmtSystemType(s.systemType)}</span>
-                          )}
-                          {(s.system?.name || s.systemType) && (s.fabric?.name || s.fabricName) && <span> · </span>}
-                          {(s.fabric?.name || s.fabricName) && (
-                            <span>ткань: {s.fabric?.name || s.fabricName}</span>
-                          )}
+                          <span>ткань: {(s as any).fabric?.name || s.fabricName}</span>
                         </div>
                       )}
                     </div>
