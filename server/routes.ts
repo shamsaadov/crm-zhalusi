@@ -1740,7 +1740,7 @@ ${dbContext}`,
             if (exact) {
               fabricId = exact.id;
             } else {
-              const base = s.fabricName.replace(/\s*\(.*\)\s*$/, "").trim();
+              const base = s.fabricName.replace(/\s*\([^)]*\)\s*$/, "").trim();
               const byBase = allFabrics.find((f) => f.name === base);
               if (byBase) fabricId = byBase.id;
             }

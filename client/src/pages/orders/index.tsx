@@ -790,7 +790,7 @@ export default function OrdersPage() {
       const exact = fabrics.find((f) => f.name === fabricName);
       if (exact) return exact.id;
       // Strip "(colorName)" suffix from app's displayName: "Fabric (White)" → "Fabric"
-      const base = fabricName.replace(/\s*\(.*\)\s*$/, "").trim();
+      const base = fabricName.replace(/\s*\([^)]*\)\s*$/, "").trim();
       if (base !== fabricName) {
         const byBase = fabrics.find((f) => f.name === base);
         if (byBase) return byBase.id;
