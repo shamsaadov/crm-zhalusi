@@ -81,6 +81,7 @@ export function SashFields({
   );
 
   // Фильтрация тканей по типу системы (zebra/roll)
+  const currentFabricIdRaw = form.watch(`sashes.${index}.fabricId`);
   const filteredFabrics = (() => {
     if (!selectedSystem?.systemKey) return fabrics;
     const key = selectedSystem.systemKey.toLowerCase();
@@ -89,12 +90,17 @@ export function SashFields({
     if (!isZebra && !isRoller) return fabrics;
     const targetType = isZebra ? "zebra" : "roll";
     const filtered = fabrics.filter((f) => (f.fabricType || "roll") === targetType);
+    // Always include the currently selected fabric so pre-filled values are visible
+    if (currentFabricIdRaw && !filtered.some((f) => f.id === currentFabricIdRaw)) {
+      const selected = fabrics.find((f) => f.id === currentFabricIdRaw);
+      if (selected) filtered.push(selected);
+    }
     return filtered.length > 0 ? filtered : fabrics;
   })();
 
   const currentWidth = form.watch(`sashes.${index}.width`);
   const currentHeight = form.watch(`sashes.${index}.height`);
-  const currentFabricId = form.watch(`sashes.${index}.fabricId`);
+  const currentFabricId = currentFabricIdRaw;
   const currentSashPrice = form.watch(`sashes.${index}.sashPrice`);
 
   const widthNum = parseFloat(currentWidth || "0");
