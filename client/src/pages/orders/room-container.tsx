@@ -186,7 +186,17 @@ export function RoomContainer({
             variant="ghost"
             size="sm"
             className="w-full text-xs h-7"
-            onClick={onAddSash}
+            onClick={(e) => {
+              const btn = e.currentTarget;
+              onAddSash();
+              // После append форма перерисовывается, новая створка вставляется
+              // ПЕРЕД кнопкой — без этого scrollIntoView браузер может
+              // прокрутить фокус куда угодно (Radix focus-trap), и длинный
+              // список выкидывает в начало.
+              requestAnimationFrame(() => {
+                btn.scrollIntoView({ block: "nearest", behavior: "smooth" });
+              });
+            }}
           >
             <Plus className="h-3 w-3 mr-1" />
             Створка
