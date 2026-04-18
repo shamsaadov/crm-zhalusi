@@ -110,7 +110,10 @@ export function SashFields({
   const sashPriceNum = parseFloat(currentSashPrice || "0");
 
   const MIN_CM = 10;
-  const MAX_CM = 300;
+  const MAX_CM = 400;
+  // Предупреждение — строго внешнее (border + title tooltip). Отдельный <p>
+  // под инпутом ломал выравнивание `items-end` в ряду створки: одна колонка
+  // становилась выше соседних, и казалось что инпут «не принимает ввод».
   const widthWarning = currentWidth && widthNum > 0 && (widthNum < MIN_CM || widthNum > MAX_CM);
   const heightWarning = currentHeight && heightNum > 0 && (heightNum < MIN_CM || heightNum > MAX_CM);
 
@@ -160,7 +163,6 @@ export function SashFields({
                 data-testid={`input-sash-width-${index}`}
               />
             </FormControl>
-            {widthWarning && <p className="text-[10px] text-orange-600 leading-tight">Проверьте!</p>}
           </FormItem>
         )}
       />
@@ -181,7 +183,6 @@ export function SashFields({
                 data-testid={`input-sash-height-${index}`}
               />
             </FormControl>
-            {heightWarning && <p className="text-[10px] text-orange-600 leading-tight">Проверьте!</p>}
           </FormItem>
         )}
       />
