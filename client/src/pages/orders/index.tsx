@@ -834,17 +834,29 @@ export default function OrdersPage() {
       calculatedPrice += coef * (isZebra ? rateZebra : rateRulon);
     }
 
+    // Считаем себестоимость заранее: watch-эффект ниже игнорирует form.reset
+    // (name === undefined), иначе поле "Себестоимость" осталось бы пустым до
+    // первого ручного изменения створки.
+    const { totalCost, sashDetails } = calculateCostPrice(
+      sashes,
+      (i) => sashes[i],
+      fabricStock,
+      componentStock,
+      systems
+    );
+
     form.reset({
       date: format(new Date(), "yyyy-MM-dd"),
       dealerId: measurement.dealerId || "",
       status: "Новый",
       salePrice: calculatedPrice > 0 ? calculatedPrice.toFixed(2) : "",
-      costPrice: "",
+      costPrice: totalCost > 0 ? totalCost.toFixed(2) : "",
       comment: commentLines,
       isPaid: false,
       cashboxId: "",
       sashes: sashes.length > 0 ? sashes : [{ width: "", height: "", quantity: "1", systemId: "", controlSide: "", fabricId: "", sashPrice: "", sashCost: "", coefficient: "", room: 1, roomName: "" }],
     });
+    setCostCalculationDetails({ totalCost, sashDetails });
     setResetToken((t) => t + 1);
 
     setIsDialogOpen(true);
