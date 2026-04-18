@@ -1728,24 +1728,10 @@ ${dbContext}`,
           calculatedPrice += coef * (isZebra ? rateZebra : rateRulon);
         }
 
-        // Create the workshop order
-        const orderNumber = await storage.getNextOrderNumber(req.userId!);
-        const today = new Date().toISOString().split("T")[0];
-        const priceStr = calculatedPrice > 0 ? calculatedPrice.toFixed(2) : (measurement.totalCoefficient || "0");
-        const order = await storage.createOrder({
-          orderNumber,
-          date: today,
-          status: "Новый",
-          comment: orderComment,
-          userId: req.userId!,
-          dealerId: measurement.dealerId,
-          salePrice: priceStr,
-          costPrice: priceStr,
-        });
-
-        // Mirror measurement sashes into order sashes, matching system/fabric by name
+        // Pre-load catalogues so we can match IDs AND compute cost price before creating the order.
         const allSystems = await storage.getSystems(req.userId!);
         const allFabrics = await storage.getFabrics(req.userId!);
+        const allComponents = await storage.getComponents(req.userId!);
 
         // App systemType → CRM systemKey mapping
         const typeToKey: Record<string, string> = {
@@ -1757,8 +1743,8 @@ ${dbContext}`,
           "uni-2-zebra": "uni2_zebra",
         };
 
-        for (const s of mSashes) {
-          // Match system: first by direct ID, then by systemType→systemKey
+        // Resolve systemId/fabricId for every sash up-front so we can reuse them for cost and order sashes.
+        const matchedPerSash = mSashes.map((s) => {
           let systemId: string | undefined;
           if (s.systemName) {
             const byId = allSystems.find((sys) => sys.id === s.systemName);
@@ -1770,7 +1756,6 @@ ${dbContext}`,
             if (byKey) systemId = byKey.id;
           }
 
-          // Match fabric by name (strip "(colorName)" suffix from app's displayName)
           let fabricId: string | undefined;
           if (s.fabricName) {
             const exact = allFabrics.find((f) => f.name === s.fabricName);
@@ -1783,6 +1768,134 @@ ${dbContext}`,
             }
           }
 
+          return { sash: s, systemId, fabricId };
+        });
+
+        // Build warehouse avgPrice maps for fabrics/components (totalValue / totalReceived).
+        // Mirrors the /warehouse/stock computation so server-side cost matches what the UI shows.
+        const fabricAvgPrice: Record<string, number> = {};
+        const componentAvgPrice: Record<string, number> = {};
+        try {
+          const receipts = await storage.getWarehouseReceipts(req.userId!);
+          const itemsArrays = await Promise.all(
+            receipts.map((r) => storage.getWarehouseReceiptItems(r.id))
+          );
+          const allItems = itemsArrays.flat();
+
+          const fabricAgg: Record<string, { totalValue: number; totalReceived: number }> = {};
+          const compAgg: Record<string, { totalValue: number; totalReceived: number }> = {};
+          for (const item of allItems) {
+            const qty = parseFloat(item.quantity?.toString() || "0");
+            const price = parseFloat(item.price?.toString() || "0");
+            if (item.fabricId) {
+              if (!fabricAgg[item.fabricId]) fabricAgg[item.fabricId] = { totalValue: 0, totalReceived: 0 };
+              fabricAgg[item.fabricId].totalReceived += qty;
+              fabricAgg[item.fabricId].totalValue += qty * price;
+            }
+            if (item.componentId) {
+              if (!compAgg[item.componentId]) compAgg[item.componentId] = { totalValue: 0, totalReceived: 0 };
+              compAgg[item.componentId].totalReceived += qty;
+              compAgg[item.componentId].totalValue += qty * price;
+            }
+          }
+          for (const id of Object.keys(fabricAgg)) {
+            if (fabricAgg[id].totalReceived > 0) {
+              fabricAvgPrice[id] = fabricAgg[id].totalValue / fabricAgg[id].totalReceived;
+            }
+          }
+          for (const id of Object.keys(compAgg)) {
+            if (compAgg[id].totalReceived > 0) {
+              componentAvgPrice[id] = compAgg[id].totalValue / compAgg[id].totalReceived;
+            }
+          }
+        } catch (err) {
+          console.error("[convert] avgPrice computation failed", err);
+        }
+
+        // Cache system components per systemId (needed for componentsCost per sash).
+        const systemComponentsCache: Record<string, Awaited<ReturnType<typeof storage.getSystemComponents>>> = {};
+        const uniqueSystemIds = Array.from(
+          new Set(matchedPerSash.map((m) => m.systemId).filter((v): v is string => !!v))
+        );
+        await Promise.all(
+          uniqueSystemIds.map(async (sysId) => {
+            systemComponentsCache[sysId] = await storage.getSystemComponents(sysId);
+          })
+        );
+
+        // Cost formula: areaM2 × fabric.avgPrice × (zebra?2:1) + Σ components + 150 fixed per sash.
+        // Mirrors client/src/pages/orders/utils.ts::calculateCostPrice.
+        let totalCost = 0;
+        for (const { sash: s, systemId, fabricId } of matchedPerSash) {
+          const width = parseFloat(s.width?.toString() || "0");
+          const height = parseFloat(s.height?.toString() || "0");
+          const quantity = parseFloat((s as any).quantity?.toString() || "1");
+          if (width <= 0 || height <= 0) continue;
+
+          const widthM = width / 100;
+          const heightM = height / 100;
+          const areaM2 = widthM * heightM;
+
+          let sashCost = 0;
+
+          if (fabricId) {
+            const fabric = allFabrics.find((f) => f.id === fabricId);
+            const avgPrice = fabricAvgPrice[fabricId] || 0;
+            if (fabric && avgPrice > 0) {
+              const multiplier = fabric.fabricType === "zebra" ? 2 : 1;
+              sashCost += areaM2 * avgPrice * multiplier;
+            }
+          }
+
+          if (systemId) {
+            const sysComps = systemComponentsCache[systemId] || [];
+            for (const comp of sysComps) {
+              const compEntity = allComponents.find((c) => c.id === comp.componentId);
+              const unit = (compEntity?.unit || "шт").toLowerCase();
+              const avgPrice = componentAvgPrice[comp.componentId] || 0;
+              if (avgPrice <= 0) continue;
+
+              const compQty = parseFloat(comp.quantity?.toString() || "1");
+              const sizeMultiplier = parseFloat(comp.sizeMultiplier?.toString() || "1");
+              const sizeSource = comp.sizeSource || null;
+              const isMetric = ["м", "пм", "п.м.", "м.п."].includes(unit);
+
+              let sizeValue = 1;
+              if (isMetric && sizeSource === "width") sizeValue = widthM;
+              else if (isMetric && sizeSource === "height") sizeValue = heightM;
+              else if (isMetric && !sizeSource) sizeValue = widthM;
+
+              if (isMetric) {
+                sashCost += avgPrice * sizeValue * sizeMultiplier * compQty;
+              } else {
+                sashCost += avgPrice * compQty;
+              }
+            }
+          }
+
+          // Фиксированная надбавка 150 ₽ за створку (как на клиенте).
+          sashCost += 150;
+
+          totalCost += sashCost * quantity;
+        }
+
+        // Create the workshop order
+        const orderNumber = await storage.getNextOrderNumber(req.userId!);
+        const today = new Date().toISOString().split("T")[0];
+        const salePriceStr = calculatedPrice > 0 ? calculatedPrice.toFixed(2) : (measurement.totalCoefficient || "0");
+        const costPriceStr = totalCost > 0 ? totalCost.toFixed(2) : "0";
+        const order = await storage.createOrder({
+          orderNumber,
+          date: today,
+          status: "Новый",
+          comment: orderComment,
+          userId: req.userId!,
+          dealerId: measurement.dealerId,
+          salePrice: salePriceStr,
+          costPrice: costPriceStr,
+        });
+
+        for (const { sash: s, systemId, fabricId } of matchedPerSash) {
           const sashCoef = parseFloat(s.coefficient?.toString() || "0");
           const sashIsZebra = (s.systemType || "").includes("zebra");
           const sashPrice = sashCoef * (sashIsZebra ? rateZebra : rateRulon);
