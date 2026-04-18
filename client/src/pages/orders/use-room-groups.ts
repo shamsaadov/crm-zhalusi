@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   useWatch,
   type UseFormReturn,
@@ -17,9 +17,13 @@ const DEFAULT_ROOM: Room = { id: 1, name: "" };
 /**
  * Управляет группировкой створок по комнатам в форме заказа.
  *
- * Внутреннее состояние: массив `Room[]` с уникальными integer-ID.
- * Группировка идёт по `sash.room` (integer), а не по `sash.roomName`,
- * что даёт стабильную идентичность комнаты — rename не создаёт «клона».
+ * Источник истины для группировки — локальный Map `fieldId → roomId`,
+ * ключами которого выступают стабильные `fieldArray.fields[i].id` (UUID,
+ * генерируется RHF и переживает операции append/remove без изменения).
+ * Это делает группировку невосприимчивой к возможному повреждению
+ * `sash.room` в состоянии формы (например, при пересечении подписок RHF
+ * или гонке колбэков коэффициента). Форма всё равно хранит `sash.room`
+ * для сериализации в БД — его обновляет `moveSash` / исходное append.
  *
  * См. spec: docs/superpowers/specs/2026-04-11-room-grouping-stable-id-design.md
  */
@@ -33,6 +37,11 @@ export function useRoomGroups(
   // never collide. Initialized to 2 because DEFAULT_ROOM uses id=1.
   const nextIdRef = useRef<number>(2);
 
+  // Стабильная карта "fieldId → roomId". Именно она определяет, в какой
+  // комнате отображается створка. Обновляется только на явные действия:
+  // появление нового поля (append) и moveSash. При удалении записи стираются.
+  const [sashRoomById, setSashRoomById] = useState<Record<string, number>>({});
+
   // Reactive subscription to sashes — rerenders the hook's consumers on any
   // sash mutation (room change, append, remove). Without this, moveSash()
   // would update form values without triggering a rerender.
@@ -41,11 +50,40 @@ export function useRoomGroups(
       | SashFormValues[]
       | undefined) ?? [];
 
-  // Derived every render from `rooms` + watched sashes.
+  // Синхронизируем sashRoomById с текущим списком полей.
+  // Новые поля засеваем значением `sash.room` из формы (единственный момент,
+  // когда мы ему доверяем — сразу после append). Удалённые убираем.
+  useEffect(() => {
+    setSashRoomById((prev) => {
+      const next: Record<string, number> = {};
+      let changed = false;
+      fieldArray.fields.forEach((field, i) => {
+        if (prev[field.id] !== undefined) {
+          next[field.id] = prev[field.id];
+        } else {
+          const formRoom = form.getValues(`sashes.${i}.room`);
+          next[field.id] =
+            typeof formRoom === "number" && formRoom > 0 ? formRoom : 1;
+          changed = true;
+        }
+      });
+      if (Object.keys(prev).length !== Object.keys(next).length) changed = true;
+      return changed ? next : prev;
+    });
+  }, [fieldArray.fields, form]);
+
+  // Derived every render from `rooms` + стабильная карта `sashRoomById`.
+  // Для только что появившихся полей (карта ещё не обновлена effect-ом)
+  // читаем `sash.room` из формы как fallback — это ровно один рендер.
   const roomGroups: RoomGroup[] = rooms.map((room) => ({
     room,
-    sashIndices: watchedSashes
-      .map((s, i) => ((s?.room ?? 1) === room.id ? i : -1))
+    sashIndices: fieldArray.fields
+      .map((field, i) => {
+        const mapped = sashRoomById[field.id];
+        const roomId =
+          mapped !== undefined ? mapped : watchedSashes[i]?.room ?? 1;
+        return roomId === room.id ? i : -1;
+      })
       .filter((i) => i >= 0),
   }));
 
@@ -59,6 +97,7 @@ export function useRoomGroups(
       setRooms([DEFAULT_ROOM]);
       setAutoEditRoomId(null);
       nextIdRef.current = 2;
+      setSashRoomById({});
       return;
     }
     const byId = new Map<number, string>();
@@ -76,6 +115,8 @@ export function useRoomGroups(
       finalRooms.length === 0
         ? 2
         : Math.max(...finalRooms.map((r) => r.id)) + 1;
+    // Сбрасываем карту — effect пересоберёт её из form values новых полей.
+    setSashRoomById({});
   }, []);
 
   /**
@@ -116,16 +157,17 @@ export function useRoomGroups(
       setRooms((prev) =>
         prev.map((r) => (r.id === roomId ? { ...r, name: trimmed } : r))
       );
-      const current = form.getValues("sashes");
-      current.forEach((s, i) => {
-        if ((s.room ?? 1) === roomId) {
+      // Обходим поля по стабильной карте, а не по sash.room в форме —
+      // так переименование захватит именно те створки, что визуально в этой комнате.
+      fieldArray.fields.forEach((field, i) => {
+        if ((sashRoomById[field.id] ?? 1) === roomId) {
           form.setValue(`sashes.${i}.roomName`, trimmed, {
             shouldValidate: false,
           });
         }
       });
     },
-    [form]
+    [form, fieldArray.fields, sashRoomById]
   );
 
   /**
@@ -136,9 +178,12 @@ export function useRoomGroups(
   const removeRoom = useCallback(
     (roomId: number) => {
       if (rooms.length <= 1) return;
-      const current = form.getValues("sashes");
-      const affectedIndices = current
-        .map((s, i) => ((s?.room ?? 1) === roomId ? i : -1))
+      // Собираем индексы через стабильную карту — иначе при повреждённом
+      // sash.room могли бы удалить не ту створку.
+      const affectedIndices = fieldArray.fields
+        .map((field, i) =>
+          (sashRoomById[field.id] ?? 1) === roomId ? i : -1
+        )
         .filter((i) => i >= 0);
 
       if (affectedIndices.length > 0) {
@@ -146,7 +191,7 @@ export function useRoomGroups(
       }
       setRooms((prev) => prev.filter((r) => r.id !== roomId));
     },
-    [fieldArray, form, rooms]
+    [fieldArray, rooms, sashRoomById]
   );
 
   /**
@@ -157,6 +202,10 @@ export function useRoomGroups(
     (sashIndex: number, targetRoomId: number) => {
       const target = rooms.find((r) => r.id === targetRoomId);
       if (!target) return;
+      const fieldId = fieldArray.fields[sashIndex]?.id;
+      if (fieldId) {
+        setSashRoomById((prev) => ({ ...prev, [fieldId]: targetRoomId }));
+      }
       form.setValue(`sashes.${sashIndex}.room`, targetRoomId, {
         shouldValidate: false,
       });
@@ -164,7 +213,7 @@ export function useRoomGroups(
         shouldValidate: false,
       });
     },
-    [form, rooms]
+    [form, rooms, fieldArray.fields]
   );
 
   const clearAutoEdit = useCallback(() => setAutoEditRoomId(null), []);
