@@ -44,6 +44,9 @@ export interface OrderWithRelations extends Order {
   orderType?: OrderType;
   isPaid?: boolean;
   cashboxId?: string | null;
+  // Уникальные id тканей заказа — нужны для детектора «нет цены за ткань»
+  // (блокирует отгрузку и подсвечивает карточку заказа).
+  fabricIds?: string[];
 }
 
 export interface StockItem {

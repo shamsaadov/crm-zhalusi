@@ -11,10 +11,10 @@ import {
   formatCurrency,
   BalanceBadge,
 } from "@/components/status-badge";
-import { ClipboardList, FileText, Trash2, Scissors } from "lucide-react";
+import { ClipboardList, FileText, Trash2, Scissors, AlertTriangle } from "lucide-react";
 import { ORDER_STATUSES, type OrderStatus } from "@shared/schema";
 import { format } from "date-fns";
-import type { OrderWithRelations } from "./types";
+import type { OrderWithRelations, FabricWithStock } from "./types";
 
 interface ColumnActions {
   onWorkshopPrint: (order: OrderWithRelations) => void | Promise<void>;
@@ -23,6 +23,22 @@ interface ColumnActions {
   onDelete: (order: OrderWithRelations) => void;
   onStatusChange: (id: string, status: string) => void;
   showProfit?: boolean;
+  fabricStock?: FabricWithStock[];
+}
+
+function getMissingPriceFabricNames(
+  order: OrderWithRelations,
+  fabricStock: FabricWithStock[] | undefined
+): string[] {
+  if (!fabricStock || !order.fabricIds || order.fabricIds.length === 0) return [];
+  return order.fabricIds
+    .map((id) => {
+      const f = fabricStock.find((f) => f.id === id);
+      if (!f) return null;
+      const price = f.stock?.avgPrice ?? 0;
+      return price > 0 ? null : f.name;
+    })
+    .filter((n): n is string => !!n);
 }
 
 export function getOrderColumns(actions: ColumnActions) {
@@ -60,26 +76,50 @@ export function getOrderColumns(actions: ColumnActions) {
     {
       key: "status",
       header: "Статус",
-      cell: (order: OrderWithRelations) => (
-        <Select
-          value={order.status || "Новый"}
-          onValueChange={(value) => actions.onStatusChange(order.id, value)}
-        >
-          <SelectTrigger
-            className="w-[140px]"
-            data-testid={`select-status-${order.id}`}
-          >
-            <StatusBadge status={(order.status as OrderStatus) || "Новый"} />
-          </SelectTrigger>
-          <SelectContent>
-            {ORDER_STATUSES.map((status) => (
-              <SelectItem key={status} value={status}>
-                <StatusBadge status={status} />
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      ),
+      cell: (order: OrderWithRelations) => {
+        const missingFabrics = getMissingPriceFabricNames(order, actions.fabricStock);
+        const blockShipping = missingFabrics.length > 0;
+        return (
+          <div className="flex items-center gap-1">
+            <Select
+              value={order.status || "Новый"}
+              onValueChange={(value) => actions.onStatusChange(order.id, value)}
+            >
+              <SelectTrigger
+                className="w-[140px]"
+                data-testid={`select-status-${order.id}`}
+              >
+                <StatusBadge status={(order.status as OrderStatus) || "Новый"} />
+              </SelectTrigger>
+              <SelectContent>
+                {ORDER_STATUSES.map((status) => {
+                  const disabled = status === "Отгружен" && blockShipping;
+                  return (
+                    <SelectItem
+                      key={status}
+                      value={status}
+                      disabled={disabled}
+                      title={
+                        disabled
+                          ? `Укажите цену ткани: ${missingFabrics.join(", ")}`
+                          : undefined
+                      }
+                    >
+                      <StatusBadge status={status} />
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+            {blockShipping && (
+              <AlertTriangle
+                className="h-4 w-4 text-amber-500"
+                aria-label="Не указана цена ткани"
+              />
+            )}
+          </div>
+        );
+      },
     },
     {
       key: "salePrice",

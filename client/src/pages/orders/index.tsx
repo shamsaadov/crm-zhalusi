@@ -1211,6 +1211,7 @@ export default function OrdersPage() {
     onDelete: openDeleteDialog,
     onStatusChange: (id, status) => updateStatusMutation.mutate({ id, status }),
     showProfit,
+    fabricStock,
   });
 
   return (
@@ -1455,6 +1456,9 @@ export default function OrdersPage() {
         open={isViewDialogOpen}
         onOpenChange={setIsViewDialogOpen}
         order={viewingOrder}
+        fabricStock={fabricStock}
+        componentStock={componentStock}
+        systems={systems}
       />
 
       <DeleteOrderDialog

@@ -98,6 +98,32 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
     return { fabricStock, componentStock };
   }
 
+  // Compute current weighted-avg price per fabric from warehouse receipts.
+  // Fabrics with no receipts get 0 — used to block shipping until a buy-in
+  // is recorded so costPrice isn't understated.
+  async function getFabricAvgPrices(
+    userId: string
+  ): Promise<Record<string, number>> {
+    const receipts = await storage.getWarehouseReceipts(userId);
+    const totals: Record<string, { value: number; qty: number }> = {};
+    for (const receipt of receipts) {
+      const items = await storage.getWarehouseReceiptItems(receipt.id);
+      for (const item of items) {
+        if (!item.fabricId) continue;
+        const qty = parseFloat(item.quantity?.toString() || "0");
+        const price = parseFloat(item.price?.toString() || "0");
+        if (!totals[item.fabricId]) totals[item.fabricId] = { value: 0, qty: 0 };
+        totals[item.fabricId].value += qty * price;
+        totals[item.fabricId].qty += qty;
+      }
+    }
+    const result: Record<string, number> = {};
+    for (const id of Object.keys(totals)) {
+      result[id] = totals[id].qty > 0 ? totals[id].value / totals[id].qty : 0;
+    }
+    return result;
+  }
+
   // Helper function to validate stock for sash order
   async function validateSashOrderStock(
     userId: string,
@@ -335,6 +361,13 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
             ordersToEnrich.map(async (order) => {
               const sashes = await storage.getOrderSashes(order.id);
               const dealer = dealerList.find((d) => d.id === order.dealerId);
+              const fabricIds = Array.from(
+                new Set(
+                  sashes
+                    .map((s) => s.fabricId)
+                    .filter((id): id is string => !!id)
+                )
+              );
               return {
                 ...order,
                 dealer,
@@ -342,6 +375,7 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
                 dealerShippedDebt: order.dealerId ? (shippedDebtMap.get(order.dealerId) || 0) : 0,
                 sashesCount: sashes.length,
                 orderType: getOrderType(sashes),
+                fabricIds,
               };
             })
           );
@@ -1037,6 +1071,36 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
 
         // 4. Отгружен → если материалы ещё не были списаны (пропустили "Готов"), списываем
         if (status === "Отгружен" && oldStatus !== "Отгружен") {
+          // Блокируем отгрузку, если у любой ткани заказа нет средней цены
+          // (ткань была создана, но поступлений не было — себестоимость была
+          // бы занижена). Пользователь должен сначала оприходовать закупку.
+          const orderSashes = await storage.getOrderSashes(req.params.id);
+          const orderFabricIds = Array.from(
+            new Set(
+              orderSashes
+                .map((s) => s.fabricId)
+                .filter((id): id is string => !!id)
+            )
+          );
+          if (orderFabricIds.length > 0) {
+            const fabricAvgPrices = await getFabricAvgPrices(req.userId!);
+            const allFabrics = await storage.getFabrics(req.userId!);
+            const missing = orderFabricIds
+              .filter((id) => !fabricAvgPrices[id] || fabricAvgPrices[id] === 0)
+              .map(
+                (id) => allFabrics.find((f) => f.id === id)?.name || id
+              );
+            if (missing.length > 0) {
+              return res.status(400).json({
+                message: `Невозможно отгрузить заказ: не указана цена за ткань (${missing.join(
+                  ", "
+                )}). Оприходуйте закупку на складе.`,
+                missingFabricPrices: missing,
+                fabricPriceError: true,
+              });
+            }
+          }
+
           const existingWriteoffs =
             await storage.getWarehouseWriteoffsByOrderId(req.params.id);
 

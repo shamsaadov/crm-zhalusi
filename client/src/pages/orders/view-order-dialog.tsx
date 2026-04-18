@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -12,16 +13,27 @@ import {
   formatCurrency,
   BalanceBadge,
 } from "@/components/status-badge";
-import { Pencil } from "lucide-react";
+import { Pencil, AlertTriangle, RefreshCw } from "lucide-react";
 import { useLocation } from "wouter";
 import { format } from "date-fns";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import type { OrderStatus } from "@shared/schema";
-import type { OrderWithRelations } from "./types";
+import type {
+  OrderWithRelations,
+  FabricWithStock,
+  ComponentWithStock,
+  SystemWithComponents,
+} from "./types";
+import { calculateCostPrice } from "./utils";
 
 interface ViewOrderDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   order: OrderWithRelations | null;
+  fabricStock?: FabricWithStock[];
+  componentStock?: ComponentWithStock[];
+  systems?: SystemWithComponents[];
 }
 
 // Strip trailing ".00" from PG decimal strings: "150.00" → "150", "200.50" → "200.5".
@@ -53,29 +65,140 @@ export function ViewOrderDialog({
   open,
   onOpenChange,
   order,
+  fabricStock,
+  componentStock,
+  systems,
 }: ViewOrderDialogProps) {
   const [, navigate] = useLocation();
+  const { toast } = useToast();
+  const [isRecalculating, setIsRecalculating] = useState(false);
+
+  // Ткани заказа без цены за м² — себестоимость по ним считается как 0,
+  // поэтому показываем предупреждение и блокируем отгрузку на сервере.
+  const missingPriceFabrics: string[] = (() => {
+    if (!order?.sashes || !fabricStock) return [];
+    const names = new Set<string>();
+    for (const sash of order.sashes) {
+      if (!sash.fabricId) continue;
+      const f = fabricStock.find((f) => f.id === sash.fabricId);
+      if (!f) continue;
+      const price = f.stock?.avgPrice ?? 0;
+      if (price === 0) names.add(f.name);
+    }
+    return Array.from(names);
+  })();
+
+  const canRecalc =
+    !!order && !!fabricStock && !!componentStock && !!systems;
+
+  const handleRecalc = async () => {
+    if (!order || !fabricStock || !componentStock || !systems) return;
+    if (isRecalculating) return;
+    setIsRecalculating(true);
+    try {
+      const sashData = (order.sashes || []).map((s) => ({
+        width: s.width ?? "",
+        height: s.height ?? "",
+        quantity: "1",
+        fabricId: s.fabricId ?? undefined,
+        systemId: s.systemId ?? undefined,
+      }));
+      const { totalCost, sashDetails } = calculateCostPrice(
+        sashData,
+        (i) => sashData[i],
+        fabricStock,
+        componentStock,
+        systems
+      );
+      const sashesPayload = (order.sashes || []).map((s, i) => ({
+        width: s.width ?? "",
+        height: s.height ?? "",
+        quantity: "1",
+        systemId: s.systemId,
+        systemColorId: s.systemColorId,
+        fabricId: s.fabricId,
+        fabricColorId: s.fabricColorId,
+        controlSide: s.controlSide,
+        sashPrice: s.sashPrice,
+        sashCost: sashDetails[i]?.totalSashCost?.toFixed(2) ?? s.sashCost ?? "0",
+        systemName: s.systemName,
+        systemType: s.systemType,
+        category: s.category,
+        fabricName: s.fabricName,
+      }));
+      await apiRequest("PATCH", `/api/orders/${order.id}`, {
+        costPrice: totalCost.toFixed(2),
+        sashes: sashesPayload,
+        skipStockValidation: true,
+      });
+      await queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      toast({
+        title: "Себестоимость пересчитана",
+        description: `Новая себестоимость: ${formatCurrency(totalCost.toFixed(2))}`,
+      });
+      onOpenChange(false);
+    } catch (error) {
+      toast({
+        title: "Не удалось пересчитать",
+        description: error instanceof Error ? error.message : "Ошибка сервера",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRecalculating(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <div className="flex items-center justify-between pr-8">
+          <div className="flex items-center justify-between pr-8 gap-2">
             <DialogTitle>Заказ #{order?.orderNumber}</DialogTitle>
             {order && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  onOpenChange(false);
-                  navigate(`/orders?edit=${order.id}`);
-                }}
-              >
-                <Pencil className="h-4 w-4 mr-1.5" />
-                Редактировать
-              </Button>
+              <div className="flex items-center gap-2">
+                {canRecalc && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRecalc}
+                    disabled={isRecalculating}
+                  >
+                    <RefreshCw
+                      className={`h-4 w-4 mr-1.5 ${
+                        isRecalculating ? "animate-spin" : ""
+                      }`}
+                    />
+                    Пересчитать себестоимость
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    onOpenChange(false);
+                    navigate(`/orders?edit=${order.id}`);
+                  }}
+                >
+                  <Pencil className="h-4 w-4 mr-1.5" />
+                  Редактировать
+                </Button>
+              </div>
             )}
           </div>
         </DialogHeader>
+        {missingPriceFabrics.length > 0 && (
+          <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="font-medium">Не указана цена за ткань</p>
+              <p className="text-xs">
+                {missingPriceFabrics.join(", ")} — себестоимость посчитана
+                неполно, отгрузка заблокирована. Оприходуйте закупку на складе и
+                нажмите «Пересчитать себестоимость».
+              </p>
+            </div>
+          </div>
+        )}
         {order && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
