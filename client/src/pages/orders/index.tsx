@@ -1475,8 +1475,26 @@ export default function OrdersPage() {
         open={showCostCalculation}
         onOpenChange={setShowCostCalculation}
         details={costCalculationDetails}
-        onCostUpdate={(newCost) => {
-          form.setValue("costPrice", newCost.toFixed(2), { shouldValidate: false });
+        onCostUpdate={async (newCost) => {
+          const newCostStr = newCost.toFixed(2);
+          form.setValue("costPrice", newCostStr, { shouldValidate: false });
+          // При редактировании существующего заказа — сразу сохраняем себестоимость на сервере,
+          // чтобы не ждать повторного сабмита формы. При создании нового — достаточно form state.
+          if (!editingOrder) return;
+          try {
+            await apiRequest("PATCH", `/api/orders/${editingOrder.id}`, {
+              costPrice: newCostStr,
+              skipStockValidation: true,
+            });
+            queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+            toast({ title: "Себестоимость сохранена" });
+          } catch (error) {
+            toast({
+              title: "Ошибка сохранения",
+              description: error instanceof Error ? error.message : "",
+              variant: "destructive",
+            });
+          }
         }}
       />
 
