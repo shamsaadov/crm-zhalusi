@@ -21,7 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Plus, Lock, Unlock } from "lucide-react";
+import { Plus, Lock, Unlock, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
 import { apiRequest, queryClient, ApiError } from "@/lib/queryClient";
@@ -183,6 +183,25 @@ export default function OrdersPage() {
   const pendingAppCount = appMeasurements.filter(
     (m) => m.status === "pending" && !m.orderId
   ).length;
+
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const handleRefresh = useCallback(async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/orders"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/app-measurements"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/dealers"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/systems"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/fabrics"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/stock"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/cashboxes"] }),
+      ]);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [isRefreshing]);
 
   const fabricStock = stockData?.fabrics || [];
   const componentStock = stockData?.components || [];
@@ -1352,19 +1371,34 @@ export default function OrdersPage() {
         }
         className="w-full"
       >
-        <TabsList className="mb-4">
-          <TabsTrigger value="all">Все заказы</TabsTrigger>
-          <TabsTrigger value="sash">Со створками</TabsTrigger>
-          <TabsTrigger value="product">Комплектующие</TabsTrigger>
-          <TabsTrigger value="app" className="relative">
-            Из приложения
-            {pendingAppCount > 0 && (
-              <span className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium text-destructive-foreground">
-                {pendingAppCount}
-              </span>
-            )}
-          </TabsTrigger>
-        </TabsList>
+        <div className="mb-4 flex items-center justify-between gap-2">
+          <TabsList>
+            <TabsTrigger value="all">Все заказы</TabsTrigger>
+            <TabsTrigger value="sash">Со створками</TabsTrigger>
+            <TabsTrigger value="product">Комплектующие</TabsTrigger>
+            <TabsTrigger value="app" className="relative">
+              Из приложения
+              {pendingAppCount > 0 && (
+                <span className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium text-destructive-foreground">
+                  {pendingAppCount}
+                </span>
+              )}
+            </TabsTrigger>
+          </TabsList>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="gap-2"
+            title="Обновить данные"
+          >
+            <RefreshCw
+              className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
+            />
+            Обновить
+          </Button>
+        </div>
 
         {orderTypeFilter === "app" ? (
           <AppMeasurementsTab onConvertToOrder={openFromMeasurement} />
