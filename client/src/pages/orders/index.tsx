@@ -244,9 +244,11 @@ export default function OrdersPage() {
 
   // Mutations
   const createMutation = useMutation({
-    mutationFn: (data: OrderFormValues) =>
-      apiRequest("POST", "/api/orders", data),
-    onSuccess: (_, variables) => {
+    mutationFn: async (data: OrderFormValues) => {
+      const res = await apiRequest("POST", "/api/orders", data);
+      return (await res.json()) as { id: string };
+    },
+    onSuccess: (createdOrder, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stock"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
@@ -256,9 +258,14 @@ export default function OrdersPage() {
         queryClient.invalidateQueries({ queryKey: ["/api/cashboxes"] });
         queryClient.invalidateQueries({ queryKey: ["/api/dealers"] });
       }
-      // If converting from measurement, mark it
+      // При конвертации из замера: привязываем к только что созданному заказу,
+      // передавая orderId — иначе сервер создаст ещё один заказ (дубль).
       if (convertingMeasurementId) {
-        apiRequest("POST", `/api/app-measurements/${convertingMeasurementId}/convert`).catch(() => {});
+        apiRequest(
+          "POST",
+          `/api/app-measurements/${convertingMeasurementId}/convert`,
+          { orderId: createdOrder.id }
+        ).catch(() => {});
         queryClient.invalidateQueries({ queryKey: ["/api/app-measurements"] });
         setConvertingMeasurementId(null);
       }

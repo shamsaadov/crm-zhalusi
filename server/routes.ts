@@ -1707,6 +1707,37 @@ ${dbContext}`,
           return res.json({ success: true, alreadyConverted: true });
         }
 
+        // Link-only path: клиент мог сам создать заказ через POST /api/orders
+        // (когда пользователь открыл форму «Преобразовать в заказ» из замера).
+        // В этом случае второй заказ создавать не нужно — только привязать замер.
+        const linkOrderId = (req.body as any)?.orderId as string | undefined;
+        if (linkOrderId) {
+          const targetOrder = await storage.getOrder(linkOrderId);
+          if (!targetOrder || targetOrder.userId !== req.userId) {
+            return res.status(404).json({ message: "Заказ не найден" });
+          }
+          await storage.updateMeasurement(measurement.id, {
+            status: "sent",
+            sentAt: new Date(),
+            orderId: linkOrderId,
+          });
+          if (measurement.dealerId) {
+            try {
+              await notifyDealer({
+                dealerId: measurement.dealerId,
+                userId: req.userId!,
+                title: "Заказ принят",
+                message: `Ваш замер принят и создан заказ №${targetOrder.orderNumber}`,
+                entityType: "order",
+                entityId: targetOrder.id,
+              });
+            } catch (err) {
+              console.error("[convert] notifyDealer failed", err);
+            }
+          }
+          return res.json({ success: true, linked: true, orderId: linkOrderId });
+        }
+
         // Fetch dealer to build the order comment
         const dealer = measurement.dealerId
           ? await storage.getDealer(measurement.dealerId)
