@@ -14,11 +14,19 @@ import { Ruler, Package, Scissors, Info, Save } from "lucide-react";
 import { formatCurrency } from "@/components/status-badge";
 import type { CostCalculationDetails } from "./types";
 
+export interface FabricPriceOverride {
+  fabricId: string;
+  price: number;
+}
+
 interface CostCalculationDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   details: CostCalculationDetails | null;
-  onCostUpdate?: (newCostPrice: number) => void;
+  onCostUpdate?: (
+    newCostPrice: number,
+    fabricOverrides: FabricPriceOverride[]
+  ) => void;
 }
 
 export function CostCalculationDialog({
@@ -59,15 +67,24 @@ export function CostCalculationDialog({
       return sum + perimeter * s.quantity;
     }, 0) || 0;
 
-  // Группировка тканей с ценами
+  // Группировка тканей с ценами.
+  // Ключ — fabricId (чтобы сохранить цену в БД), для строк без id
+  // (мобильные заказы без привязки к справочнику) ключ — fabricName-fabricType.
   const allFabrics = useMemo(() => {
     const map = new Map<
       string,
-      { name: string; type: string; totalArea: number; avgPrice: number; totalCost: number }
+      {
+        fabricId: string | null;
+        name: string;
+        type: string;
+        totalArea: number;
+        avgPrice: number;
+        totalCost: number;
+      }
     >();
     details?.sashDetails.forEach((sash) => {
       if (sash.fabricName) {
-        const key = `${sash.fabricName}-${sash.fabricType}`;
+        const key = sash.fabricId ?? `${sash.fabricName}-${sash.fabricType}`;
         const baseArea =
           (sash.width / 100) * (sash.height / 100) * sash.quantity;
         const area = baseArea * (sash.fabricMultiplier || 1);
@@ -77,6 +94,7 @@ export function CostCalculationDialog({
           existing.totalCost += sash.fabricCost * sash.quantity;
         } else {
           map.set(key, {
+            fabricId: sash.fabricId,
             name: sash.fabricName,
             type: sash.fabricType,
             totalArea: area,
@@ -134,7 +152,7 @@ export function CostCalculationDialog({
 
       // Ткань
       if (sash.fabricName) {
-        const fabricKey = `${sash.fabricName}-${sash.fabricType}`;
+        const fabricKey = sash.fabricId ?? `${sash.fabricName}-${sash.fabricType}`;
         const overridePrice = fabricPriceOverrides.get(fabricKey);
         const price = overridePrice !== undefined ? overridePrice : sash.fabricAvgPrice;
         const areaM2 = (sash.width / 100) * (sash.height / 100);
@@ -173,7 +191,16 @@ export function CostCalculationDialog({
 
   const handleSave = () => {
     if (onCostUpdate) {
-      onCostUpdate(recalculatedCost);
+      // Собираем только ткани с id — их цену можно сохранить в справочник.
+      // Overrides по строковому ключу (ткань без fabricId) уйдут только в расчёт.
+      const fabricOverridesPayload: FabricPriceOverride[] = [];
+      Array.from(fabricPriceOverrides.entries()).forEach(([key, price]) => {
+        const entry = allFabrics.get(key);
+        if (entry?.fabricId) {
+          fabricOverridesPayload.push({ fabricId: entry.fabricId, price });
+        }
+      });
+      onCostUpdate(recalculatedCost, fabricOverridesPayload);
     }
     onOpenChange(false);
   };

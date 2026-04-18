@@ -1475,18 +1475,34 @@ export default function OrdersPage() {
         open={showCostCalculation}
         onOpenChange={setShowCostCalculation}
         details={costCalculationDetails}
-        onCostUpdate={async (newCost) => {
+        onCostUpdate={async (newCost, fabricOverrides) => {
           const newCostStr = newCost.toFixed(2);
           form.setValue("costPrice", newCostStr, { shouldValidate: false });
-          // При редактировании существующего заказа — сразу сохраняем себестоимость на сервере,
-          // чтобы не ждать повторного сабмита формы. При создании нового — достаточно form state.
-          if (!editingOrder) return;
           try {
-            await apiRequest("PATCH", `/api/orders/${editingOrder.id}`, {
-              costPrice: newCostStr,
-              skipStockValidation: true,
-            });
-            queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+            // Сохраняем цену в справочник тканей — чтобы при повторном открытии
+            // диалога и при последующих пересчётах цена подставлялась автоматически.
+            if (fabricOverrides.length > 0) {
+              await Promise.all(
+                fabricOverrides.map((o) =>
+                  apiRequest("PATCH", `/api/fabrics/${o.fabricId}`, {
+                    price: o.price.toFixed(2),
+                  })
+                )
+              );
+              queryClient.invalidateQueries({ queryKey: ["/api/fabrics"] });
+              // fabricStock (/api/stock) тоже содержит fabric.price — обновляем,
+              // чтобы при повторном открытии диалога цена уже подставлялась.
+              queryClient.invalidateQueries({ queryKey: ["/api/stock"] });
+            }
+            // При редактировании существующего заказа — сразу сохраняем
+            // себестоимость на сервере. При создании нового — достаточно form state.
+            if (editingOrder) {
+              await apiRequest("PATCH", `/api/orders/${editingOrder.id}`, {
+                costPrice: newCostStr,
+                skipStockValidation: true,
+              });
+              queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+            }
             toast({ title: "Себестоимость сохранена" });
           } catch (error) {
             toast({

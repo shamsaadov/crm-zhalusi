@@ -75,6 +75,8 @@ export function ViewOrderDialog({
 
   // Ткани заказа без цены за м² — себестоимость по ним считается как 0,
   // поэтому показываем предупреждение и блокируем отгрузку на сервере.
+  // Цена «есть», если она либо из поступлений (avgPrice), либо вбита вручную
+  // через «Пересчитать себестоимость» (fabrics.price).
   const missingPriceFabrics: string[] = (() => {
     if (!order?.sashes || !fabricStock) return [];
     const names = new Set<string>();
@@ -82,8 +84,10 @@ export function ViewOrderDialog({
       if (!sash.fabricId) continue;
       const f = fabricStock.find((f) => f.id === sash.fabricId);
       if (!f) continue;
-      const price = f.stock?.avgPrice ?? 0;
-      if (price === 0) names.add(f.name);
+      const stockPrice = f.stock?.avgPrice ?? 0;
+      const manualPrice = parseFloat((f as any).price?.toString() || "0") || 0;
+      const effective = stockPrice > 0 ? stockPrice : manualPrice;
+      if (effective === 0) names.add(f.name);
     }
     return Array.from(names);
   })();

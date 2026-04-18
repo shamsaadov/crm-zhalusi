@@ -35,8 +35,12 @@ function getMissingPriceFabricNames(
     .map((id) => {
       const f = fabricStock.find((f) => f.id === id);
       if (!f) return null;
-      const price = f.stock?.avgPrice ?? 0;
-      return price > 0 ? null : f.name;
+      // Цена «есть» либо из поступлений (avgPrice), либо вбита вручную
+      // (fabrics.price — fallback для заказов до первой закупки).
+      const stockPrice = f.stock?.avgPrice ?? 0;
+      const manualPrice = parseFloat((f as any).price?.toString() || "0") || 0;
+      const effective = stockPrice > 0 ? stockPrice : manualPrice;
+      return effective > 0 ? null : f.name;
     })
     .filter((n): n is string => !!n);
 }

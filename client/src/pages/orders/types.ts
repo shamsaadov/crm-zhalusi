@@ -82,6 +82,7 @@ export interface CostCalculationDetails {
     width: number;
     height: number;
     quantity: number;
+    fabricId: string | null;
     fabricName: string;
     fabricType: string;
     fabricAvgPrice: number;

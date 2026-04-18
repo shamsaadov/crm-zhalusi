@@ -56,11 +56,15 @@ export function calculateCostPrice(
         if (fabric) {
           fabricName = fabric.name;
           fabricType = fabric.fabricType || "roll";
-          fabricAvgPrice = fabric.stock.avgPrice;
+          // Use warehouse avgPrice, fall back to manual fabric.price when no
+          // receipts exist yet (e.g. dealer set price from "Подробности заказа").
+          const stockPrice = fabric.stock?.avgPrice || 0;
+          const manualPrice = parseFloat(fabric.price?.toString() || "0") || 0;
+          fabricAvgPrice = stockPrice > 0 ? stockPrice : manualPrice;
           fabricMultiplier = fabricType === "zebra" ? 2 : 1;
 
-          if (fabric.stock.avgPrice > 0) {
-            fabricCost = areaM2 * fabric.stock.avgPrice * fabricMultiplier;
+          if (fabricAvgPrice > 0) {
+            fabricCost = areaM2 * fabricAvgPrice * fabricMultiplier;
             sashCost += fabricCost;
           }
         }
@@ -163,6 +167,7 @@ export function calculateCostPrice(
         width,
         height,
         quantity,
+        fabricId: fabricId || null,
         fabricName,
         fabricType,
         fabricAvgPrice,

@@ -99,8 +99,10 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
   }
 
   // Compute current weighted-avg price per fabric from warehouse receipts.
-  // Fabrics with no receipts get 0 — used to block shipping until a buy-in
-  // is recorded so costPrice isn't understated.
+  // When no receipts exist, fall back to the manual `fabrics.price` column
+  // (set via "Пересчитать себестоимость" before a buy-in is recorded).
+  // Fabrics with neither receipts nor manual price get 0 — blocks shipping
+  // so costPrice isn't understated.
   async function getFabricAvgPrices(
     userId: string
   ): Promise<Record<string, number>> {
@@ -117,9 +119,17 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
         totals[item.fabricId].qty += qty;
       }
     }
+    const allFabrics = await storage.getFabrics(userId);
     const result: Record<string, number> = {};
-    for (const id of Object.keys(totals)) {
-      result[id] = totals[id].qty > 0 ? totals[id].value / totals[id].qty : 0;
+    for (const fabric of allFabrics) {
+      const t = totals[fabric.id];
+      const avg = t && t.qty > 0 ? t.value / t.qty : 0;
+      if (avg > 0) {
+        result[fabric.id] = avg;
+      } else {
+        const manual = parseFloat(fabric.price?.toString() || "0");
+        result[fabric.id] = manual > 0 ? manual : 0;
+      }
     }
     return result;
   }
