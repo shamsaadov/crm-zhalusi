@@ -938,6 +938,33 @@ export const insertDealerNotificationSchema = createInsertSchema(dealerNotificat
 export type InsertDealerNotification = z.infer<typeof insertDealerNotificationSchema>;
 export type DealerNotification = typeof dealerNotifications.$inferSelect;
 
+// Device tokens for mobile push notifications (APNs / FCM).
+// Tokens are unique device-app pairs and may rebind to a different dealer/user
+// across reinstalls — uniqueness is on (token, platform), with owner columns updated on upsert.
+export const deviceTokens = pgTable("device_tokens", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  token: text("token").notNull(),
+  platform: varchar("platform").notNull(), // "ios" | "android"
+  dealerId: varchar("dealer_id").references(() => dealers.id),
+  userId: varchar("user_id").references(() => users.id),
+  lastSeenAt: timestamp("last_seen_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const deviceTokensRelations = relations(deviceTokens, ({ one }) => ({
+  dealer: one(dealers, { fields: [deviceTokens.dealerId], references: [dealers.id] }),
+  user: one(users, { fields: [deviceTokens.userId], references: [users.id] }),
+}));
+
+export const insertDeviceTokenSchema = createInsertSchema(deviceTokens).omit({ id: true, createdAt: true });
+export type InsertDeviceToken = z.infer<typeof insertDeviceTokenSchema>;
+export type DeviceToken = typeof deviceTokens.$inferSelect;
+
+export const DEVICE_PLATFORMS = ["ios", "android"] as const;
+export type DevicePlatform = (typeof DEVICE_PLATFORMS)[number];
+
 // Order statuses
 export const ORDER_STATUSES = [
   "Новый",

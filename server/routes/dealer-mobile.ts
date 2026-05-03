@@ -4,7 +4,7 @@ import jwt from "jsonwebtoken";
 import { storage } from "../storage";
 import { db } from "../db";
 import { eq, inArray } from "drizzle-orm";
-import { installmentPlans as installmentPlansTable, measurements, systems, fabrics } from "@shared/schema";
+import { installmentPlans as installmentPlansTable, measurements, systems, fabrics, DEVICE_PLATFORMS } from "@shared/schema";
 import { notify } from "../notifications";
 import { logAudit } from "../audit";
 
@@ -451,6 +451,55 @@ export function createDealerMobileRouter(): Router {
     async (req: DealerMobileAuthRequest, res: Response) => {
       try {
         await storage.markDealerNotificationRead(req.params.id);
+        res.json({ success: true });
+      } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // ===== PUSH TOKEN REGISTRATION =====
+
+  // POST /push-token — register or refresh APNs/FCM token for the authenticated dealer.
+  // Mobile app calls this on login and on token refresh events.
+  router.post(
+    "/push-token",
+    dealerMobileAuthMiddleware,
+    async (req: DealerMobileAuthRequest, res: Response) => {
+      try {
+        const { token, platform } = req.body ?? {};
+        if (typeof token !== "string" || token.length < 16 || token.length > 512) {
+          return res.status(400).json({ message: "Некорректный token" });
+        }
+        if (!DEVICE_PLATFORMS.includes(platform)) {
+          return res.status(400).json({ message: "Некорректный platform (ios|android)" });
+        }
+        await storage.upsertDeviceToken({
+          token,
+          platform,
+          dealerId: req.dealerId!,
+          userId: null,
+        });
+        res.json({ success: true });
+      } catch (error) {
+        console.error(`[${req.method} ${req.path}]`, error);
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
+  // DELETE /push-token — unregister token (called on logout / app uninstall best-effort)
+  router.delete(
+    "/push-token",
+    dealerMobileAuthMiddleware,
+    async (req: DealerMobileAuthRequest, res: Response) => {
+      try {
+        const { token, platform } = req.body ?? {};
+        if (typeof token !== "string" || !DEVICE_PLATFORMS.includes(platform)) {
+          return res.status(400).json({ message: "Некорректные параметры" });
+        }
+        await storage.deleteDeviceToken(token, platform);
         res.json({ success: true });
       } catch (error) {
         console.error(`[${req.method} ${req.path}]`, error);

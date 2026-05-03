@@ -2,6 +2,12 @@ import { storage } from "./storage";
 import { db } from "./db";
 import { notifications, orders, users, dealerNotifications, dealers } from "@shared/schema";
 import { eq, and, gte, sql } from "drizzle-orm";
+import { sendApns, setApnsDeadTokenCleanup } from "./apns";
+
+// Wire the dead-token cleanup once at module load — when APNs reports a token
+// as BadDeviceToken/Unregistered, drop it from device_tokens so we don't keep
+// hammering Apple with stale tokens.
+setApnsDeadTokenCleanup((token) => storage.deleteDeviceToken(token, "ios"));
 
 export async function notify(params: {
   userId: string;
@@ -64,7 +70,40 @@ export async function notifyDealer(params: {
     });
   } catch (error) {
     console.error("Dealer notification error:", error);
+    // DB write failed — skip push: there's no in-app row to land on if the user taps.
+    return;
   }
+
+  // Best-effort APNs push. We intentionally do not await fully — the HTTP
+  // response to the original request shouldn't be held up by Apple's network,
+  // and a failed push is not user-facing (the in-app notification is already
+  // saved).
+  sendDealerPush(params).catch((err) => {
+    console.error("Dealer push error:", err);
+  });
+}
+
+async function sendDealerPush(params: {
+  dealerId: string;
+  title: string;
+  message: string;
+  entityType?: string;
+  entityId?: string;
+}): Promise<void> {
+  const tokens = await storage.getDeviceTokensForDealer(params.dealerId);
+  if (tokens.length === 0) return;
+
+  await sendApns(
+    tokens.map((t) => ({ token: t.token, platform: t.platform as "ios" | "android" })),
+    {
+      title: params.title,
+      body: params.message,
+      data: {
+        entityType: params.entityType ?? null,
+        entityId: params.entityId ?? null,
+      },
+    }
+  );
 }
 
 async function hasDuplicateDealerNotification(

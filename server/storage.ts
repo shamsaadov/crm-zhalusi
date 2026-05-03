@@ -95,6 +95,10 @@ import {
   dealerNotifications,
   type DealerNotification,
   type InsertDealerNotification,
+  deviceTokens,
+  type DeviceToken,
+  type InsertDeviceToken,
+  type DevicePlatform,
 } from "@shared/schema";
 
 // Pagination types
@@ -1977,6 +1981,49 @@ export class DatabaseStorage implements IStorage {
 
   async markDealerNotificationRead(id: string): Promise<void> {
     await db.update(dealerNotifications).set({ isRead: true }).where(eq(dealerNotifications.id, id));
+  }
+
+  // ─── Device Tokens (push notifications) ───
+
+  async upsertDeviceToken(data: {
+    token: string;
+    platform: DevicePlatform;
+    dealerId?: string | null;
+    userId?: string | null;
+  }): Promise<DeviceToken> {
+    const [row] = await db
+      .insert(deviceTokens)
+      .values({
+        token: data.token,
+        platform: data.platform,
+        dealerId: data.dealerId ?? null,
+        userId: data.userId ?? null,
+        lastSeenAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [deviceTokens.token, deviceTokens.platform],
+        set: {
+          dealerId: data.dealerId ?? null,
+          userId: data.userId ?? null,
+          lastSeenAt: new Date(),
+        },
+      })
+      .returning();
+    return row;
+  }
+
+  async deleteDeviceToken(token: string, platform: DevicePlatform): Promise<void> {
+    await db
+      .delete(deviceTokens)
+      .where(and(eq(deviceTokens.token, token), eq(deviceTokens.platform, platform)));
+  }
+
+  async getDeviceTokensForDealer(dealerId: string): Promise<DeviceToken[]> {
+    return db.select().from(deviceTokens).where(eq(deviceTokens.dealerId, dealerId));
+  }
+
+  async getDeviceTokensForUser(userId: string): Promise<DeviceToken[]> {
+    return db.select().from(deviceTokens).where(eq(deviceTokens.userId, userId));
   }
 }
 
