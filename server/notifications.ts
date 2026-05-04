@@ -58,6 +58,7 @@ export async function notifyDealer(params: {
   message: string;
   entityType?: string;
   entityId?: string;
+  isBroadcast?: boolean;
 }): Promise<void> {
   try {
     await storage.createDealerNotification({
@@ -67,6 +68,7 @@ export async function notifyDealer(params: {
       message: params.message,
       entityType: params.entityType || null,
       entityId: params.entityId || null,
+      isBroadcast: params.isBroadcast ?? false,
     });
   } catch (error) {
     console.error("Dealer notification error:", error);

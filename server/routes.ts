@@ -2031,17 +2031,17 @@ ${dbContext}`,
         const userId = req.userId!;
 
         if (sendToAll) {
-          // Broadcast to all dealers with login
+          // Broadcast to all dealers with login. notifyDealer handles BOTH
+          // the DB insert (in-app history) AND the APNs push.
           const allDealers = await storage.getDealers(userId);
           const activeDealers = allDealers.filter((d) => d.isActive && d.login);
           for (const dealer of activeDealers) {
-            await storage.createDealerNotification({
+            await notifyDealer({
               dealerId: dealer.id,
               userId,
               title,
               message,
               isBroadcast: true,
-              isRead: false,
             });
           }
           res.json({
@@ -2054,13 +2054,12 @@ ${dbContext}`,
             ? dealerIds
             : [dealerIds];
           for (const dealerId of ids) {
-            await storage.createDealerNotification({
+            await notifyDealer({
               dealerId,
               userId,
               title,
               message,
               isBroadcast: false,
-              isRead: false,
             });
           }
           res.json({ success: true, count: ids.length });
