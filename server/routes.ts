@@ -25,6 +25,7 @@ import pg from "pg";
 import { logAudit } from "./audit";
 import { generatePeriodicNotifications, notifyDealer } from "./notifications";
 import { createDealerMobileRouter } from "./routes/dealer-mobile";
+import { createAppUpdatesRouter } from "./routes/app-updates";
 import { createReferencesRouter } from "./routes/references";
 import { createFinanceRouter } from "./routes/finance";
 import { createWarehouseRouter } from "./routes/warehouse";
@@ -2094,6 +2095,9 @@ ${dbContext}`,
 
   // ===== MOBILE API (dealer sub-router) =====
   app.use("/api/mobile/dealer", createDealerMobileRouter());
+
+  // ===== MOBILE APP UPDATES (public, no auth) =====
+  app.use("/api/mobile/app", createAppUpdatesRouter());
 
   // ===== REFERENCE CRUD ROUTES (mounted as sub-router) =====
   app.use("/api", createReferencesRouter(authMiddleware));
