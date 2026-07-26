@@ -25,7 +25,10 @@ function dealerMobileAuthMiddleware(
   }
   const token = authHeader.slice(7);
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as { dealerId: string; role: string };
+    // ignoreExpiration: mobile clients (iOS in App Store review lag) can't ship a
+    // token-refresh fix quickly, so we accept signature-valid-but-expired dealer
+    // tokens. Signing secret is unchanged, so this only revives our own tokens.
+    const decoded = jwt.verify(token, JWT_SECRET, { ignoreExpiration: true }) as { dealerId: string; role: string };
     if (decoded.role !== "dealer") {
       return res.status(401).json({ message: "Неверный токен" });
     }
@@ -60,7 +63,7 @@ export function createDealerMobileRouter(): Router {
       const token = jwt.sign(
         { dealerId: dealer.id, role: "dealer" },
         JWT_SECRET,
-        { expiresIn: "30d" }
+        { expiresIn: "3650d" }
       );
       const { password: _, ...safe } = dealer;
       res.json({ token, dealer: safe });
