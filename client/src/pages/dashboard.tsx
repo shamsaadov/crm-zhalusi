@@ -268,7 +268,7 @@ export default function DashboardPage() {
         tone: data.overduePayments.totalAmount > 0 ? "warning" : "default",
       },
       {
-        title: "Створок создано",
+        title: "Створок занесено за месяц",
         value: data.sashes.created,
         hint: `За ${MONTH_NAMES[selectedMonth - 1].toLowerCase()}`,
         tone: "default" as const,
