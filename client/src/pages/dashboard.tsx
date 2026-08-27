@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import { Badge } from "@/components/ui/badge";
@@ -17,12 +17,23 @@ import {
 } from "@/components/ui/table";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
+import {
   AlertTriangle,
   RefreshCw,
+  RotateCcw,
   ChevronLeft,
   ChevronRight,
   Layers,
   Scissors,
+  Settings2,
   TrendingUp,
   Users,
 } from "lucide-react";
@@ -71,6 +82,10 @@ type DashboardData = {
     created: number;
     sold: number;
   };
+  dailySashes: {
+    date: string;
+    count: number;
+  }[];
   overduePayments: {
     totalAmount: number;
     count: number;
@@ -120,6 +135,71 @@ const MONTH_NAMES = [
   "Декабрь",
 ];
 
+type KpiId =
+  | "lowStock"
+  | "ordersToday"
+  | "inProgress"
+  | "overdueOrders"
+  | "salesMonth"
+  | "overduePayments"
+  | "sashesCreated"
+  | "sashesSold";
+
+type DashboardSectionId =
+  | "dailySashes"
+  | "lowStock"
+  | "overdueOrders"
+  | "salesChart"
+  | "topDealers"
+  | "topFabrics";
+
+type DashboardSettings = {
+  kpis: Record<KpiId, boolean>;
+  sections: Record<DashboardSectionId, boolean>;
+};
+
+const DASHBOARD_SETTINGS_KEY = "crm-zhalusi-dashboard-settings";
+
+const DEFAULT_DASHBOARD_SETTINGS: DashboardSettings = {
+  kpis: {
+    lowStock: true,
+    ordersToday: true,
+    inProgress: true,
+    overdueOrders: true,
+    salesMonth: true,
+    overduePayments: true,
+    sashesCreated: true,
+    sashesSold: true,
+  },
+  sections: {
+    dailySashes: true,
+    lowStock: true,
+    overdueOrders: true,
+    salesChart: true,
+    topDealers: true,
+    topFabrics: true,
+  },
+};
+
+function loadDashboardSettings(): DashboardSettings {
+  if (typeof window === "undefined") return DEFAULT_DASHBOARD_SETTINGS;
+
+  try {
+    const saved = JSON.parse(
+      window.localStorage.getItem(DASHBOARD_SETTINGS_KEY) || "null"
+    ) as Partial<DashboardSettings> | null;
+    return {
+      kpis: { ...DEFAULT_DASHBOARD_SETTINGS.kpis, ...(saved?.kpis || {}) },
+      sections: {
+        ...DEFAULT_DASHBOARD_SETTINGS.sections,
+        ...(saved?.sections || {}),
+      },
+    };
+  } catch {
+    return DEFAULT_DASHBOARD_SETTINGS;
+  }
+}
+
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("ru-RU", {
     style: "currency",
@@ -160,8 +240,15 @@ export default function DashboardPage() {
   const now = new Date();
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
+  const [settings, setSettings] = useState<DashboardSettings>(
+    loadDashboardSettings
+  );
 
   const monthOptions = useMemo(() => getMonthOptions(), []);
+
+  useEffect(() => {
+    window.localStorage.setItem(DASHBOARD_SETTINGS_KEY, JSON.stringify(settings));
+  }, [settings]);
 
   const { data, isLoading, isError, refetch } = useQuery<DashboardData>({
     queryKey: ["/api/dashboard", selectedYear, selectedMonth],
@@ -232,42 +319,49 @@ export default function DashboardPage() {
     if (!data) return [];
     return [
       {
+        id: "lowStock" as const,
         title: "Остатки ниже минимума",
         value: data.lowStock.length,
         hint: "Позиций на контроле",
         tone: data.lowStock.length > 0 ? "destructive" : "default",
       },
       {
+        id: "ordersToday" as const,
         title: "Заказы сегодня",
         value: data.orders.today,
         hint: "Создано за текущий день",
         tone: "default" as const,
       },
       {
+        id: "inProgress" as const,
         title: "В работе",
         value: data.orders.inProgress,
         hint: "Статусы Новый/В производстве",
         tone: "default" as const,
       },
       {
+        id: "overdueOrders" as const,
         title: "Просроченные заказы",
         value: data.orders.overdue,
         hint: "Требуют отгрузки",
         tone: data.orders.overdue > 0 ? "warning" : "default",
       },
       {
+        id: "salesMonth" as const,
         title: `Продажи за ${MONTH_NAMES[selectedMonth - 1].toLowerCase()}`,
         value: formatCurrency(data.salesMonth.totalAmount),
         hint: `${data.salesMonth.ordersCount} заказов`,
         tone: "default" as const,
       },
       {
+        id: "overduePayments" as const,
         title: "Просроченные оплаты",
         value: formatCurrency(data.overduePayments.totalAmount),
         hint: `${data.overduePayments.count} дилеров`,
         tone: data.overduePayments.totalAmount > 0 ? "warning" : "default",
       },
       {
+        id: "sashesCreated" as const,
         title: "Створок занесено за месяц",
         value: data.sashes.created,
         hint: `За ${MONTH_NAMES[selectedMonth - 1].toLowerCase()}`,
@@ -275,6 +369,7 @@ export default function DashboardPage() {
         icon: Layers,
       },
       {
+        id: "sashesSold" as const,
         title: "Створок продано",
         value: data.sashes.sold,
         hint: "Отгруженные заказы",
@@ -305,9 +400,22 @@ export default function DashboardPage() {
 
     if (!data) return null;
 
+    const visibleKpis = kpis.filter((kpi) => settings.kpis[kpi.id]);
+
+    if (!visibleKpis.length) {
+      return (
+        <Alert>
+          <AlertTitle>Карточки отключены</AlertTitle>
+          <AlertDescription>
+            Включите нужные показатели в настройках сводки.
+          </AlertDescription>
+        </Alert>
+      );
+    }
+
     return (
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {kpis.map((kpi) => (
+        {visibleKpis.map((kpi) => (
           <Card
             key={kpi.title}
             className="relative overflow-hidden border-muted-foreground/10"
@@ -340,6 +448,79 @@ export default function DashboardPage() {
       </div>
     );
   };
+
+  const renderDailySashes = () => {
+    if (isLoading) return <Skeleton className="h-64 w-full" />;
+
+    const items = data?.dailySashes || [];
+    return (
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>День</TableHead>
+              <TableHead className="text-right">Занесено створок</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {items.map((item) => (
+              <TableRow key={item.date}>
+                <TableCell>{item.date.slice(8, 10)}.{item.date.slice(5, 7)}.{item.date.slice(0, 4)}</TableCell>
+                <TableCell className="text-right font-medium">{item.count}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    );
+  };
+
+  const updateKpiSetting = (id: KpiId, enabled: boolean) => {
+    setSettings((current) => ({
+      ...current,
+      kpis: { ...current.kpis, [id]: enabled },
+    }));
+  };
+
+  const updateSectionSetting = (
+    id: DashboardSectionId,
+    enabled: boolean
+  ) => {
+    setSettings((current) => ({
+      ...current,
+      sections: { ...current.sections, [id]: enabled },
+    }));
+  };
+
+  const settingGroups: {
+    title: string;
+    items: { id: KpiId | DashboardSectionId; label: string; kind: "kpi" | "section" }[];
+  }[] = [
+    {
+      title: "Карточки показателей",
+      items: [
+        { id: "sashesCreated", label: "Створки занесено за месяц", kind: "kpi" },
+        { id: "sashesSold", label: "Створки продано", kind: "kpi" },
+        { id: "ordersToday", label: "Заказы сегодня", kind: "kpi" },
+        { id: "inProgress", label: "В работе", kind: "kpi" },
+        { id: "salesMonth", label: "Продажи за месяц", kind: "kpi" },
+        { id: "lowStock", label: "Остатки ниже минимума", kind: "kpi" },
+        { id: "overdueOrders", label: "Просроченные заказы", kind: "kpi" },
+        { id: "overduePayments", label: "Просроченные оплаты", kind: "kpi" },
+      ],
+    },
+    {
+      title: "Разделы и графики",
+      items: [
+        { id: "dailySashes", label: "Створки по дням", kind: "section" },
+        { id: "lowStock", label: "Таблица остатков", kind: "section" },
+        { id: "overdueOrders", label: "Таблица просроченных заказов", kind: "section" },
+        { id: "salesChart", label: "График продаж и прибыли", kind: "section" },
+        { id: "topDealers", label: "График топ-дилеров", kind: "section" },
+        { id: "topFabrics", label: "График топ-тканей", kind: "section" },
+      ],
+    },
+  ];
 
   const renderLowStock = () => {
     if (isLoading) {
@@ -470,6 +651,64 @@ export default function DashboardPage() {
           <p className="text-sm text-muted-foreground leading-tight hidden md:block">
             Ключевые показатели и проблемные зоны
           </p>
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Settings2 className="h-4 w-4 mr-2" />
+                Настроить
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-h-[85vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Настройки сводки</DialogTitle>
+                <DialogDescription>
+                  Выберите, какие карточки, таблицы и графики показывать на этой странице.
+                  Настройки сохраняются в этом браузере.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-6 py-2">
+                {settingGroups.map((group) => (
+                  <div key={group.title} className="space-y-3">
+                    <h3 className="text-sm font-semibold">{group.title}</h3>
+                    <div className="space-y-3">
+                      {group.items.map((item) => {
+                        const enabled =
+                          item.kind === "kpi"
+                            ? settings.kpis[item.id as KpiId]
+                            : settings.sections[item.id as DashboardSectionId];
+                        return (
+                          <div
+                            key={`${item.kind}-${item.id}`}
+                            className="flex items-center justify-between gap-4"
+                          >
+                            <span className="text-sm">{item.label}</span>
+                            <Switch
+                              checked={enabled}
+                              onCheckedChange={(checked) =>
+                                item.kind === "kpi"
+                                  ? updateKpiSetting(item.id as KpiId, checked)
+                                  : updateSectionSetting(
+                                      item.id as DashboardSectionId,
+                                      checked
+                                    )
+                              }
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => setSettings(DEFAULT_DASHBOARD_SETTINGS)}
+              >
+                <RotateCcw className="h-4 w-4 mr-2" />
+                Вернуть все блоки
+              </Button>
+            </DialogContent>
+          </Dialog>
           <Button
             variant="outline"
             size="sm"
@@ -518,32 +757,60 @@ export default function DashboardPage() {
 
       <section className="space-y-3">{renderKpiCards()}</section>
 
-      <Separator className="my-5" />
+      {settings.sections.dailySashes && (
+        <>
+          <Separator className="my-5" />
+          <section className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold">Створки, занесённые по дням</h2>
+                <p className="text-sm text-muted-foreground">
+                  Считаются созданные строки створок в заказах за дату заказа. Отгрузка не учитывается.
+                </p>
+              </div>
+              <Badge variant="secondary">Ввод в программу</Badge>
+            </div>
+            {renderDailySashes()}
+          </section>
+        </>
+      )}
 
-      <div className="grid gap-6 xl:grid-cols-2">
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Остатки ниже минимума</h2>
-            <Badge variant="secondary">Склад</Badge>
+      {(settings.sections.lowStock || settings.sections.overdueOrders) && (
+        <>
+          <Separator className="my-5" />
+          <div className="grid gap-6 xl:grid-cols-2">
+            {settings.sections.lowStock && (
+              <section className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-semibold">Остатки ниже минимума</h2>
+                  <Badge variant="secondary">Склад</Badge>
+                </div>
+                {renderLowStock()}
+              </section>
+            )}
+
+            {settings.sections.overdueOrders && (
+              <section className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-semibold">Просроченные заказы</h2>
+                  <Badge variant="secondary">Производство</Badge>
+                </div>
+                {renderOverdueOrders()}
+              </section>
+            )}
           </div>
-          {renderLowStock()}
-        </section>
-
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Просроченные заказы</h2>
-            <Badge variant="secondary">Производство</Badge>
-          </div>
-          {renderOverdueOrders()}
-        </section>
-      </div>
-
-      <Separator className="my-5" />
+        </>
+      )}
 
       {/* Charts Section */}
-      <div className="grid gap-6 xl:grid-cols-2">
+      {(settings.sections.salesChart ||
+        settings.sections.topDealers ||
+        settings.sections.topFabrics) && (
+        <>
+          <Separator className="my-5" />
+          <div className="grid gap-6 xl:grid-cols-2">
         {/* Sales & Profit Chart */}
-        <Card>
+        {settings.sections.salesChart && <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <TrendingUp className="h-5 w-5" />
@@ -608,10 +875,10 @@ export default function DashboardPage() {
               </div>
             )}
           </CardContent>
-        </Card>
+        </Card>}
 
         {/* Top Dealers Chart */}
-        <Card>
+        {settings.sections.topDealers && <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Users className="h-5 w-5" />
@@ -665,10 +932,10 @@ export default function DashboardPage() {
               </div>
             )}
           </CardContent>
-        </Card>
+        </Card>}
 
         {/* Top Fabrics Chart */}
-        <Card>
+        {settings.sections.topFabrics && <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Scissors className="h-5 w-5" />
@@ -721,8 +988,10 @@ export default function DashboardPage() {
               </div>
             )}
           </CardContent>
-        </Card>
-      </div>
+        </Card>}
+          </div>
+        </>
+      )}
     </Layout>
   );
 }

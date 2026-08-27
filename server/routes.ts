@@ -861,25 +861,39 @@ export async function registerRoutes(
           0
         );
 
-        // Calculate sashes count for the month
+        // Count sashes entered into the program by the order date. Mobile orders
+        // can have systemName instead of systemId, so both fields are accepted.
+        // Product order rows are excluded by componentId.
+        const isActualSash = (sash: { systemId?: string | null; systemName?: string | null; componentId?: string | null }) =>
+          !sash.componentId && Boolean(sash.systemId || sash.systemName);
+        const orderSashes = await Promise.all(
+          monthOrders.map(async (order) => ({
+            order,
+            sashes: await storage.getOrderSashes(order.id),
+          }))
+        );
+        const dailySashCounts = new Map<string, number>();
         let totalSashesCount = 0;
-        for (const order of monthOrders) {
-          const sashes = await storage.getOrderSashes(order.id);
-          // Count only sashes that have systemId (actual sash orders, not product orders)
-          const sashCount = sashes.filter((s) => s.systemId).length;
+        let soldSashesCount = 0;
+
+        for (const { order, sashes } of orderSashes) {
+          const sashCount = sashes.filter(isActualSash).length;
           totalSashesCount += sashCount;
+          dailySashCounts.set(
+            order.date,
+            (dailySashCounts.get(order.date) || 0) + sashCount
+          );
+          if (order.status === "Отгружен") {
+            soldSashesCount += sashCount;
+          }
         }
 
-        // Get shipped orders for the month (sold products)
-        const shippedMonthOrders = monthOrders.filter(
-          (order) => order.status === "Отгружен"
-        );
-        let soldSashesCount = 0;
-        for (const order of shippedMonthOrders) {
-          const sashes = await storage.getOrderSashes(order.id);
-          const sashCount = sashes.filter((s) => s.systemId).length;
-          soldSashesCount += sashCount;
-        }
+        const dailySashes = Array.from({ length: lastDay }, (_, index) => {
+          const date = `${year}-${String(month).padStart(2, "0")}-${String(
+            index + 1
+          ).padStart(2, "0")}`;
+          return { date, count: dailySashCounts.get(date) || 0 };
+        });
 
         // Calculate overdue payments (dealers with negative balance)
         const overduePayments = allDealers.filter((d) => d.balance < 0);
@@ -1020,6 +1034,7 @@ export async function registerRoutes(
             created: totalSashesCount,
             sold: soldSashesCount,
           },
+          dailySashes,
           overduePayments: {
             totalAmount: totalOverduePayments,
             count: overduePayments.length,
