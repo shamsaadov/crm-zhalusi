@@ -1591,30 +1591,65 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
 
   // ===== CUTTING LAYOUTS =====
 
+  // Кусок раскроя. width/height — габарит С припусками (по нему идёт укладка),
+  // sashWidth/sashHeight — чистый размер створки, sideAllowance — запас с каждой
+  // стороны по ширине, heightAllowance — запас по высоте, layers — число слоёв
+  // полотна (2 для зебры), roomName — комната створки для подписи на чертеже.
+  type CuttingPiece = {
+    sashIndex: number;
+    width: number;
+    height: number;
+    sashWidth: number;
+    sashHeight: number;
+    sideAllowance: number;
+    heightAllowance: number;
+    layers: number;
+    roomName: string | null;
+  };
+
+  type CuttingInputPiece = {
+    index: number;
+    width: number;
+    height: number;
+    quantity: number;
+    roomName: string | null;
+  };
+
+  const SIDE_ALLOWANCE_CM = 3;
+  const HEIGHT_ALLOWANCE_CM = 20;
+
   function calculateOptimalCutting(
-    pieces: Array<{ index: number; width: number; height: number; quantity: number }>,
+    pieces: CuttingInputPiece[],
     rollWidth: number,
     fabricType: string = "roll"
   ): {
     rows: Array<{
       rowIndex: number;
       cutLength: number;
-      pieces: Array<{ sashIndex: number; width: number; height: number }>;
+      pieces: CuttingPiece[];
       usedWidth: number;
       wasteWidth: number;
     }>;
     totalLength: number;
     wastePercent: number;
   } {
-    // Развернуть все куски по количеству
-    const isZebra = fabricType === "zebra";
-    const allPieces: Array<{ sashIndex: number; width: number; height: number }> = [];
+    // Развернуть все куски по количеству.
+    // Припуски: по 3 см с каждой стороны по ширине (итого 6 см), +20 см по высоте
+    // (для зебры высота сначала удваивается — полотно идёт в два слоя).
+    const layers = fabricType === "zebra" ? 2 : 1;
+    const allPieces: CuttingPiece[] = [];
     for (const piece of pieces) {
       for (let i = 0; i < piece.quantity; i++) {
         allPieces.push({
           sashIndex: piece.index,
-          width: piece.width,
-          height: (isZebra ? piece.height * 2 : piece.height) + 20,
+          width: piece.width + SIDE_ALLOWANCE_CM * 2,
+          height: piece.height * layers + HEIGHT_ALLOWANCE_CM,
+          sashWidth: piece.width,
+          sashHeight: piece.height,
+          sideAllowance: SIDE_ALLOWANCE_CM,
+          heightAllowance: HEIGHT_ALLOWANCE_CM,
+          layers,
+          roomName: piece.roomName,
         });
       }
     }
@@ -1625,7 +1660,7 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
     const rows: Array<{
       rowIndex: number;
       cutLength: number;
-      pieces: Array<{ sashIndex: number; width: number; height: number }>;
+      pieces: CuttingPiece[];
       usedWidth: number;
       wasteWidth: number;
     }> = [];
@@ -1639,7 +1674,7 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
       const row: typeof rows[0] = {
         rowIndex: rows.length + 1,
         cutLength: piece.height,
-        pieces: [{ sashIndex: piece.sashIndex, width: piece.width, height: piece.height }],
+        pieces: [{ ...piece }],
         usedWidth: piece.width,
         wasteWidth: rollWidth - piece.width,
       };
@@ -1652,7 +1687,7 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
 
         // Кусок помещается по ширине и его высота <= высоте ряда (отрез идёт по максимальной)
         if (row.usedWidth + candidate.width <= rollWidth && candidate.height <= row.cutLength) {
-          row.pieces.push({ sashIndex: candidate.sashIndex, width: candidate.width, height: candidate.height });
+          row.pieces.push({ ...candidate });
           row.usedWidth += candidate.width;
           row.wasteWidth = rollWidth - row.usedWidth;
           placed.add(j);
@@ -1673,6 +1708,110 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
     return { rows, totalLength, wastePercent };
   }
 
+  type SkippedSash = {
+    sashIndex: number;
+    roomName: string | null;
+    width: number;
+    height: number;
+    reason: "no_fabric" | "no_roll_width";
+    fabricName?: string;
+  };
+
+  // Створки заказа, разложенные по тканям, плюс список того, что в раскрой не попадёт.
+  async function collectCuttingInput(orderId: string, userId: string) {
+    // Нумерация створок должна быть одинаковой при расчёте (POST) и при
+    // чтении (GET), иначе номера на чертеже разойдутся с предупреждениями.
+    // Запрос без ORDER BY порядок не гарантирует, поэтому сортируем сами.
+    const sashes = (await storage.getOrderSashes(orderId)).sort(
+      (a, b) => (a.room ?? 0) - (b.room ?? 0) || a.id.localeCompare(b.id)
+    );
+    const allFabrics = await storage.getFabrics(userId);
+    const fabricGroups = new Map<string, CuttingInputPiece[]>();
+    const skipped: SkippedSash[] = [];
+
+    sashes.forEach((sash, i) => {
+      const width = parseFloat(sash.width?.toString() || "0");
+      const height = parseFloat(sash.height?.toString() || "0");
+      const base = { sashIndex: i + 1, roomName: sash.roomName ?? null, width, height };
+      if (!sash.fabricId) {
+        skipped.push({ ...base, reason: "no_fabric" });
+        return;
+      }
+      const fabric = allFabrics.find((f) => f.id === sash.fabricId);
+      const rollWidth = parseFloat(fabric?.width?.toString() || "0");
+      if (rollWidth <= 0) {
+        skipped.push({ ...base, reason: "no_roll_width", fabricName: fabric?.name ?? sash.fabricName ?? undefined });
+        return;
+      }
+      const group = fabricGroups.get(sash.fabricId) || [];
+      group.push({
+        index: i + 1,
+        width,
+        height,
+        quantity: parseFloat((sash as any).quantity?.toString() || "1"),
+        roomName: sash.roomName ?? null,
+      });
+      fabricGroups.set(sash.fabricId, group);
+    });
+
+    return { sashes, allFabrics, fabricGroups, skipped };
+  }
+
+  // Ответ для GET/POST: сохранённые раскрои + предупреждения + признак устаревания.
+  async function buildCuttingResponse(orderId: string, userId: string) {
+    const { allFabrics, fabricGroups, skipped } = await collectCuttingInput(orderId, userId);
+    const layouts = await storage.getCuttingLayoutsByOrder(orderId);
+
+    const results = await Promise.all(
+      layouts.map(async (layout) => {
+        const rows = await storage.getCuttingLayoutRows(layout.id);
+        const fabric = allFabrics.find((f) => f.id === layout.fabricId);
+        return {
+          ...layout,
+          fabricName: fabric?.name,
+          fabricType: fabric?.fabricType ?? "roll",
+          rows: rows.map((r) => ({
+            ...r,
+            pieces: JSON.parse(r.pieces) as Partial<CuttingPiece>[],
+          })),
+        };
+      })
+    );
+
+    // Раскрой устарел, если набор створок (ткань + чистый размер) не совпадает
+    // с тем, что было посчитано. Старый формат кусков (без sashWidth) считаем устаревшим.
+    let isStale = false;
+    if (results.length > 0) {
+      const expected: string[] = [];
+      for (const [fabricId, pieces] of Array.from(fabricGroups.entries())) {
+        for (const p of pieces) {
+          for (let i = 0; i < p.quantity; i++) expected.push(`${fabricId}|${p.width}|${p.height}`);
+        }
+      }
+      const actual: string[] = [];
+      for (const layout of results) {
+        for (const row of layout.rows) {
+          for (const p of row.pieces) {
+            if (typeof p.sashWidth !== "number" || typeof p.sashHeight !== "number") {
+              isStale = true;
+            }
+            actual.push(`${layout.fabricId}|${p.sashWidth}|${p.sashHeight}`);
+          }
+        }
+      }
+      if (!isStale) {
+        isStale = expected.sort().join(",") !== actual.sort().join(",");
+      }
+    }
+
+    const calculatedAt = results.reduce<Date | null>((min, l) => {
+      const d = l.createdAt ? new Date(l.createdAt) : null;
+      return d && (!min || d < min) ? d : min;
+    }, null);
+
+    return { layouts: results, skipped, isStale, calculatedAt };
+  }
+
   // POST /api/orders/:orderId/cutting - рассчитать и сохранить раскрой
   router.post(
     "/orders/:orderId/cutting",
@@ -1685,43 +1824,29 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
           return res.status(404).json({ message: "Заказ не найден" });
         }
 
-        const sashes = await storage.getOrderSashes(orderId);
+        const { sashes, allFabrics, fabricGroups } = await collectCuttingInput(orderId, req.userId!);
         if (sashes.length === 0) {
           return res.status(400).json({ message: "В заказе нет створок" });
         }
 
-        // Группируем створки по ткани
-        const fabricGroups = new Map<string, Array<{
-          index: number;
-          width: number;
-          height: number;
-          quantity: number;
-        }>>();
-
-        sashes.forEach((sash, i) => {
-          if (!sash.fabricId) return;
-          const group = fabricGroups.get(sash.fabricId) || [];
-          group.push({
-            index: i + 1,
-            width: parseFloat(sash.width?.toString() || "0"),
-            height: parseFloat(sash.height?.toString() || "0"),
-            quantity: parseFloat((sash as any).quantity?.toString() || "1"),
-          });
-          fabricGroups.set(sash.fabricId, group);
-        });
+        // Рулон должен вмещать самую широкую створку с припусками
+        for (const [fabricId, pieces] of Array.from(fabricGroups.entries())) {
+          const fabric = allFabrics.find((f) => f.id === fabricId);
+          const rollWidth = parseFloat(fabric?.width?.toString() || "0");
+          const widest = Math.max(...pieces.map((p) => p.width + SIDE_ALLOWANCE_CM * 2));
+          if (widest > rollWidth) {
+            return res.status(400).json({
+              message: `Ткань «${fabric?.name ?? "?"}»: рулон ${rollWidth} см уже створки с припуском (${widest} см)`,
+            });
+          }
+        }
 
         // Удаляем старый раскрой для этого заказа
         await storage.deleteCuttingLayoutsByOrder(orderId);
 
-        const allFabrics = await storage.getFabrics(req.userId!);
-        const results: any[] = [];
-
-        for (const [fabricId, pieces] of fabricGroups) {
+        for (const [fabricId, pieces] of Array.from(fabricGroups.entries())) {
           const fabric = allFabrics.find((f) => f.id === fabricId);
           const rollWidth = parseFloat(fabric?.width?.toString() || "0");
-          if (rollWidth <= 0) {
-            continue; // Пропускаем ткани без указанной ширины рулона
-          }
 
           const { rows, totalLength, wastePercent } = calculateOptimalCutting(pieces, rollWidth, fabric?.fabricType || "roll");
 
@@ -1734,7 +1859,7 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
             userId: req.userId!,
           });
 
-          const layoutRows = await storage.createCuttingLayoutRows(
+          await storage.createCuttingLayoutRows(
             rows.map((r) => ({
               layoutId: layout.id,
               rowIndex: r.rowIndex,
@@ -1744,18 +1869,9 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
               wasteWidth: r.wasteWidth.toFixed(2),
             }))
           );
-
-          results.push({
-            ...layout,
-            fabricName: fabric?.name,
-            rows: layoutRows.map((r) => ({
-              ...r,
-              pieces: JSON.parse(r.pieces),
-            })),
-          });
         }
 
-        res.json(results);
+        res.json(await buildCuttingResponse(orderId, req.userId!));
       } catch (error) {
         console.error("Cutting layout error:", error);
         res.status(500).json({ message: "Ошибка расчёта раскроя" });
@@ -1769,25 +1885,11 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
-        const layouts = await storage.getCuttingLayoutsByOrder(req.params.orderId);
-        const allFabrics = await storage.getFabrics(req.userId!);
-
-        const results = await Promise.all(
-          layouts.map(async (layout) => {
-            const rows = await storage.getCuttingLayoutRows(layout.id);
-            const fabric = allFabrics.find((f) => f.id === layout.fabricId);
-            return {
-              ...layout,
-              fabricName: fabric?.name,
-              rows: rows.map((r) => ({
-                ...r,
-                pieces: JSON.parse(r.pieces),
-              })),
-            };
-          })
-        );
-
-        res.json(results);
+        const order = await storage.getOrder(req.params.orderId);
+        if (!order || order.userId !== req.userId) {
+          return res.status(404).json({ message: "Заказ не найден" });
+        }
+        res.json(await buildCuttingResponse(req.params.orderId, req.userId!));
       } catch (error) {
         console.error("Get cutting layout error:", error);
         res.status(500).json({ message: "Ошибка загрузки раскроя" });
