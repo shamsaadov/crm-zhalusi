@@ -89,14 +89,6 @@ function missingPriceFabrics(order: OrderWithRelations, fabricStock?: FabricWith
     .filter((n): n is string => !!n);
 }
 
-function pluralOrders(n: number) {
-  const m10 = n % 10;
-  const m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return "заказ";
-  if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return "заказа";
-  return "заказов";
-}
-
 const toKey = (d?: Date) => (d ? format(d, "yyyy-MM-dd") : "");
 const fromKey = (s: string) => (s ? new Date(`${s}T00:00:00`) : undefined);
 
@@ -217,9 +209,8 @@ export function OrdersJournal(p: OrdersJournalProps) {
     setPaymentFilter("all");
   };
 
-  const totals = rows.reduce((s, o) => s + parseFloat(o.salePrice?.toString() || "0"), 0);
   const isApp = p.orderTypeFilter === "app";
-  const colCount = 11 + (p.showProfit ? 1 : 0);
+  const colCount = 10 + (p.showProfit ? 1 : 0);
 
   return (
     <div className="space-y-3">
@@ -399,7 +390,6 @@ export function OrdersJournal(p: OrdersJournalProps) {
                   <th className="ues-ind-head" title="Заказ отгружен">
                     <span><Truck className="h-3.5 w-3.5" /></span>
                   </th>
-                  <th className="w-[64px]">Номер</th>
                   <th className="w-[96px]">Дата</th>
                   <th className="num">Сумма документа</th>
                   <th>Контрагент</th>
@@ -491,9 +481,6 @@ export function OrdersJournal(p: OrdersJournalProps) {
                           title={status === "Отгружен" ? `Отгружен${o.shippedAt ? ` ${fmtDate(o.shippedAt)}` : ""}` : "Заказ не отгружен"}
                         />
                       </td>
-                      <td className="font-semibold tabular-nums" data-testid={`text-order-number-${o.id}`}>
-                        {o.orderNumber}
-                      </td>
                       <td>{fmtDate(o.date)}</td>
                       <td className="num font-semibold">{fmtMoney(parseFloat(o.salePrice?.toString() || "0"))}</td>
                       <td className="max-w-[220px] truncate" title={o.dealer?.fullName ?? ""}>
@@ -532,18 +519,6 @@ export function OrdersJournal(p: OrdersJournalProps) {
                   );
                 })}
               </tbody>
-              {rows.length > 0 && (
-                <tfoot>
-                  <tr>
-                    <td colSpan={6}>
-                      Итого: {rows.length}
-                      {p.hasNextPage ? "+" : ""} {pluralOrders(rows.length)}
-                    </td>
-                    <td className="num">{fmtMoney(totals)}</td>
-                    <td colSpan={colCount - 6} />
-                  </tr>
-                </tfoot>
-              )}
             </table>
           </div>
           <p className="text-[12px] text-[var(--ues-muted)]">
