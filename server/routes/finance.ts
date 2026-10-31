@@ -2,6 +2,11 @@ import { Router, Request, Response, NextFunction } from "express";
 import bcrypt from "bcrypt";
 import { storage } from "../storage";
 import { logAudit } from "../audit";
+import {
+  EXPENSE_OPERATION_TYPES,
+  FINANCE_TYPES,
+  INCOME_OPERATION_TYPES,
+} from "@shared/schema";
 
 interface AuthRequest extends Request {
   userId?: string;
@@ -12,6 +17,64 @@ type AuthMiddleware = (
   res: Response,
   next: NextFunction
 ) => void;
+
+
+// Поля, которые клиент может задавать у финансовой операции. Остальное (id, userId,
+// deletedAt) игнорируется — иначе правкой можно было переписать владельца операции.
+const EDITABLE_FIELDS = [
+  "type",
+  "amount",
+  "date",
+  "cashboxId",
+  "fromCashboxId",
+  "toCashboxId",
+  "dealerId",
+  "supplierId",
+  "expenseTypeId",
+  "operationType",
+  "comment",
+  "isDraft",
+] as const;
+
+function pickEditable(body: unknown): Record<string, unknown> {
+  const src = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const key of EDITABLE_FIELDS) {
+    if (key in src) out[key] = src[key] === "" ? null : src[key];
+  }
+  return out;
+}
+
+/** Вид операции должен соответствовать типу (ПКО — виды поступлений, РКО — выплат). */
+function validateOperationType(type: unknown, operationType: unknown): string | null {
+  if (operationType === undefined || operationType === null) return null;
+  if (typeof operationType !== "string") return "Неверный вид операции";
+  if (type === "income" && !(INCOME_OPERATION_TYPES as readonly string[]).includes(operationType)) {
+    return `«${operationType}» не подходит для поступления`;
+  }
+  if (type === "expense" && !(EXPENSE_OPERATION_TYPES as readonly string[]).includes(operationType)) {
+    return `«${operationType}» не подходит для выплаты`;
+  }
+  if (type === "supplier_payment" && operationType !== "Оплата поставщику") {
+    return "Оплата поставщику не может иметь другой вид операции";
+  }
+  if (type === "transfer") return "У перемещения нет вида операции";
+  return null;
+}
+
+function validateOperation(data: Record<string, unknown>, partial: boolean): string | null {
+  if (!partial || "type" in data) {
+    if (!(FINANCE_TYPES as readonly string[]).includes(String(data.type))) return "Неверный тип операции";
+  }
+  if (!partial || "amount" in data) {
+    const amount = Number(data.amount);
+    if (!Number.isFinite(amount) || amount <= 0) return "Сумма должна быть больше нуля";
+  }
+  if (!partial || "date" in data) {
+    if (typeof data.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(data.date)) return "Неверная дата";
+  }
+  return null;
+}
 
 export function createFinanceRouter(authMiddleware: AuthMiddleware): Router {
   const router = Router();
@@ -102,10 +165,24 @@ export function createFinanceRouter(authMiddleware: AuthMiddleware): Router {
     async (req: AuthRequest, res: Response) => {
       try {
         const operation = await storage.getFinanceOperation(req.params.id);
-        if (!operation) {
+        if (!operation || operation.userId !== req.userId) {
           return res.status(404).json({ message: "Операция не найдена" });
         }
-        res.json(operation);
+        const [dealerList, supplierList, cashboxList, expenseTypeList] = await Promise.all([
+          storage.getDealers(req.userId!),
+          storage.getSuppliers(req.userId!),
+          storage.getCashboxes(req.userId!),
+          storage.getExpenseTypes(req.userId!),
+        ]);
+        res.json({
+          ...operation,
+          dealer: dealerList.find((d) => d.id === operation.dealerId),
+          supplier: supplierList.find((s) => s.id === operation.supplierId),
+          cashbox: cashboxList.find((c) => c.id === operation.cashboxId),
+          fromCashbox: cashboxList.find((c) => c.id === operation.fromCashboxId),
+          toCashbox: cashboxList.find((c) => c.id === operation.toCashboxId),
+          expenseType: expenseTypeList.find((e) => e.id === operation.expenseTypeId),
+        });
       } catch (error) {
         console.error(`[${req.method} ${req.path}]`, error);
         res.status(500).json({ message: "Ошибка сервера" });
@@ -118,9 +195,14 @@ export function createFinanceRouter(authMiddleware: AuthMiddleware): Router {
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
+        const data = pickEditable(req.body);
+        const error =
+          validateOperation(data, false) ?? validateOperationType(data.type, data.operationType);
+        if (error) return res.status(400).json({ message: error });
+
         const operation = await storage.createFinanceOperation({
-          ...req.body,
-          userId: req.userId,
+          ...(data as any),
+          userId: req.userId!,
         });
 
         logAudit({
@@ -145,10 +227,16 @@ export function createFinanceRouter(authMiddleware: AuthMiddleware): Router {
     async (req: AuthRequest, res: Response) => {
       try {
         const before = await storage.getFinanceOperation(req.params.id);
-        const operation = await storage.updateFinanceOperation(
-          req.params.id,
-          req.body
-        );
+        if (!before || before.userId !== req.userId) {
+          return res.status(404).json({ message: "Операция не найдена" });
+        }
+        const data = pickEditable(req.body);
+        const error =
+          validateOperation(data, true) ??
+          validateOperationType(data.type ?? before.type, "operationType" in data ? data.operationType : before.operationType);
+        if (error) return res.status(400).json({ message: error });
+
+        const operation = await storage.updateFinanceOperation(req.params.id, data as any);
 
         logAudit({
           userId: req.userId!,
@@ -173,6 +261,9 @@ export function createFinanceRouter(authMiddleware: AuthMiddleware): Router {
     async (req: AuthRequest, res: Response) => {
       try {
         const before = await storage.getFinanceOperation(req.params.id);
+        if (!before || before.userId !== req.userId) {
+          return res.status(404).json({ message: "Операция не найдена" });
+        }
         await storage.softDeleteFinanceOperation(req.params.id);
 
         logAudit({
@@ -196,6 +287,10 @@ export function createFinanceRouter(authMiddleware: AuthMiddleware): Router {
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
+        const existing = await storage.getFinanceOperation(req.params.id);
+        if (!existing || existing.userId !== req.userId) {
+          return res.status(404).json({ message: "Операция не найдена" });
+        }
         const operation = await storage.restoreFinanceOperation(req.params.id);
         res.json(operation);
       } catch (error) {
@@ -237,6 +332,10 @@ export function createFinanceRouter(authMiddleware: AuthMiddleware): Router {
           }
         }
 
+        const existing = await storage.getFinanceOperation(req.params.id);
+        if (!existing || existing.userId !== req.userId) {
+          return res.status(404).json({ message: "Операция не найдена" });
+        }
         await storage.hardDeleteFinanceOperation(req.params.id);
         res.json({ success: true });
       } catch (error) {

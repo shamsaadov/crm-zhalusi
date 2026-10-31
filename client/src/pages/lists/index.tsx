@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearch } from "wouter";
 import { Layout } from "@/components/layout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FilterBar } from "@/components/filter-bar";
@@ -15,7 +16,12 @@ import { SuppliersTab } from "./suppliers-tab";
 
 
 export default function ListsPage() {
-  const [activeTab, setActiveTab] = useState<ListEntity>("colors");
+  // ?tab=cashboxes — открыть сразу нужный справочник (ссылки со страниц разделов).
+  const urlSearch = useSearch();
+  const [activeTab, setActiveTab] = useState<ListEntity>(() => {
+    const t = new URLSearchParams(urlSearch).get("tab");
+    return t && t in entityConfig ? (t as ListEntity) : "colors";
+  });
   const [search, setSearch] = useState("");
 
   return (

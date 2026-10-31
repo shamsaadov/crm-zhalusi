@@ -20,9 +20,9 @@ export const entityConfig: Record<
   cashboxes: { label: "Кассы", apiPath: "/api/cashboxes", plural: "касс" },
   systems: { label: "Системы", apiPath: "/api/systems", plural: "систем" },
   expenseTypes: {
-    label: "Виды расходов",
+    label: "Статьи доходов и расходов",
     apiPath: "/api/expense-types",
-    plural: "видов расходов",
+    plural: "статей",
   },
   components: {
     label: "Комплектующие",

@@ -1,0 +1,417 @@
+/*
+ * Интерфейс в стиле УЭС (ues-platform/ues-site-v13-work: ues-v20.css + ues-controls-final.css).
+ * Только то, что не выражается утилитами Tailwind: шапка, вкладки, меню разделов,
+ * плотные журналы, отчётные таблицы.
+ */
+
+:root {
+  --ues-header-h: 34px;
+  --ues-sidebar-w: 190px;
+  --ues-primary: #2762d9;
+  --ues-primary-hover: #1f52bd;
+  --ues-primary-soft: #eaf1ff;
+  --ues-primary-soft-hover: #f2f6ff;
+  --ues-primary-selected: #dbe8ff;
+  --ues-primary-border: #86a8e8;
+  --ues-primary-text: #1f4fae;
+  --ues-bg: #f3f6fa;
+  --ues-surface: #fff;
+  --ues-surface-soft: #f8fafc;
+  --ues-text: #182230;
+  --ues-muted: #667085;
+  --ues-border: #d9e1ea;
+  --ues-border-strong: #c6d0dc;
+  --ues-success: #16825d;
+  --ues-success-soft: #e8f7f1;
+  --ues-danger: #b42318;
+  --ues-danger-soft: #fff0ee;
+  --ues-th-bg: #f5f7fa;
+  --ues-th-text: #475467;
+  --ues-row-hover: #f7faff;
+  --ues-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
+}
+
+.dark {
+  --ues-primary: #5d8fe9;
+  --ues-primary-hover: #7aa4f0;
+  --ues-primary-soft: #1b2a44;
+  --ues-primary-soft-hover: #18243a;
+  --ues-primary-selected: #23365a;
+  --ues-primary-border: #3d5f9e;
+  --ues-primary-text: #9dbcf5;
+  --ues-bg: #12161c;
+  --ues-surface: #181d24;
+  --ues-surface-soft: #1d232b;
+  --ues-text: #e6eaf0;
+  --ues-muted: #98a2b3;
+  --ues-border: #2a323d;
+  --ues-border-strong: #364050;
+  --ues-success: #3fb68b;
+  --ues-success-soft: #13291f;
+  --ues-danger: #f0796f;
+  --ues-danger-soft: #2c1714;
+  --ues-th-bg: #1d232b;
+  --ues-th-text: #b4bdca;
+  --ues-row-hover: #1c2430;
+}
+
+body {
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+/* ---------- Шапка ---------- */
+.ues-header {
+  height: var(--ues-header-h);
+  background: linear-gradient(110deg, #16365f, #235385 62%, #1c4775);
+  color: #fff;
+}
+.ues-header-btn {
+  height: 26px;
+  min-width: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  color: rgba(255, 255, 255, 0.85);
+  transition: background 0.12s;
+}
+.ues-header-btn:hover { background: rgba(255, 255, 255, 0.14); color: #fff; }
+.ues-header-btn:disabled { opacity: 0.35; pointer-events: none; }
+.ues-logo {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: #fff;
+  color: #173b66;
+  font-weight: 800;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Вкладки рабочей области */
+.ues-tab {
+  height: 26px;
+  max-width: 220px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px 0 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.13);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 12.5px;
+  font-weight: 560;
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s;
+}
+.ues-tab:hover { background: rgba(255, 255, 255, 0.22); }
+.ues-tab.is-active { background: #fff; color: #173b66; }
+.ues-tab.is-dragging { opacity: 0.5; }
+.ues-tab-title { overflow: hidden; text-overflow: ellipsis; }
+.ues-tab-close {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
+}
+.ues-tab-close:hover { opacity: 1; background: rgba(0, 0, 0, 0.12); }
+.ues-tabs-strip { scrollbar-width: none; }
+.ues-tabs-strip::-webkit-scrollbar { display: none; }
+
+/* ---------- Меню разделов ---------- */
+.ues-sidebar {
+  width: var(--ues-sidebar-w);
+  background: var(--ues-surface);
+  border-right: 1px solid var(--ues-border);
+}
+.ues-sidebar-caption {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--ues-muted);
+}
+.ues-nav-item {
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px;
+  border-radius: 8px;
+  color: var(--ues-text);
+  font-size: 13.5px;
+  font-weight: 540;
+  transition: background 0.12s;
+}
+.ues-nav-item:hover { background: var(--ues-primary-soft); }
+.ues-nav-item.is-active {
+  background: var(--ues-primary-soft);
+  color: var(--ues-primary-text);
+  font-weight: 650;
+}
+.ues-nav-item svg { color: var(--ues-muted); }
+.ues-nav-item.is-active svg { color: var(--ues-primary); }
+.ues-nav-sub {
+  height: 30px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px 0 38px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  color: var(--ues-muted);
+}
+.ues-nav-sub:hover { background: var(--ues-primary-soft-hover); color: var(--ues-text); }
+
+/* ---------- Страница ---------- */
+.ues-page {
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 22px 28px 32px;
+}
+.ues-page-caption {
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ues-muted);
+}
+.ues-page-title {
+  font-size: clamp(21px, 1.7vw, 26px);
+  font-weight: 720;
+  letter-spacing: -0.01em;
+  color: var(--ues-text);
+  line-height: 1.2;
+}
+
+/* Панель инструментов журнала/отчёта */
+.ues-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  padding: 8px;
+  background: var(--ues-surface);
+  border: 1px solid var(--ues-border);
+  border-radius: 11px;
+  box-shadow: var(--ues-shadow-sm);
+}
+.ues-toolbar-sep { width: 1px; height: 27px; background: var(--ues-border); margin: 0 2px; }
+.ues-toolbar label { font-size: 12.5px; color: var(--ues-muted); font-weight: 560; }
+
+.ues-btn {
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--ues-border-strong);
+  background: var(--ues-surface);
+  color: var(--ues-text);
+  font-size: 13px;
+  font-weight: 620;
+  white-space: nowrap;
+  transition: background 0.12s, border-color 0.12s;
+}
+.ues-btn:hover { background: var(--ues-primary-soft-hover); border-color: var(--ues-primary-border); }
+.ues-btn.is-active { background: var(--ues-primary-soft); border-color: var(--ues-primary-border); color: var(--ues-primary-text); }
+.ues-btn.primary { background: var(--ues-primary); border-color: var(--ues-primary); color: #fff; }
+.ues-btn.primary:hover { background: var(--ues-primary-hover); }
+.ues-btn.success { background: #276749; border-color: #276749; color: #fff; }
+.ues-btn.success:hover { background: #1f5a3e; }
+.ues-btn.soft-success { background: #edf8f2; border-color: #b7dfc8; color: #205c40; }
+.ues-btn.danger { color: var(--ues-danger); }
+.ues-btn:disabled { opacity: 0.5; pointer-events: none; }
+
+.ues-input {
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--ues-border-strong);
+  background: var(--ues-surface);
+  color: var(--ues-text);
+  font-size: 13px;
+}
+.ues-input:focus { outline: none; border-color: var(--ues-primary-border); box-shadow: 0 0 0 3px rgba(39, 98, 217, 0.15); }
+
+/* Карточки показателей */
+.ues-kpis { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.ues-kpi {
+  background: var(--ues-surface);
+  border: 1px solid var(--ues-border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: var(--ues-shadow-sm);
+}
+.ues-kpi-label { font-size: 12px; color: var(--ues-muted); font-weight: 560; }
+.ues-kpi-value { font-size: 22px; font-weight: 720; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.ues-kpi-hint { font-size: 11.5px; color: var(--ues-muted); margin-top: 2px; }
+.ues-kpi.is-good .ues-kpi-value { color: var(--ues-success); }
+.ues-kpi.is-bad .ues-kpi-value { color: var(--ues-danger); }
+
+/* ---------- Таблицы ---------- */
+.ues-table-wrap {
+  background: var(--ues-surface);
+  border: 1px solid var(--ues-border);
+  border-radius: 11px;
+  overflow: auto;
+  box-shadow: var(--ues-shadow-sm);
+}
+.ues-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+.ues-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--ues-th-bg);
+  color: var(--ues-th-text);
+  font-size: 11px;
+  font-weight: 720;
+  text-align: left;
+  padding: 7px 9px;
+  border-bottom: 1px solid var(--ues-border);
+  white-space: nowrap;
+}
+.ues-table td {
+  padding: 6px 9px;
+  height: 34px;
+  border-bottom: 1px solid var(--ues-border);
+  color: var(--ues-text);
+  vertical-align: middle;
+}
+.ues-table tbody tr:hover td { background: var(--ues-row-hover); }
+.ues-table tbody tr.is-selected td { background: var(--ues-primary-soft); font-weight: 600; }
+.ues-table tbody tr.is-selected td:first-child { box-shadow: inset 3px 0 0 var(--ues-primary); }
+.ues-table tbody tr.is-clickable { cursor: pointer; }
+.ues-table .num, .ues-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ues-table th.num { text-align: right; }
+.ues-table tfoot td, .ues-table tr.is-total td {
+  background: var(--ues-th-bg);
+  font-weight: 720;
+  border-bottom: none;
+}
+.ues-table tr.is-section td {
+  background: var(--ues-surface-soft);
+  font-weight: 720;
+}
+.ues-neg { color: var(--ues-danger); }
+.ues-pos { color: var(--ues-success); }
+.ues-muted { color: var(--ues-muted); }
+
+/* Доля в отчёте: полоска + процент */
+.ues-share { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+.ues-share-bar { width: 70px; height: 6px; border-radius: 3px; background: var(--ues-primary-soft); overflow: hidden; }
+.ues-share-bar > span { display: block; height: 100%; background: var(--ues-primary-mid, #5d8fe9); border-radius: 3px; }
+
+/* Кнопка раскрытия строки отчёта (+/−) */
+.ues-expander {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1px solid var(--ues-border-strong);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--ues-muted);
+  background: var(--ues-surface);
+  flex-shrink: 0;
+}
+.ues-expander:hover { border-color: var(--ues-primary-border); color: var(--ues-primary-text); }
+
+/* Итог отчёта */
+.ues-result {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-radius: 11px;
+  font-weight: 720;
+  font-size: 15px;
+}
+.ues-result.is-good { background: var(--ues-success-soft); color: var(--ues-success); }
+.ues-result.is-bad { background: var(--ues-danger-soft); color: var(--ues-danger); }
+
+/* Карточки ссылок на страницах разделов */
+.ues-link-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--ues-surface);
+  border: 1px solid var(--ues-border);
+  border-radius: 12px;
+  box-shadow: var(--ues-shadow-sm);
+  transition: border-color 0.12s, background 0.12s;
+}
+.ues-link-card:hover { border-color: var(--ues-primary-border); background: var(--ues-primary-soft-hover); }
+.ues-link-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--ues-primary-soft);
+  color: var(--ues-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.ues-link-code {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--ues-primary-text);
+  background: var(--ues-primary-soft);
+  border-radius: 5px;
+  padding: 1px 6px;
+}
+.ues-group-title {
+  font-size: 12px;
+  font-weight: 720;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ues-muted);
+}
+
+/* Статус документа */
+.ues-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 18px;
+  border: 1px solid var(--ues-border);
+  background: var(--ues-surface);
+  font-size: 12px;
+  font-weight: 620;
+}
+.ues-status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--ues-success); }
+.ues-status.is-draft::before { background: var(--ues-primary); }
+.ues-status.is-deleted::before { background: var(--ues-danger); }
+
+/* Поля документа */
+.ues-fieldset {
+  background: var(--ues-surface);
+  border: 1px solid var(--ues-border);
+  border-radius: 12px;
+  padding: 14px 16px 16px;
+}
+.ues-fieldset > legend, .ues-fieldset-title {
+  font-size: 12px;
+  font-weight: 720;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ues-muted);
+  margin-bottom: 10px;
+}
+.ues-field-label { font-size: 12px; font-weight: 600; color: var(--ues-muted); }
+.ues-field-label .req { color: var(--ues-danger); }

@@ -144,6 +144,14 @@ export interface AuditLogFilters {
   to?: string;
 }
 
+// Деловая дата «сегодня» в формате YYYY-MM-DD по локальному времени сервера.
+function todayDateKey(): string {
+  const d = new Date();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
 export interface IStorage {
   // Users
   getUser(id: string): Promise<User | undefined>;
@@ -956,7 +964,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createOrder(order: InsertOrder): Promise<Order> {
-    const [created] = await db.insert(orders).values(order).returning();
+    const values: InsertOrder = { ...order };
+    if (values.status === "Отгружен" && !values.shippedAt) {
+      values.shippedAt = todayDateKey();
+    }
+    const [created] = await db.insert(orders).values(values).returning();
     return created;
   }
 
@@ -964,9 +976,25 @@ export class DatabaseStorage implements IStorage {
     id: string,
     order: Partial<InsertOrder>
   ): Promise<Order | undefined> {
+    const patch: Partial<InsertOrder> = { ...order };
+    // Дата отгрузки ведётся здесь, чтобы её ставили все пути смены статуса
+    // (PATCH статуса, канбан, редактирование заказа).
+    if (patch.status !== undefined && patch.shippedAt === undefined) {
+      if (patch.status === "Отгружен") {
+        const [current] = await db
+          .select({ status: orders.status, shippedAt: orders.shippedAt })
+          .from(orders)
+          .where(eq(orders.id, id));
+        if (current && !(current.status === "Отгружен" && current.shippedAt)) {
+          patch.shippedAt = todayDateKey();
+        }
+      } else {
+        patch.shippedAt = null;
+      }
+    }
     const [updated] = await db
       .update(orders)
-      .set(order)
+      .set(patch)
       .where(eq(orders.id, id))
       .returning();
     return updated;
@@ -1036,7 +1064,13 @@ export class DatabaseStorage implements IStorage {
       conditions.push(lte(financeOperations.date, filters.to));
     }
     if (filters?.type) {
-      conditions.push(eq(financeOperations.type, filters.type));
+      // «expense,supplier_payment» — несколько типов сразу (журнал РКО).
+      const types = filters.type.split(",").filter(Boolean);
+      conditions.push(
+        types.length > 1
+          ? inArray(financeOperations.type, types)
+          : eq(financeOperations.type, types[0])
+      );
     }
     if (filters?.cashboxId && filters.cashboxId !== "all") {
       conditions.push(
@@ -1085,7 +1119,13 @@ export class DatabaseStorage implements IStorage {
       conditions.push(lte(financeOperations.date, filters.to));
     }
     if (filters?.type) {
-      conditions.push(eq(financeOperations.type, filters.type));
+      // «expense,supplier_payment» — несколько типов сразу (журнал РКО).
+      const types = filters.type.split(",").filter(Boolean);
+      conditions.push(
+        types.length > 1
+          ? inArray(financeOperations.type, types)
+          : eq(financeOperations.type, types[0])
+      );
     }
     if (filters?.cashboxId && filters.cashboxId !== "all") {
       conditions.push(

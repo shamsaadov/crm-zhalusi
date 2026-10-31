@@ -41,7 +41,14 @@ import { z } from "zod";
 import { Plus, Trash2, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { EXPENSE_DIRECTIONS, type ExpenseType } from "@shared/schema";
+import {
+  EXPENSE_DIRECTIONS,
+  EXPENSE_OPERATION_TYPES,
+  INCOME_OPERATION_TYPES,
+  type ExpenseType,
+} from "@shared/schema";
+
+const NO_OPERATION = "__none__";
 
 export function ExpenseTypesTab({ search }: { search: string }) {
   const { toast } = useToast();
@@ -54,9 +61,13 @@ export function ExpenseTypesTab({ search }: { search: string }) {
 
   const form = useForm({
     resolver: zodResolver(
-      z.object({ name: z.string().min(1), direction: z.string().min(1) })
+      z.object({
+        name: z.string().min(1),
+        direction: z.string().min(1),
+        operationType: z.string(),
+      })
     ),
-    defaultValues: { name: "", direction: "expense" },
+    defaultValues: { name: "", direction: "expense", operationType: NO_OPERATION },
   });
 
   const createMutation = useMutation({
@@ -66,7 +77,7 @@ export function ExpenseTypesTab({ search }: { search: string }) {
       queryClient.invalidateQueries({ queryKey: ["/api/expense-types"] });
       setIsDialogOpen(false);
       form.reset();
-      toast({ title: "Вид расхода добавлен" });
+      toast({ title: "Статья добавлена" });
     },
     onError: (e: Error) =>
       toast({
@@ -84,7 +95,7 @@ export function ExpenseTypesTab({ search }: { search: string }) {
       setIsDialogOpen(false);
       setEditing(null);
       form.reset();
-      toast({ title: "Вид расхода обновлен" });
+      toast({ title: "Статья обновлена" });
     },
     onError: (e: Error) =>
       toast({
@@ -99,7 +110,7 @@ export function ExpenseTypesTab({ search }: { search: string }) {
       apiRequest("DELETE", `/api/expense-types/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/expense-types"] });
-      toast({ title: "Вид расхода удален" });
+      toast({ title: "Статья удалена" });
     },
     onError: (e: Error) =>
       toast({
@@ -109,14 +120,26 @@ export function ExpenseTypesTab({ search }: { search: string }) {
       }),
   });
 
-  const onSubmit = (data: Record<string, unknown>) => {
+  const onSubmit = (raw: Record<string, unknown>) => {
+    const data = {
+      ...raw,
+      operationType: raw.operationType === NO_OPERATION ? null : raw.operationType,
+    };
     if (editing) updateMutation.mutate({ id: editing.id, data });
     else createMutation.mutate(data);
   };
 
+  const direction = form.watch("direction");
+  const operationOptions: readonly string[] =
+    direction === "income" ? INCOME_OPERATION_TYPES : EXPENSE_OPERATION_TYPES;
+
   const openEdit = (item: ExpenseType) => {
     setEditing(item);
-    form.reset({ name: item.name, direction: item.direction });
+    form.reset({
+      name: item.name,
+      direction: item.direction,
+      operationType: item.operationType ?? NO_OPERATION,
+    });
     setIsDialogOpen(true);
   };
 
@@ -146,7 +169,7 @@ export function ExpenseTypesTab({ search }: { search: string }) {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>
-                {editing ? "Редактировать вид" : "Новый вид расхода"}
+                {editing ? "Редактировать статью" : "Новая статья"}
               </DialogTitle>
             </DialogHeader>
             <Form {...form}>
@@ -177,7 +200,15 @@ export function ExpenseTypesTab({ search }: { search: string }) {
                     <FormItem>
                       <FormLabel>Тип</FormLabel>
                       <Select
-                        onValueChange={field.onChange}
+                        onValueChange={(v) => {
+                          field.onChange(v);
+                          // Вид операции другого направления не подходит — сбрасываем.
+                          const allowed: readonly string[] =
+                            v === "income" ? INCOME_OPERATION_TYPES : EXPENSE_OPERATION_TYPES;
+                          if (!allowed.includes(form.getValues("operationType"))) {
+                            form.setValue("operationType", NO_OPERATION);
+                          }
+                        }}
                         value={field.value}
                       >
                         <FormControl>
@@ -193,6 +224,35 @@ export function ExpenseTypesTab({ search }: { search: string }) {
                           ))}
                         </SelectContent>
                       </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="operationType"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Вид операции по умолчанию</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-expense-type-operation">
+                            <SelectValue placeholder="Не задан" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value={NO_OPERATION}>Не задан</SelectItem>
+                          {operationOptions.map((o) => (
+                            <SelectItem key={o} value={o}>
+                              {o}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-[12px] text-muted-foreground">
+                        Подставляется в ПКО/РКО и определяет, куда статья попадёт в ОПиУ и Балансе.
+                        Если не задан: расход — «Операционные расходы», доход — «Прочее поступление».
+                      </p>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -224,6 +284,16 @@ export function ExpenseTypesTab({ search }: { search: string }) {
               e.direction === "expense" ? "Расход" : "Доход",
           },
           {
+            key: "operationType",
+            header: "Вид операции",
+            cell: (e: ExpenseType) =>
+              e.operationType ?? (
+                <span className="text-muted-foreground">
+                  {e.direction === "expense" ? "Операционные расходы" : "Прочее поступление"} (по умолчанию)
+                </span>
+              ),
+          },
+          {
             key: "actions",
             header: "",
             cell: (e: ExpenseType) => (
@@ -236,7 +306,7 @@ export function ExpenseTypesTab({ search }: { search: string }) {
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle>Удалить вид расхода?</AlertDialogTitle>
+                      <AlertDialogTitle>Удалить статью?</AlertDialogTitle>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel>Отмена</AlertDialogCancel>
@@ -254,7 +324,7 @@ export function ExpenseTypesTab({ search }: { search: string }) {
         ]}
         data={filtered}
         isLoading={isLoading}
-        emptyMessage="Виды расходов не найдены"
+        emptyMessage="Статьи не найдены"
         getRowKey={(e) => e.id}
         onRowDoubleClick={openEdit}
       />

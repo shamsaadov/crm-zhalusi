@@ -703,7 +703,7 @@ export default function FinancePage() {
   ];
 
   return (
-    <Layout title="Финансы">
+    <Layout title="Финансы (прежний журнал)">
       <div className="flex items-center justify-between gap-4 mb-4">
         <Dialog
           open={isDialogOpen}

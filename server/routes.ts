@@ -30,6 +30,7 @@ import { createReferencesRouter } from "./routes/references";
 import { createFinanceRouter } from "./routes/finance";
 import { createWarehouseRouter } from "./routes/warehouse";
 import { createOrdersRouter } from "./routes/orders";
+import { createFinancialReportsRouter } from "./routes/financial-reports";
 
 if (!process.env.SESSION_SECRET) {
   throw new Error("SESSION_SECRET environment variable is required");
@@ -2125,6 +2126,9 @@ ${dbContext}`,
 
   // ===== ORDER ROUTES (mounted as sub-router) =====
   app.use("/api", createOrdersRouter(authMiddleware));
+
+  // Управленческие отчёты: ОПиУ, ДДС, Баланс, Взаиморасчёты
+  app.use("/api", createFinancialReportsRouter(authMiddleware));
 
   // Periodic notification generation (every 30 minutes)
   setInterval(() => {

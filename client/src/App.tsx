@@ -25,6 +25,19 @@ import KanbanPage from "@/pages/kanban";
 import AuditLogPage from "@/pages/audit-log";
 import NotificationsPage from "@/pages/notifications";
 import AppNotificationsPage from "@/pages/app-notifications";
+import SectionPage from "@/pages/section";
+import {
+  AllOperationsJournalPage,
+  ExpenseJournalPage,
+  IncomeJournalPage,
+  TransferJournalPage,
+} from "@/pages/finance/journal";
+import FinanceDocumentPage from "@/pages/finance/document";
+import SettlementsPage from "@/pages/finance/settlements";
+import PnlReportPage from "@/pages/reports/pnl";
+import CashFlowReportPage from "@/pages/reports/cash-flow";
+import BalanceReportPage from "@/pages/reports/balance";
+import { WorkspaceTabsProvider } from "@/lib/workspace-tabs";
 import { Loader2 } from "lucide-react";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -88,13 +101,46 @@ function Router() {
         <ProtectedRoute component={KanbanPage} />
       </Route>
       <Route path="/finance">
+        <ProtectedRoute component={AllOperationsJournalPage} />
+      </Route>
+      <Route path="/finance/classic">
         <ProtectedRoute component={FinancePage} />
+      </Route>
+      <Route path="/finance/income">
+        <ProtectedRoute component={IncomeJournalPage} />
+      </Route>
+      <Route path="/finance/expense">
+        <ProtectedRoute component={ExpenseJournalPage} />
+      </Route>
+      <Route path="/finance/transfers">
+        <ProtectedRoute component={TransferJournalPage} />
+      </Route>
+      <Route path="/finance/settlements">
+        <ProtectedRoute component={SettlementsPage} />
+      </Route>
+      <Route path="/finance/new/:kind">
+        <ProtectedRoute component={FinanceDocumentPage} />
+      </Route>
+      <Route path="/finance/doc/:id">
+        <ProtectedRoute component={FinanceDocumentPage} />
       </Route>
       <Route path="/warehouse">
         <ProtectedRoute component={WarehousePage} />
       </Route>
       <Route path="/lists">
         <ProtectedRoute component={ListsPage} />
+      </Route>
+      <Route path="/section/:key">
+        <ProtectedRoute component={SectionPage} />
+      </Route>
+      <Route path="/reports/pnl">
+        <ProtectedRoute component={PnlReportPage} />
+      </Route>
+      <Route path="/reports/cash-flow">
+        <ProtectedRoute component={CashFlowReportPage} />
+      </Route>
+      <Route path="/reports/balance">
+        <ProtectedRoute component={BalanceReportPage} />
       </Route>
       <Route path="/reports/dds">
         <ProtectedRoute component={DDSReportPage} />
@@ -136,7 +182,9 @@ function App() {
           <ReportAccessProvider>
             <TooltipProvider>
               <Toaster />
-              <Router />
+              <WorkspaceTabsProvider>
+                <Router />
+              </WorkspaceTabsProvider>
             </TooltipProvider>
           </ReportAccessProvider>
         </AuthProvider>

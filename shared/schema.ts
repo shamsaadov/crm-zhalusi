@@ -212,6 +212,9 @@ export const expenseTypes = pgTable("expense_types", {
     .default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
   direction: text("direction").notNull(), // "expense" or "income"
+  // Вид операции по умолчанию для статьи (см. INCOME/EXPENSE_OPERATION_TYPES):
+  // определяет, куда статья попадает в ОПиУ и Балансе.
+  operationType: text("operation_type"),
   userId: varchar("user_id")
     .notNull()
     .references(() => users.id),
@@ -307,6 +310,9 @@ export const orders = pgTable("orders", {
   date: date("date").notNull(),
   dealerId: varchar("dealer_id").references(() => dealers.id),
   status: text("status").default("Новый"), // Новый, В производстве, Готов, Отгружен
+  // Дата отгрузки: момент признания выручки в ОПиУ и долга дилера в балансе.
+  // Ставится при переходе в «Отгружен», снимается при откате статуса.
+  shippedAt: date("shipped_at"),
   salePrice: decimal("sale_price", { precision: 12, scale: 2 }).default("0"),
   costPrice: decimal("cost_price", { precision: 12, scale: 2 }).default("0"),
   dealerDebt: decimal("dealer_debt", { precision: 12, scale: 2 }).default("0"),
@@ -411,6 +417,9 @@ export const financeOperations = pgTable("finance_operations", {
   dealerId: varchar("dealer_id").references(() => dealers.id),
   supplierId: varchar("supplier_id").references(() => suppliers.id),
   expenseTypeId: varchar("expense_type_id").references(() => expenseTypes.id),
+  // Вид операции как в ПКО/РКО УЭС. Пусто — выводится из type/dealerId/статьи
+  // (см. server/reports/financial.ts → resolveOperationType).
+  operationType: text("operation_type"),
   comment: text("comment"),
   isDraft: boolean("is_draft").default(false),
   deletedAt: timestamp("deleted_at"),
@@ -990,6 +999,36 @@ export const FINANCE_TYPES = [
   "transfer",
 ] as const;
 export type FinanceType = (typeof FINANCE_TYPES)[number];
+
+// Виды операций (как ПКО/РКО в УЭС). Определяют, как платёж попадает в отчёты:
+// ОПиУ (доход/расход периода), Баланс (долги, капитал, займы, имущество) или только ДДС.
+export const INCOME_OPERATION_TYPES = [
+  "Оплата от покупателя", // гасит долг дилера / аванс покупателя
+  "Возврат от поставщика", // увеличивает долг перед поставщиком (гасит аванс)
+  "Взнос собственника", // капитал
+  "Получение займа", // обязательство
+  "Прочее поступление", // прочий доход в ОПиУ
+] as const;
+export type IncomeOperationType = (typeof INCOME_OPERATION_TYPES)[number];
+
+export const EXPENSE_OPERATION_TYPES = [
+  "Оплата поставщику", // гасит долг перед поставщиком
+  "Операционные расходы", // расход периода в ОПиУ
+  "Зарплата сотрудникам", // расход периода в ОПиУ
+  "Покупка имущества", // актив, амортизация в ОПиУ
+  "Возврат покупателю", // увеличивает долг дилера (гасит аванс)
+  "Возврат займа", // уменьшает обязательство
+  "Выплата дивидендов", // уменьшает капитал
+  "Прочие расходы", // прочий расход в ОПиУ
+] as const;
+export type ExpenseOperationType = (typeof EXPENSE_OPERATION_TYPES)[number];
+
+export const OPERATION_TYPES = [
+  ...INCOME_OPERATION_TYPES,
+  ...EXPENSE_OPERATION_TYPES,
+  "Перемещение",
+] as const;
+export type OperationType = (typeof OPERATION_TYPES)[number];
 
 // Direction types for expense types
 export const EXPENSE_DIRECTIONS = ["expense", "income"] as const;

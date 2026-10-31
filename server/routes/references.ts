@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
+import { EXPENSE_OPERATION_TYPES, INCOME_OPERATION_TYPES } from "@shared/schema";
 
 interface AuthRequest extends Request {
   userId?: string;
@@ -10,6 +11,27 @@ type AuthMiddleware = (
   res: Response,
   next: NextFunction
 ) => void;
+
+
+// Статья доходов/расходов: только известные поля, вид операции — под направление статьи.
+function expenseTypeFields(body: unknown) {
+  const src = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const k of ["name", "direction", "operationType"]) {
+    if (k in src) out[k] = src[k] === "" ? null : src[k];
+  }
+  return out;
+}
+
+function validateExpenseType(data: Record<string, unknown>, partial: boolean): string | null {
+  if (!partial && (typeof data.name !== "string" || !data.name.trim())) return "Укажите название";
+  if (!["income", "expense"].includes(String(data.direction))) return "Неверный тип статьи";
+  const op = data.operationType;
+  if (op === null || op === undefined) return null;
+  const allowed: readonly string[] =
+    data.direction === "income" ? INCOME_OPERATION_TYPES : EXPENSE_OPERATION_TYPES;
+  return allowed.includes(String(op)) ? null : `«${op}» не подходит для этого типа статьи`;
+}
 
 export function createReferencesRouter(authMiddleware: AuthMiddleware): Router {
   const router = Router();
@@ -457,9 +479,12 @@ export function createReferencesRouter(authMiddleware: AuthMiddleware): Router {
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
+        const data = expenseTypeFields(req.body);
+        const error = validateExpenseType(data, false);
+        if (error) return res.status(400).json({ message: error });
         const expenseType = await storage.createExpenseType({
-          ...req.body,
-          userId: req.userId,
+          ...(data as any),
+          userId: req.userId!,
         });
         res.json(expenseType);
       } catch (error) {
@@ -474,10 +499,12 @@ export function createReferencesRouter(authMiddleware: AuthMiddleware): Router {
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
-        const expenseType = await storage.updateExpenseType(
-          req.params.id,
-          req.body
-        );
+        const existing = (await storage.getExpenseTypes(req.userId!)).find((e) => e.id === req.params.id);
+        if (!existing) return res.status(404).json({ message: "Статья не найдена" });
+        const data = expenseTypeFields(req.body);
+        const error = validateExpenseType({ ...existing, ...data }, true);
+        if (error) return res.status(400).json({ message: error });
+        const expenseType = await storage.updateExpenseType(req.params.id, data as any);
         res.json(expenseType);
       } catch (error) {
         console.error(`[${req.method} ${req.path}]`, error);
