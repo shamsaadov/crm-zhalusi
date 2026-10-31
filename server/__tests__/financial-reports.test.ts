@@ -243,3 +243,24 @@ test("Баланс сходится на случайных данных (500 п
     assert.equal(cf.kpis.closing, bal.rows.find((r) => r.key === "cash")!.amount, `run ${run} cash vs balance`);
   }
 });
+
+test("Розничный заказ без дилера: выручка один раз, долг закрыт оплатой", () => {
+  const d = baseData();
+  d.orders.push({ id: "retail", orderNumber: 77, dealerId: null, status: "Отгружен", shippedAt: "2026-10-10", salePrice: "10000" });
+  // Так оплату создаёт сам заказ (orders.ts): без дилера, с видом «Оплата от покупателя».
+  d.operations.push(
+    op({ type: "income", amount: "10000", date: "2026-10-01", operationType: "Оплата от покупателя", comment: "Оплата заказа №77" })
+  );
+  const pnl = calculateProfitAndLoss(d, "2026-10-01", "2026-10-31");
+  assert.equal(pnl._core.revenue, 1000000);
+  assert.equal(pnl._core.otherIncome, 0, "оплата заказа не прочий доход");
+  const before = calculateBalance(d, "2026-10-05");
+  assert.equal(before.rows.find((r) => r.key === "customerAdvances")!.amount, 10000, "до отгрузки — аванс розницы");
+  const after = calculateBalance(d, "2026-10-31");
+  const retail = (key: string) =>
+    after.rows.find((r) => r.key === key)!.details?.find((x) => x.id === "no-dealer")?.amount ?? 0;
+  assert.equal(retail("receivables"), 0, "розница рассчиталась");
+  assert.equal(retail("customerAdvances"), 0);
+  assert.equal(after.rows.find((r) => r.key === "receivables")!.amount, 1000, "остался только начальный долг ОкнаПлюс");
+  assert.equal(after.kpis.difference, 0);
+});

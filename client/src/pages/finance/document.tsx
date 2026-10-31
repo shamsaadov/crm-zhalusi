@@ -2,7 +2,7 @@
 // «Основное» (дата, касса, сумма, статья) + «Платёж» (вид операции, контрагент, его долг).
 // Маршруты: /finance/new/:kind и /finance/doc/:id.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation, useParams } from "wouter";
 import { Check, CheckCheck, Loader2, RotateCcw, Trash2 } from "lucide-react";
@@ -43,8 +43,14 @@ interface Form {
   comment: string;
 }
 
+// Стабильные пустые списки: новый [] на каждой отрисовке перезапускал эффекты формы.
+const NO_CASHBOXES: Cashbox[] = [];
+const NO_DEALERS: Dealer[] = [];
+const NO_SUPPLIERS: Supplier[] = [];
+const NO_EXPENSE_TYPES: ExpenseType[] = [];
+
 const EMPTY: Form = {
-  date: todayKey(),
+  date: "",
   amount: "",
   cashboxId: "",
   fromCashboxId: "",
@@ -120,47 +126,64 @@ export default function FinanceDocumentPage() {
       ? params.kind
       : "income";
 
-  const { data: cashboxes = [] } = useQuery<Cashbox[]>({ queryKey: ["/api/cashboxes"] });
-  const { data: dealers = [] } = useQuery<Dealer[]>({ queryKey: ["/api/dealers"] });
-  const { data: suppliers = [] } = useQuery<Supplier[]>({ queryKey: ["/api/suppliers"] });
-  const { data: expenseTypes = [] } = useQuery<ExpenseType[]>({ queryKey: ["/api/expense-types"] });
+  const { data: cashboxes = NO_CASHBOXES } = useQuery<Cashbox[]>({ queryKey: ["/api/cashboxes"] });
+  const { data: dealers = NO_DEALERS } = useQuery<Dealer[]>({ queryKey: ["/api/dealers"] });
+  const { data: suppliers = NO_SUPPLIERS } = useQuery<Supplier[]>({ queryKey: ["/api/suppliers"] });
+  const { data: expenseTypes = NO_EXPENSE_TYPES, isFetched: expenseTypesFetched } = useQuery<ExpenseType[]>({
+    queryKey: ["/api/expense-types"],
+  });
 
-  const [form, setForm] = useState<Form>(EMPTY);
+  const [form, setForm] = useState<Form>(() => ({ ...EMPTY, date: todayKey() }));
   const [dirty, setDirty] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof Form, string>>>({});
 
-  // Заполняем форму из документа или значениями по умолчанию.
+  // Заполняем форму один раз на документ — поздняя загрузка справочников
+  // не должна стирать то, что пользователь уже ввёл.
+  const initializedFor = useRef<string | null>(null);
   useEffect(() => {
-    if (existing) {
-      setForm({
-        date: existing.date,
-        amount: String(parseFloat(existing.amount)),
-        cashboxId: existing.cashboxId ?? "",
-        fromCashboxId: existing.fromCashboxId ?? "",
-        toCashboxId: existing.toCashboxId ?? "",
-        operationType:
-          existing.type === "transfer"
-            ? ""
-            : resolveOperationType(existing, expenseTypes.find((e) => e.id === existing.expenseTypeId)),
-        dealerId: existing.dealerId ?? "",
-        supplierId: existing.supplierId ?? "",
-        expenseTypeId: existing.expenseTypeId ?? "",
-        comment: existing.comment ?? "",
-      });
-      setDirty(false);
-    }
-  }, [existing, expenseTypes]);
+    if (!existing || !expenseTypesFetched) return;
+    if (initializedFor.current === existing.id) return;
+    initializedFor.current = existing.id;
+    setForm({
+      date: existing.date,
+      amount: String(parseFloat(existing.amount)),
+      cashboxId: existing.cashboxId ?? "",
+      fromCashboxId: existing.fromCashboxId ?? "",
+      toCashboxId: existing.toCashboxId ?? "",
+      operationType:
+        existing.type === "transfer"
+          ? ""
+          : resolveOperationType(existing, expenseTypes.find((e) => e.id === existing.expenseTypeId)),
+      dealerId: existing.dealerId ?? "",
+      supplierId: existing.supplierId ?? "",
+      expenseTypeId: existing.expenseTypeId ?? "",
+      comment: existing.comment ?? "",
+    });
+    setDirty(false);
+  }, [existing, expenseTypes, expenseTypesFetched]);
 
+  // Новый документ: вид операции по умолчанию для своего вида документа.
   useEffect(() => {
     if (!isNew) return;
-    setForm((f) => ({
+    initializedFor.current = null;
+    setForm({
       ...EMPTY,
-      cashboxId: f.cashboxId || cashboxes[0]?.id || "",
-      fromCashboxId: f.fromCashboxId || cashboxes[0]?.id || "",
-      toCashboxId: f.toCashboxId || cashboxes[1]?.id || "",
+      date: todayKey(),
       operationType: kind === "income" ? "Оплата от покупателя" : kind === "expense" ? "Операционные расходы" : "",
+    });
+    setDirty(false);
+  }, [isNew, kind]);
+
+  // Кассы подставляем, только когда поле ещё пустое.
+  useEffect(() => {
+    if (!isNew || cashboxes.length === 0) return;
+    setForm((f) => ({
+      ...f,
+      cashboxId: f.cashboxId || cashboxes[0].id,
+      fromCashboxId: f.fromCashboxId || cashboxes[0].id,
+      toCashboxId: f.toCashboxId || cashboxes[1]?.id || "",
     }));
-  }, [isNew, kind, cashboxes]);
+  }, [isNew, cashboxes]);
 
   const set = <K extends keyof Form>(key: K, value: Form[K]) => {
     setForm((f) => ({ ...f, [key]: value }));
@@ -206,7 +229,6 @@ export default function FinanceDocumentPage() {
     } else {
       if (!form.cashboxId) e.cashboxId = "Выберите кассу";
       if (!form.operationType) e.operationType = "Выберите вид операции";
-      if (party === "dealer" && !form.dealerId) e.dealerId = "Выберите дилера";
       if (party === "supplier" && !form.supplierId) e.supplierId = "Выберите поставщика";
     }
     setErrors(e);
@@ -241,7 +263,7 @@ export default function FinanceDocumentPage() {
       cashboxId: form.cashboxId,
       fromCashboxId: null,
       toCashboxId: null,
-      dealerId: party === "dealer" ? form.dealerId : null,
+      dealerId: party === "dealer" ? form.dealerId || null : null,
       supplierId: party === "supplier" ? form.supplierId : null,
       expenseTypeId: form.expenseTypeId || null,
       operationType: type === "supplier_payment" ? null : form.operationType,
@@ -302,7 +324,9 @@ export default function FinanceDocumentPage() {
     onError: (e: Error) => toast({ title: "Ошибка", description: e.message, variant: "destructive" }),
   });
 
+  const deletedDoc = !!existing?.isDraft;
   const submit = (andClose: boolean) => {
+    if (deletedDoc || save.isPending) return;
     if (validate()) save.mutate(andClose);
   };
 
@@ -547,12 +571,12 @@ export default function FinanceDocumentPage() {
                       </select>
                     </Field>
                     {party === "dealer" && (
-                      <Field label="Дилер" required error={errors.dealerId}>
+                      <Field label="Дилер" error={errors.dealerId}>
                         {sel(
                           "dealerId",
                           form.dealerId,
                           dealers.map((d) => ({ id: d.id, name: d.fullName })),
-                          "Выберите дилера"
+                          "Без дилера (розница)"
                         )}
                       </Field>
                     )}

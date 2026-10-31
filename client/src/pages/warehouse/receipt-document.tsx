@@ -2,7 +2,7 @@
 // Ткань вводится в погонных метрах и цене за п.м.; на склад идёт в м² по ширине рулона
 // (та же логика, что в прежней форме склада).
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation, useParams } from "wouter";
 import { CheckCheck, Check, Loader2, Plus, Trash2, X } from "lucide-react";
@@ -40,6 +40,10 @@ interface Line {
   original?: { quantity: string; price: string; total: string };
 }
 
+const NO_FABRICS: Fabric[] = [];
+const NO_SUPPLIERS: Supplier[] = [];
+const NO_COMPONENTS: Component[] = [];
+
 let lineSeq = 0;
 const newLine = (itemType: Line["itemType"] = "fabric"): Line => ({
   key: `l${++lineSeq}`,
@@ -67,9 +71,9 @@ export default function ReceiptDocumentPage() {
     queryKey: ["/api/warehouse", id],
     enabled: !isNew,
   });
-  const { data: suppliers = [] } = useQuery<Supplier[]>({ queryKey: ["/api/suppliers"] });
-  const { data: fabrics = [] } = useQuery<Fabric[]>({ queryKey: ["/api/fabrics"] });
-  const { data: components = [] } = useQuery<Component[]>({ queryKey: ["/api/components"] });
+  const { data: suppliers = NO_SUPPLIERS } = useQuery<Supplier[]>({ queryKey: ["/api/suppliers"] });
+  const { data: fabrics = NO_FABRICS, isFetched: fabricsFetched } = useQuery<Fabric[]>({ queryKey: ["/api/fabrics"] });
+  const { data: components = NO_COMPONENTS } = useQuery<Component[]>({ queryKey: ["/api/components"] });
 
   const [date, setDate] = useState(todayKey());
   const [supplierId, setSupplierId] = useState("");
@@ -82,8 +86,11 @@ export default function ReceiptDocumentPage() {
   const componentById = useMemo(() => new Map(components.map((c) => [c.id, c])), [components]);
 
   // Загрузка документа в форму: м² → п.м. по ширине рулона.
+  const loadedFor = useRef<string | null>(null);
   useEffect(() => {
-    if (!receipt || fabrics.length === 0) return;
+    // Ждём справочник тканей (нужна ширина рулона), но и пустой справочник — тоже ответ.
+    if (!receipt || !fabricsFetched || loadedFor.current === receipt.id) return;
+    loadedFor.current = receipt.id;
     setDate(receipt.date);
     setSupplierId(receipt.supplierId ?? "");
     setComment(receipt.comment ?? "");
@@ -114,7 +121,7 @@ export default function ReceiptDocumentPage() {
       })
     );
     setDirty(false);
-  }, [receipt, fabrics.length, fabricById]);
+  }, [receipt, fabricsFetched, fabricById]);
 
   /** Значения строки для склада: количество, цена за единицу хранения, сумма. */
   const computeLine = (l: Line) => {
@@ -148,7 +155,7 @@ export default function ReceiptDocumentPage() {
     if (!supplierId) e.supplierId = "Выберите поставщика";
     if (lines.length === 0) e.lines = "Добавьте хотя бы одну позицию";
     lines.forEach((l, i) => {
-      if (!l.itemId) e[`${l.key}:item`] = "Выберите номенклатуру";
+      if (!l.itemId && !l.original) e[`${l.key}:item`] = "Выберите номенклатуру";
       if (num(l.qtyInput) <= 0) e[`${l.key}:qty`] = "Количество больше нуля";
       if (num(l.priceInput) < 0) e[`${l.key}:price`] = "Цена не может быть отрицательной";
       if (l.itemType === "fabric" && l.itemId && fabricWidthMeters(fabricById.get(l.itemId)) <= 0) {
@@ -176,8 +183,8 @@ export default function ReceiptDocumentPage() {
           const c = computeLine(l);
           return {
             itemType: l.itemType,
-            fabricId: l.itemType === "fabric" ? l.itemId : null,
-            componentId: l.itemType === "component" ? l.itemId : null,
+            fabricId: l.itemType === "fabric" ? l.itemId || null : null,
+            componentId: l.itemType === "component" ? l.itemId || null : null,
             quantity: c.quantity,
             price: c.price,
             total: c.total,
@@ -216,7 +223,10 @@ export default function ReceiptDocumentPage() {
     onError: (e: Error) => toast({ title: "Ошибка", description: e.message, variant: "destructive" }),
   });
 
-  const submit = (andClose: boolean) => validate() && save.mutate(andClose);
+  const submit = (andClose: boolean) => {
+    if (save.isPending) return;
+    if (validate()) save.mutate(andClose);
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

@@ -144,12 +144,15 @@ export interface AuditLogFilters {
   to?: string;
 }
 
-// Деловая дата «сегодня» в формате YYYY-MM-DD по локальному времени сервера.
+// Деловая дата «сегодня» (YYYY-MM-DD) по Москве — как остальное приложение
+// (client/src/lib/date.ts). Иначе отгрузка в 00:00–03:00 попала бы во вчерашний день.
 function todayDateKey(): string {
-  const d = new Date();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${d.getFullYear()}-${mm}-${dd}`;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Moscow",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
 }
 
 export interface IStorage {
@@ -966,7 +969,8 @@ export class DatabaseStorage implements IStorage {
   async createOrder(order: InsertOrder): Promise<Order> {
     const values: InsertOrder = { ...order };
     if (values.status === "Отгружен" && !values.shippedAt) {
-      values.shippedAt = todayDateKey();
+      // Заказ заводят сразу отгруженным — это ввод прошедшей продажи, берём её дату.
+      values.shippedAt = values.date || todayDateKey();
     }
     const [created] = await db.insert(orders).values(values).returning();
     return created;

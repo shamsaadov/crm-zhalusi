@@ -62,6 +62,16 @@ function validateOperationType(type: unknown, operationType: unknown): string | 
   return null;
 }
 
+/** Без кассы операция не попадёт ни в одну кассу — и баланс разойдётся. */
+function validateCashboxes(data: Record<string, unknown>): string | null {
+  if (data.type === "transfer") {
+    if (!data.fromCashboxId || !data.toCashboxId) return "Укажите кассу-отправителя и кассу-получателя";
+    if (data.fromCashboxId === data.toCashboxId) return "Кассы перемещения должны различаться";
+    return null;
+  }
+  return data.cashboxId ? null : "Укажите кассу";
+}
+
 function validateOperation(data: Record<string, unknown>, partial: boolean): string | null {
   if (!partial || "type" in data) {
     if (!(FINANCE_TYPES as readonly string[]).includes(String(data.type))) return "Неверный тип операции";
@@ -197,7 +207,9 @@ export function createFinanceRouter(authMiddleware: AuthMiddleware): Router {
       try {
         const data = pickEditable(req.body);
         const error =
-          validateOperation(data, false) ?? validateOperationType(data.type, data.operationType);
+          validateOperation(data, false) ??
+          validateCashboxes(data) ??
+          validateOperationType(data.type, data.operationType);
         if (error) return res.status(400).json({ message: error });
 
         const operation = await storage.createFinanceOperation({
@@ -231,6 +243,18 @@ export function createFinanceRouter(authMiddleware: AuthMiddleware): Router {
           return res.status(404).json({ message: "Операция не найдена" });
         }
         const data = pickEditable(req.body);
+        // Прежний журнал меняет тип операции, не зная про вид операции: если старый
+        // вид к новому типу не подходит — сбрасываем его, он выведется заново.
+        if (
+          "type" in data &&
+          !("operationType" in data) &&
+          validateOperationType(data.type, before.operationType)
+        ) {
+          data.operationType = null;
+        }
+        // Восстановление идёт через /restore — правкой нельзя снять пометку удаления.
+        delete data.isDraft;
+        if (Object.keys(data).length === 0) return res.json(before);
         const error =
           validateOperation(data, true) ??
           validateOperationType(data.type ?? before.type, "operationType" in data ? data.operationType : before.operationType);

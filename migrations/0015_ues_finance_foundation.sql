@@ -38,3 +38,17 @@ WHERE "status" = 'Отгружен' AND "shipped_at" IS NULL;
 CREATE INDEX IF NOT EXISTS "orders_user_shipped_at_idx" ON "orders" ("user_id", "shipped_at");
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "finance_operations_user_date_idx" ON "finance_operations" ("user_id", "date");
+
+--> statement-breakpoint
+
+-- 4. Оплаты заказов и рассрочки, созданные автоматически, — это оплата от покупателя,
+--    а не прочий доход (иначе у розничных заказов без дилера выручка считалась бы дважды).
+UPDATE "finance_operations"
+SET "operation_type" = 'Оплата от покупателя'
+WHERE "type" = 'income'
+  AND "operation_type" IS NULL
+  AND (
+    "comment" LIKE 'Оплата заказа №%'
+    OR "comment" LIKE 'Рассрочка, платёж №%'
+    OR "id" IN (SELECT "finance_operation_id" FROM "installment_payments" WHERE "finance_operation_id" IS NOT NULL)
+  );

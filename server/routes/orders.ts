@@ -563,6 +563,7 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
           if (targetCashboxId) {
             await storage.createFinanceOperation({
               type: "income",
+              operationType: "Оплата от покупателя", // оплата заказа — не прочий доход
               amount: orderData.salePrice,
               date: orderData.date,
               cashboxId: targetCashboxId,
@@ -677,6 +678,7 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
           if (targetCashboxId) {
             await storage.createFinanceOperation({
               type: "income",
+              operationType: "Оплата от покупателя", // оплата заказа — не прочий доход
               amount: orderData.salePrice,
               date: orderData.date,
               cashboxId: targetCashboxId,
@@ -766,6 +768,7 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
             if (targetCashboxId) {
               await storage.createFinanceOperation({
                 type: "income",
+              operationType: "Оплата от покупателя", // оплата заказа — не прочий доход
                 amount: salePrice,
                 date:
                   orderData.date ||
@@ -1540,7 +1543,9 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
         const order = await storage.getOrder(planRow.orderId);
 
         const finOp = await storage.createFinanceOperation({
-          type: "income", amount: payment.amount,
+          type: "income",
+          amount: payment.amount,
+          operationType: "Оплата от покупателя", // платёж по рассрочке — оплата заказа
           date: new Date().toISOString().split("T")[0], cashboxId,
           dealerId: order?.dealerId || null,
           comment: `Рассрочка, платёж №${payment.paymentNumber} по заказу №${order?.orderNumber || "?"}`,

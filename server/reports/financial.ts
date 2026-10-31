@@ -345,7 +345,7 @@ export function calculateProfitAndLoss(data: FinData, from: string, to: string) 
       "revenue",
       "Продажи",
       o.dealerId ?? "no-dealer",
-      dealer?.name ?? "Без дилера",
+      dealer?.name ?? "Без дилера (розница)",
       kop,
       {
         id: o.id,
@@ -591,7 +591,7 @@ export function calculateCashFlow(
           `op:${t}`,
           INCOME_GROUP_TITLES[t],
           op.dealerId ?? "no-dealer",
-          dealer?.name ?? "Без покупателя",
+          dealer?.name ?? "Без дилера (розница)",
           kop,
           doc,
           true
@@ -677,7 +677,7 @@ export function dealerSettlements(data: FinData, asOf: string, ctx = makeCtx(dat
     let s = map.get(id);
     if (!s) {
       const d = ctx.dealers.get(id);
-      s = { id, name: d?.name ?? "Без дилера", charged: 0, paid: 0, balance: 0 };
+      s = { id, name: d?.name ?? "Без дилера (розница)", charged: 0, paid: 0, balance: 0 };
       map.set(id, s);
     }
     return s;
@@ -693,10 +693,12 @@ export function dealerSettlements(data: FinData, asOf: string, ctx = makeCtx(dat
     get(o.dealerId ?? NO_DEALER).charged += toKop(o.salePrice);
   }
   for (const op of data.operations) {
-    if (!op.dealerId || op.date > asOf) continue;
+    if (op.date > asOf) continue;
     const t = ctx.opType.get(op.id);
-    if (t === "Оплата от покупателя") get(op.dealerId).paid += toKop(op.amount);
-    else if (t === "Возврат покупателю") get(op.dealerId).charged += toKop(op.amount);
+    // Оплата без дилера — розница: гасит долг «Без дилера» за розничные заказы.
+    const key = op.dealerId ?? NO_DEALER;
+    if (t === "Оплата от покупателя") get(key).paid += toKop(op.amount);
+    else if (t === "Возврат покупателю") get(key).charged += toKop(op.amount);
   }
   map.forEach((s) => (s.balance = s.charged - s.paid));
   return Array.from(map.values());
@@ -774,9 +776,6 @@ export function calculateBalance(data: FinData, asOf: string) {
     if (op.date > asOf) continue;
     const t = ctx.opType.get(op.id);
     const kop = toKop(op.amount);
-    if ((t === "Оплата от покупателя" || t === "Возврат покупателю") && !op.dealerId) {
-      unallocated += t === "Оплата от покупателя" ? kop : -kop;
-    }
     if ((t === "Оплата поставщику" || t === "Возврат от поставщика") && !op.supplierId) {
       unallocated += t === "Возврат от поставщика" ? kop : -kop;
     }
