@@ -14,7 +14,9 @@ import RegisterPage from "@/pages/register";
 import OrdersPage from "@/pages/orders";
 import FinancePage from "@/pages/finance";
 import WarehousePage from "@/pages/warehouse";
-import ListsPage from "@/pages/lists";
+import DirectoriesOverviewPage from "@/pages/directories/overview";
+import DirectoryListPage from "@/pages/directories/list";
+import DirectoryCardPage from "@/pages/directories/card";
 import DDSReportPage from "@/pages/reports/dds";
 import ProfitReportPage from "@/pages/reports/profit";
 import ARAPReportPage from "@/pages/reports/ar-ap";
@@ -148,7 +150,13 @@ function Router() {
         <ProtectedRoute component={AdjustmentsJournalPage} />
       </Route>
       <Route path="/lists">
-        <ProtectedRoute component={ListsPage} />
+        <ProtectedRoute component={DirectoriesOverviewPage} />
+      </Route>
+      <Route path="/lists/:entity">
+        <ProtectedRoute component={DirectoryListPage} />
+      </Route>
+      <Route path="/lists/:entity/:id">
+        <ProtectedRoute component={DirectoryCardPage} />
       </Route>
       <Route path="/section/:key">
         <ProtectedRoute component={SectionPage} />

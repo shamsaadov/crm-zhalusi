@@ -430,7 +430,7 @@ export function CommandPalette() {
         setLocation(`/orders?dealerId=${quickView.data.id}`);
         break;
       case "supplier":
-        setLocation(`/lists?tab=suppliers`);
+        setLocation(`/lists/suppliers`);
         break;
     }
   }, [quickView, setLocation]);

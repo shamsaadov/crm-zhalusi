@@ -416,8 +416,51 @@ body {
 .ues-field-label { font-size: 12px; font-weight: 600; color: var(--ues-muted); }
 .ues-field-label .req { color: var(--ues-danger); }
 
+/* ---------- Справочники (как DirectoryOverview и ues-form в УЭС) ---------- */
+.ues-directory-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.ues-directory-card {
+  min-height: 76px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  color: var(--ues-text);
+  background: var(--ues-surface);
+  border: 1px solid var(--ues-border);
+  border-radius: 12px;
+  box-shadow: var(--ues-shadow-sm);
+  transition: border-color 0.12s, box-shadow 0.12s, transform 0.12s;
+}
+.ues-directory-card:hover { border-color: var(--ues-primary-border); box-shadow: 0 7px 20px rgba(31, 82, 146, 0.08); transform: translateY(-1px); }
+.ues-directory-card i {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  color: var(--ues-primary);
+  background: var(--ues-primary-soft);
+  border-radius: 9px;
+  font-style: normal;
+  font-weight: 700;
+  font-size: 13px;
+}
+.ues-directory-card span { display: flex; min-width: 0; flex-direction: column; }
+.ues-directory-card strong { font-size: 14px; font-weight: 650; }
+.ues-directory-card small { margin-top: 3px; color: var(--ues-muted); font-size: 12px; line-height: 1.35; }
+.ues-directory-card b { margin-left: auto; color: var(--ues-muted); font-size: 20px; font-weight: 400; }
+
+.ues-dir-form { max-width: 760px; }
+.ues-dir-grid { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 10px 14px; align-items: start; }
+.ues-dir-label { padding-top: 8px; text-align: right; font-size: 13px; font-weight: 560; color: var(--ues-muted); }
+
+@media (max-width: 1100px) { .ues-directory-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
 /* ---------- Узкий экран ---------- */
 @media (max-width: 640px) {
+  .ues-directory-grid { grid-template-columns: 1fr; }
+  .ues-dir-grid { grid-template-columns: 1fr; gap: 4px; }
+  .ues-dir-label { text-align: left; padding-top: 6px; }
   .ues-page { padding: 16px 16px 28px; }
   .ues-kpi { padding: 12px; }
   .ues-kpi-value { font-size: 18px; }

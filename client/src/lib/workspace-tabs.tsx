@@ -36,8 +36,16 @@ function readTabs(key: string | null): WorkspaceTab[] {
   try {
     const raw = localStorage.getItem(key);
     const parsed = raw ? JSON.parse(raw) : [];
+    // Экраны, которые стали разделами (например, прежние «Справочники» с ?tab=…),
+    // больше не вкладки — убираем их из сохранённого набора.
     return Array.isArray(parsed)
-      ? parsed.filter((t) => t && typeof t.path === "string" && typeof t.title === "string")
+      ? parsed.filter(
+          (t) =>
+            t &&
+            typeof t.path === "string" &&
+            typeof t.title === "string" &&
+            !isNavigationPath(t.path.split("?")[0])
+        )
       : [];
   } catch {
     return [];

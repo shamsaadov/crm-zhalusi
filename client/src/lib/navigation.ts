@@ -32,6 +32,12 @@ import {
   Bell,
   User,
   Smartphone,
+  Layers,
+  Wrench,
+  Settings2,
+  Palette,
+  Percent,
+  Truck,
 } from "lucide-react";
 
 export interface NavItem {
@@ -126,13 +132,6 @@ export const NAV_SECTIONS: NavSection[] = [
           { title: "Взаиморасчёты", path: "/finance/settlements", icon: Users, description: "Дилеры и поставщики" },
         ],
       },
-      {
-        title: "Настройки",
-        items: [
-          { title: "Кассы", path: "/lists?tab=cashboxes", icon: Landmark, description: "Кассы и начальные остатки" },
-          { title: "Статьи расходов и доходов", path: "/lists?tab=expenseTypes", icon: Tags, description: "Статьи и виды операций" },
-        ],
-      },
     ],
   },
   {
@@ -167,7 +166,34 @@ export const NAV_SECTIONS: NavSection[] = [
     title: "Справочники",
     icon: BookOpen,
     path: "/lists",
-    groups: [],
+    description: "Основные данные предприятия",
+    // Страница раздела своя (pages/directories/overview.tsx); пункты здесь — для поиска в меню.
+    groups: [
+      {
+        title: "Номенклатура",
+        items: [
+          { title: "Ткани", path: "/lists/fabrics", icon: Layers, description: "Полотна, ширина рулона, категории" },
+          { title: "Комплектующие", path: "/lists/components", icon: Wrench, description: "Фурнитура" },
+          { title: "Системы", path: "/lists/systems", icon: Settings2, description: "Конструкции и состав" },
+          { title: "Цвета", path: "/lists/colors", icon: Palette, description: "Цвета" },
+          { title: "Множители", path: "/lists/multipliers", icon: Percent, description: "Множители цены" },
+        ],
+      },
+      {
+        title: "Контрагенты",
+        items: [
+          { title: "Дилеры", path: "/lists/dealers", icon: Users, description: "Покупатели" },
+          { title: "Поставщики", path: "/lists/suppliers", icon: Truck, description: "Поставщики" },
+        ],
+      },
+      {
+        title: "Деньги",
+        items: [
+          { title: "Кассы", path: "/lists/cashboxes", icon: Landmark, description: "Места хранения денежных средств" },
+          { title: "Статьи расходов и доходов", path: "/lists/expense-types", icon: Tags, description: "Назначения поступлений и выплат" },
+        ],
+      },
+    ],
   },
   {
     key: "history",
@@ -202,7 +228,7 @@ export const NAV_SECTIONS: NavSection[] = [
 
 /** Пути, которые не открываются вкладкой (навигационные страницы, как разделы в УЭС). */
 export function isNavigationPath(path: string) {
-  return path.startsWith("/section/") || path === "/dashboard";
+  return path.startsWith("/section/") || path === "/dashboard" || path === "/lists";
 }
 
 function pathOnly(path: string) {
