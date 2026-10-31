@@ -4,6 +4,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useJournalBottomScroll } from "@/lib/journal-scroll";
+import { DayRow, groupByDay } from "@/components/ues/day-rows";
 import { format } from "date-fns";
 import {
   AlertTriangle,
@@ -426,7 +427,20 @@ export function OrdersJournal(p: OrdersJournalProps) {
                     </td>
                   </tr>
                 )}
-                {rows.map((o) => {
+                {groupByDay(rows, (o) => o.date, (o) => parseFloat(o.salePrice?.toString() || "0")).map((g) => {
+                  if (g.kind === "day") {
+                    return (
+                      <DayRow
+                        key={`day-${g.date}`}
+                        date={g.date}
+                        count={g.count}
+                        sum={g.sum}
+                        colSpan={colCount + 1}
+                        noun={["заказ", "заказа", "заказов"]}
+                      />
+                    );
+                  }
+                  const o = g.item;
                   const status = (o.status as OrderStatus) || "Новый";
                   const pay = o.paymentState ?? "none";
                   const production: "full" | "sent" | "none" =

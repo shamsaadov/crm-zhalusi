@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { useJournalBottomScroll } from "@/lib/journal-scroll";
+import { DayRow, groupByDay } from "@/components/ues/day-rows";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { Plus, Search } from "lucide-react";
@@ -115,7 +116,17 @@ export default function ReceiptsJournalPage() {
                   </td>
                 </tr>
               )}
-              {rows.map((r) => (
+              {groupByDay(rows, (r) => r.date, (r) => parseFloat(r.total ?? "0")).map((g) =>
+                g.kind === "day" ? (
+                  <DayRow
+                    key={`day-${g.date}`}
+                    date={g.date}
+                    count={g.count}
+                    sum={g.sum}
+                    colSpan={5}
+                    noun={["поступление", "поступления", "поступлений"]}
+                  />
+                ) : ((r: ReceiptRow) => (
                 <tr
                   key={r.id}
                   className={cn("is-clickable", selected === r.id && "is-selected")}
@@ -133,7 +144,8 @@ export default function ReceiptsJournalPage() {
                   </td>
                   <td className="num font-semibold">{fmtMoney(parseFloat(r.total ?? "0"))}</td>
                 </tr>
-              ))}
+              ))(g.item)
+              )}
             </tbody>
             {rows.length > 0 && (
               <tfoot>

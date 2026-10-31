@@ -2,6 +2,7 @@
 
 import { Fragment, useMemo, useRef, useState } from "react";
 import { useJournalBottomScroll } from "@/lib/journal-scroll";
+import { DayRow, groupByDay } from "@/components/ues/day-rows";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Search } from "lucide-react";
@@ -103,7 +104,17 @@ export default function WriteoffsJournalPage() {
                   </td>
                 </tr>
               )}
-              {groups.map((g) => (
+              {groupByDay(groups, (x) => x.date, (x) => x.total).map((d) =>
+                d.kind === "day" ? (
+                  <DayRow
+                    key={`day-${d.date}`}
+                    date={d.date}
+                    count={d.count}
+                    sum={d.sum}
+                    colSpan={5}
+                    noun={["списание", "списания", "списаний"]}
+                  />
+                ) : ((g: Group) => (
                 <Fragment key={g.key}>
                   <tr className="is-clickable font-medium" onClick={() => toggle(g.key)}>
                     <td>{fmtDate(g.date)}</td>
@@ -147,7 +158,8 @@ export default function WriteoffsJournalPage() {
                       );
                     })}
                 </Fragment>
-              ))}
+              ))(d.item)
+              )}
             </tbody>
             {groups.length > 0 && (
               <tfoot>

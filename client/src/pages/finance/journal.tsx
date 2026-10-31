@@ -3,6 +3,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { useJournalBottomScroll } from "@/lib/journal-scroll";
+import { DayRow, groupByDay } from "@/components/ues/day-rows";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { Plus, Search, Trash2 } from "lucide-react";
@@ -248,7 +249,20 @@ export function FinanceJournal({ kind }: { kind: CashDocKind }) {
                   </td>
                 </tr>
               )}
-              {rows.map(({ op, operationType }) => {
+              {groupByDay(rows, (r) => r.op.date, (r) => (r.op.isDraft ? 0 : parseFloat(r.op.amount))).map((g) => {
+                if (g.kind === "day") {
+                  return (
+                    <DayRow
+                      key={`day-${g.date}`}
+                      date={g.date}
+                      count={g.count}
+                      sum={g.sum}
+                      colSpan={kind === "all" ? 9 : kind === "transfer" ? 4 : 7}
+                      showSum={kind !== "all"}
+                    />
+                  );
+                }
+                const { op, operationType } = g.item;
                 const amount = parseFloat(op.amount);
                 return (
                   <tr

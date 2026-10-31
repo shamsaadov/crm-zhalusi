@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { useJournalBottomScroll } from "@/lib/journal-scroll";
+import { DayRow, groupByDay } from "@/components/ues/day-rows";
 import { useQuery } from "@tanstack/react-query";
 import { Plus, Search } from "lucide-react";
 import { Layout } from "@/components/layout";
@@ -154,7 +155,17 @@ export default function AdjustmentsJournalPage() {
                   </td>
                 </tr>
               )}
-              {rows.map((a) => (
+              {groupByDay(rows, (a) => a.date).map((g) =>
+                g.kind === "day" ? (
+                  <DayRow
+                    key={`day-${g.date}`}
+                    date={g.date}
+                    count={g.count}
+                    colSpan={5}
+                    noun={["корректировка", "корректировки", "корректировок"]}
+                    showSum={false}
+                  />
+                ) : ((a: Adjustment) => (
                 <tr key={`${a.type}-${a.id}`}>
                   <td>{fmtDate(a.date)}</td>
                   <td className={cn(a.type === "increase" ? "ues-pos" : "ues-neg")}>
@@ -169,7 +180,8 @@ export default function AdjustmentsJournalPage() {
                     {a.comment || "—"}
                   </td>
                 </tr>
-              ))}
+              ))(g.item)
+              )}
             </tbody>
           </table>
         </div>
