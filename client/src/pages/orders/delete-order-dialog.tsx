@@ -28,11 +28,13 @@ export function DeleteOrderDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Удалить заказ?</DialogTitle>
+          <DialogTitle>Пометить заказ на удаление?</DialogTitle>
         </DialogHeader>
         <p>
-          Вы уверены, что хотите удалить заказ #{order?.orderNumber}? Это
-          действие необратимо.
+          Заказ №{order?.orderNumber} пропадёт из журнала, отчётов и долга дилера, а
+          списанные материалы вернутся на склад. Снять пометку можно в журнале
+          («Помеченные») или в «Настройки → Помеченные на удаление» — там же
+          заказ удаляется окончательно.
         </p>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -45,7 +47,7 @@ export function DeleteOrderDialog({
             data-testid="button-confirm-delete"
           >
             {isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Удалить
+            Пометить на удаление
           </Button>
         </DialogFooter>
       </DialogContent>

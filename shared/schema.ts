@@ -39,6 +39,9 @@ export const colors = pgTable("colors", {
     .primaryKey()
     .default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
+  // Пометка на удаление (как в УЭС): скрыто из рабочих списков и расчётов,
+  // окончательно удаляется в «Настройки → Помеченные на удаление».
+  deletedAt: timestamp("deleted_at"),
   userId: varchar("user_id")
     .notNull()
     .references(() => users.id),
@@ -63,6 +66,9 @@ export const fabrics = pgTable("fabrics", {
   price: decimal("price", { precision: 12, scale: 2 }),
   colorId: varchar("color_id").references(() => colors.id),
   category: text("category"), // 1,2,3,4,5,E
+  // Пометка на удаление (как в УЭС): скрыто из рабочих списков и расчётов,
+  // окончательно удаляется в «Настройки → Помеченные на удаление».
+  deletedAt: timestamp("deleted_at"),
   userId: varchar("user_id")
     .notNull()
     .references(() => users.id),
@@ -96,6 +102,9 @@ export const dealers = pgTable("dealers", {
   workshopRateRulon: decimal("workshop_rate_rulon", { precision: 12, scale: 2 }).default("28"),
   workshopRateZebra: decimal("workshop_rate_zebra", { precision: 12, scale: 2 }).default("28"),
   isActive: boolean("is_active").default(true),
+  // Пометка на удаление (как в УЭС): скрыто из рабочих списков и расчётов,
+  // окончательно удаляется в «Настройки → Помеченные на удаление».
+  deletedAt: timestamp("deleted_at"),
   userId: varchar("user_id")
     .notNull()
     .references(() => users.id),
@@ -122,6 +131,9 @@ export const cashboxes = pgTable("cashboxes", {
     precision: 12,
     scale: 2,
   }).default("0"),
+  // Пометка на удаление (как в УЭС): скрыто из рабочих списков и расчётов,
+  // окончательно удаляется в «Настройки → Помеченные на удаление».
+  deletedAt: timestamp("deleted_at"),
   userId: varchar("user_id")
     .notNull()
     .references(() => users.id),
@@ -149,6 +161,9 @@ export const systems = pgTable("systems", {
   multiplierId: varchar("multiplier_id").references(() => multipliers.id, {
     onDelete: "set null",
   }),
+  // Пометка на удаление (как в УЭС): скрыто из рабочих списков и расчётов,
+  // окончательно удаляется в «Настройки → Помеченные на удаление».
+  deletedAt: timestamp("deleted_at"),
   userId: varchar("user_id")
     .notNull()
     .references(() => users.id),
@@ -215,6 +230,9 @@ export const expenseTypes = pgTable("expense_types", {
   // Вид операции по умолчанию для статьи (см. INCOME/EXPENSE_OPERATION_TYPES):
   // определяет, куда статья попадает в ОПиУ и Балансе.
   operationType: text("operation_type"),
+  // Пометка на удаление (как в УЭС): скрыто из рабочих списков и расчётов,
+  // окончательно удаляется в «Настройки → Помеченные на удаление».
+  deletedAt: timestamp("deleted_at"),
   userId: varchar("user_id")
     .notNull()
     .references(() => users.id),
@@ -238,6 +256,9 @@ export const components = pgTable("components", {
   name: text("name").notNull(),
   colorId: varchar("color_id").references(() => colors.id),
   unit: text("unit"), // шт/м/упак
+  // Пометка на удаление (как в УЭС): скрыто из рабочих списков и расчётов,
+  // окончательно удаляется в «Настройки → Помеченные на удаление».
+  deletedAt: timestamp("deleted_at"),
   userId: varchar("user_id")
     .notNull()
     .references(() => users.id),
@@ -261,6 +282,9 @@ export const multipliers = pgTable("multipliers", {
     .default(sql`gen_random_uuid()`),
   value: decimal("value", { precision: 10, scale: 4 }).notNull(),
   name: text("name"),
+  // Пометка на удаление (как в УЭС): скрыто из рабочих списков и расчётов,
+  // окончательно удаляется в «Настройки → Помеченные на удаление».
+  deletedAt: timestamp("deleted_at"),
   userId: varchar("user_id")
     .notNull()
     .references(() => users.id),
@@ -286,6 +310,9 @@ export const suppliers = pgTable("suppliers", {
     precision: 12,
     scale: 2,
   }).default("0"),
+  // Пометка на удаление (как в УЭС): скрыто из рабочих списков и расчётов,
+  // окончательно удаляется в «Настройки → Помеченные на удаление».
+  deletedAt: timestamp("deleted_at"),
   userId: varchar("user_id")
     .notNull()
     .references(() => users.id),
@@ -317,6 +344,9 @@ export const orders = pgTable("orders", {
   costPrice: decimal("cost_price", { precision: 12, scale: 2 }).default("0"),
   dealerDebt: decimal("dealer_debt", { precision: 12, scale: 2 }).default("0"),
   comment: text("comment"),
+  // Пометка на удаление (как в УЭС): скрыто из рабочих списков и расчётов,
+  // окончательно удаляется в «Настройки → Помеченные на удаление».
+  deletedAt: timestamp("deleted_at"),
   userId: varchar("user_id")
     .notNull()
     .references(() => users.id),
@@ -479,6 +509,9 @@ export const warehouseReceipts = pgTable("warehouse_receipts", {
   date: date("date").notNull(),
   total: decimal("total", { precision: 12, scale: 2 }).default("0"),
   comment: text("comment"),
+  // Пометка на удаление (как в УЭС): скрыто из рабочих списков и расчётов,
+  // окончательно удаляется в «Настройки → Помеченные на удаление».
+  deletedAt: timestamp("deleted_at"),
   userId: varchar("user_id")
     .notNull()
     .references(() => users.id),

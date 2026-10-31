@@ -211,7 +211,10 @@ export default function FinanceDocumentPage() {
     kind === "income" ? INCOME_OPERATION_TYPES : kind === "expense" ? EXPENSE_OPERATION_TYPES : [];
   const party = counterpartyFor(form.operationType);
   const direction = kind === "income" ? "income" : "expense";
-  const articles = expenseTypes.filter((e) => e.direction === direction);
+  // Помеченные на удаление записи справочников не предлагаем (кроме уже выбранных).
+  const live = <T extends { id: string; deletedAt?: Date | string | null }>(list: T[], current: string) =>
+    list.filter((x) => !x.deletedAt || x.id === current);
+  const articles = live(expenseTypes, form.expenseTypeId).filter((e) => e.direction === direction);
 
   // Долг выбранного контрагента на дату документа.
   const { data: settlements } = useQuery<{
@@ -487,7 +490,7 @@ export default function FinanceDocumentPage() {
                       />
                     </Field>
                     <Field label="Касса-отправитель" required error={errors.fromCashboxId}>
-                      {sel("fromCashboxId", form.fromCashboxId, cashboxes, "Выберите кассу")}
+                      {sel("fromCashboxId", form.fromCashboxId, live(cashboxes, form.fromCashboxId), "Выберите кассу")}
                     </Field>
                   </div>
                 </section>
@@ -495,7 +498,7 @@ export default function FinanceDocumentPage() {
                   <div className="ues-fieldset-title">Получатель</div>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <Field label="Касса-получатель" required error={errors.toCashboxId}>
-                      {sel("toCashboxId", form.toCashboxId, cashboxes, "Выберите кассу")}
+                      {sel("toCashboxId", form.toCashboxId, live(cashboxes, form.toCashboxId), "Выберите кассу")}
                     </Field>
                     <Field label="Сумма" required error={errors.amount}>
                       <input
@@ -527,7 +530,7 @@ export default function FinanceDocumentPage() {
                       />
                     </Field>
                     <Field label="Касса" required error={errors.cashboxId}>
-                      {sel("cashboxId", form.cashboxId, cashboxes, "Выберите кассу")}
+                      {sel("cashboxId", form.cashboxId, live(cashboxes, form.cashboxId), "Выберите кассу")}
                     </Field>
                     <Field label="Сумма" required error={errors.amount}>
                       <input
@@ -591,14 +594,14 @@ export default function FinanceDocumentPage() {
                         {sel(
                           "dealerId",
                           form.dealerId,
-                          dealers.map((d) => ({ id: d.id, name: d.fullName })),
+                          live(dealers, form.dealerId).map((d) => ({ id: d.id, name: d.fullName })),
                           "Без дилера (розница)"
                         )}
                       </Field>
                     )}
                     {party === "supplier" && (
                       <Field label="Поставщик" required error={errors.supplierId}>
-                        {sel("supplierId", form.supplierId, suppliers, "Выберите поставщика")}
+                        {sel("supplierId", form.supplierId, live(suppliers, form.supplierId), "Выберите поставщика")}
                       </Field>
                     )}
                   </div>

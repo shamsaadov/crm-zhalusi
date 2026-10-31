@@ -7,6 +7,7 @@ import {
   desc,
   sum,
   isNull,
+  isNotNull,
   ne,
   or,
   ilike,
@@ -114,6 +115,8 @@ export interface PaginatedResult<T> {
 }
 
 export interface OrderFilters {
+  /** Помеченные на удаление: не показывать (по умолчанию), вместе с остальными или только их. */
+  deleted?: "exclude" | "include" | "only";
   status?: string;
   dealerId?: string;
   from?: string;
@@ -131,6 +134,7 @@ export interface FinanceOperationFilters {
 }
 
 export interface WarehouseFilters {
+  deleted?: "exclude" | "include" | "only";
   supplierId?: string;
   from?: string;
   to?: string;
@@ -389,6 +393,9 @@ export interface IStorage {
 export class DatabaseStorage implements IStorage {
   private buildWarehouseConditions(userId: string, filters?: WarehouseFilters) {
     const conditions = [eq(warehouseReceipts.userId, userId)];
+    const deleted = filters?.deleted ?? "exclude";
+    if (deleted === "exclude") conditions.push(isNull(warehouseReceipts.deletedAt));
+    if (deleted === "only") conditions.push(isNotNull(warehouseReceipts.deletedAt));
 
     if (filters?.supplierId && filters.supplierId !== "all") {
       conditions.push(eq(warehouseReceipts.supplierId, filters.supplierId));
@@ -453,8 +460,9 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  // Удаление из справочника — только пометка (как в УЭС); окончательно — server/deletions.ts.
   async deleteColor(id: string): Promise<void> {
-    await db.delete(colors).where(eq(colors.id, id));
+    await db.update(colors).set({ deletedAt: new Date() }).where(eq(colors.id, id));
   }
 
   // Fabrics
@@ -479,8 +487,9 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  // Удаление из справочника — только пометка (как в УЭС); окончательно — server/deletions.ts.
   async deleteFabric(id: string): Promise<void> {
-    await db.delete(fabrics).where(eq(fabrics.id, id));
+    await db.update(fabrics).set({ deletedAt: new Date() }).where(eq(fabrics.id, id));
   }
 
   // Dealers with balance calculation
@@ -497,7 +506,7 @@ export class DatabaseStorage implements IStorage {
           .select({ total: sum(orders.salePrice) })
           .from(orders)
           .where(
-            and(eq(orders.dealerId, dealer.id), eq(orders.userId, userId))
+            and(eq(orders.dealerId, dealer.id), eq(orders.userId, userId), isNull(orders.deletedAt))
           );
 
         const payments = await db
@@ -547,8 +556,9 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  // Удаление из справочника — только пометка (как в УЭС); окончательно — server/deletions.ts.
   async deleteDealer(id: string): Promise<void> {
-    await db.delete(dealers).where(eq(dealers.id, id));
+    await db.update(dealers).set({ deletedAt: new Date() }).where(eq(dealers.id, id));
   }
 
   async updateBulkDealerRates(
@@ -666,8 +676,9 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  // Удаление из справочника — только пометка (как в УЭС); окончательно — server/deletions.ts.
   async deleteCashbox(id: string): Promise<void> {
-    await db.delete(cashboxes).where(eq(cashboxes.id, id));
+    await db.update(cashboxes).set({ deletedAt: new Date() }).where(eq(cashboxes.id, id));
   }
 
   // Systems
@@ -692,8 +703,9 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  // Удаление из справочника — только пометка (как в УЭС); окончательно — server/deletions.ts.
   async deleteSystem(id: string): Promise<void> {
-    await db.delete(systems).where(eq(systems.id, id));
+    await db.update(systems).set({ deletedAt: new Date() }).where(eq(systems.id, id));
   }
 
   // System Components
@@ -750,8 +762,9 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  // Удаление из справочника — только пометка (как в УЭС); окончательно — server/deletions.ts.
   async deleteExpenseType(id: string): Promise<void> {
-    await db.delete(expenseTypes).where(eq(expenseTypes.id, id));
+    await db.update(expenseTypes).set({ deletedAt: new Date() }).where(eq(expenseTypes.id, id));
   }
 
   // Components
@@ -776,8 +789,9 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  // Удаление из справочника — только пометка (как в УЭС); окончательно — server/deletions.ts.
   async deleteComponent(id: string): Promise<void> {
-    await db.delete(components).where(eq(components.id, id));
+    await db.update(components).set({ deletedAt: new Date() }).where(eq(components.id, id));
   }
 
   // Multipliers
@@ -805,8 +819,9 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  // Удаление из справочника — только пометка (как в УЭС); окончательно — server/deletions.ts.
   async deleteMultiplier(id: string): Promise<void> {
-    await db.delete(multipliers).where(eq(multipliers.id, id));
+    await db.update(multipliers).set({ deletedAt: new Date() }).where(eq(multipliers.id, id));
   }
 
   // Suppliers with balance calculation
@@ -823,7 +838,7 @@ export class DatabaseStorage implements IStorage {
         const receipts = await db
           .select({ total: sum(warehouseReceipts.total) })
           .from(warehouseReceipts)
-          .where(eq(warehouseReceipts.supplierId, supplier.id));
+          .where(and(eq(warehouseReceipts.supplierId, supplier.id), isNull(warehouseReceipts.deletedAt)));
 
         const payments = await db
           .select({ total: sum(financeOperations.amount) })
@@ -872,13 +887,17 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  // Удаление из справочника — только пометка (как в УЭС); окончательно — server/deletions.ts.
   async deleteSupplier(id: string): Promise<void> {
-    await db.delete(suppliers).where(eq(suppliers.id, id));
+    await db.update(suppliers).set({ deletedAt: new Date() }).where(eq(suppliers.id, id));
   }
 
   // Orders
   private buildOrderConditions(userId: string, filters?: OrderFilters) {
     const conditions = [eq(orders.userId, userId)];
+    const deleted = filters?.deleted ?? "exclude";
+    if (deleted === "exclude") conditions.push(isNull(orders.deletedAt));
+    if (deleted === "only") conditions.push(isNotNull(orders.deletedAt));
 
     if (filters?.status && filters.status !== "all") {
       conditions.push(eq(orders.status, filters.status));
@@ -1011,9 +1030,11 @@ export class DatabaseStorage implements IStorage {
       .where(eq(measurements.orderId, orderId));
   }
 
+  // Только пометка на удаление; окончательно — server/deletions.ts.
   async deleteOrder(id: string): Promise<void> {
-    await db.delete(orders).where(eq(orders.id, id));
+    await db.update(orders).set({ deletedAt: new Date() }).where(eq(orders.id, id));
   }
+
 
   // Order Sashes
   async getOrderSashes(orderId: string): Promise<OrderSash[]> {
@@ -1337,9 +1358,11 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  // Только пометка на удаление; окончательно — server/deletions.ts.
   async deleteWarehouseReceipt(id: string): Promise<void> {
-    await db.delete(warehouseReceipts).where(eq(warehouseReceipts.id, id));
+    await db.update(warehouseReceipts).set({ deletedAt: new Date() }).where(eq(warehouseReceipts.id, id));
   }
+
 
   // Warehouse Receipt Items
   async getWarehouseReceiptItems(
@@ -1390,10 +1413,16 @@ export class DatabaseStorage implements IStorage {
 
   // Warehouse Writeoffs
   async getWarehouseWriteoffs(userId: string): Promise<WarehouseWriteoff[]> {
+    // Списания заказов, помеченных на удаление, не действуют — материал как бы вернулся на склад.
     return db
       .select()
       .from(warehouseWriteoffs)
-      .where(eq(warehouseWriteoffs.userId, userId));
+      .where(
+        and(
+          eq(warehouseWriteoffs.userId, userId),
+          sql`(${warehouseWriteoffs.orderId} is null or not exists (select 1 from ${orders} o where o.id = ${warehouseWriteoffs.orderId} and o.deleted_at is not null))`
+        )
+      );
   }
 
   async getWarehouseWriteoffsByOrderId(
@@ -1884,7 +1913,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getDealerOrders(dealerId: string, filters?: { status?: string; from?: string; to?: string; search?: string }): Promise<Order[]> {
-    const conditions = [eq(orders.dealerId, dealerId)];
+    const conditions = [eq(orders.dealerId, dealerId), isNull(orders.deletedAt)];
     if (filters?.status) conditions.push(eq(orders.status, filters.status));
     if (filters?.from) conditions.push(gte(orders.date, filters.from));
     if (filters?.to) conditions.push(lte(orders.date, filters.to));
@@ -1907,7 +1936,7 @@ export class DatabaseStorage implements IStorage {
     const [orderTotals] = await db
       .select({ total: sum(orders.salePrice) })
       .from(orders)
-      .where(eq(orders.dealerId, dealerId));
+      .where(and(eq(orders.dealerId, dealerId), isNull(orders.deletedAt)));
 
     const [shippedOrderTotals] = await db
       .select({ total: sum(orders.salePrice) })
@@ -1915,7 +1944,8 @@ export class DatabaseStorage implements IStorage {
       .where(
         and(
           eq(orders.dealerId, dealerId),
-          eq(orders.status, "Отгружен")
+          eq(orders.status, "Отгружен"),
+          isNull(orders.deletedAt)
         )
       );
 
@@ -1959,7 +1989,7 @@ export class DatabaseStorage implements IStorage {
     const dealerOrders = await db
       .select({ id: orders.id })
       .from(orders)
-      .where(eq(orders.dealerId, dealerId));
+      .where(and(eq(orders.dealerId, dealerId), isNull(orders.deletedAt)));
 
     const orderIds = dealerOrders.map((o) => o.id);
     if (orderIds.length === 0) return [];

@@ -20,7 +20,7 @@ import {
   financeOperations,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, sql, desc, sum } from "drizzle-orm";
+import { isNull, eq, and, sql, desc, sum } from "drizzle-orm";
 import pg from "pg";
 import { logAudit } from "./audit";
 import { generatePeriodicNotifications, notifyDealer } from "./notifications";
@@ -31,6 +31,7 @@ import { createFinanceRouter } from "./routes/finance";
 import { createWarehouseRouter } from "./routes/warehouse";
 import { createOrdersRouter } from "./routes/orders";
 import { createFinancialReportsRouter } from "./routes/financial-reports";
+import { createDeletionsRouter } from "./routes/deletions";
 
 if (!process.env.SESSION_SECRET) {
   throw new Error("SESSION_SECRET environment variable is required");
@@ -527,7 +528,8 @@ export async function registerRoutes(
                 and(
                   eq(orders.dealerId, dealer.id),
                   eq(orders.userId, req.userId!),
-                  eq(orders.status, "Отгружен")
+                  eq(orders.status, "Отгружен"),
+                  isNull(orders.deletedAt)
                 )
               );
 
@@ -1279,7 +1281,7 @@ export async function registerRoutes(
       db.select().from(fabrics).where(eq(fabrics.userId, userId)),
       db.select().from(colors).where(eq(colors.userId, userId)),
       db.select().from(dealers).where(eq(dealers.userId, userId)),
-      db.select().from(orders).where(eq(orders.userId, userId)),
+      db.select().from(orders).where(and(eq(orders.userId, userId), isNull(orders.deletedAt))),
       db.select().from(cashboxes).where(eq(cashboxes.userId, userId)),
       db.select().from(suppliers).where(eq(suppliers.userId, userId)),
       db.select().from(components).where(eq(components.userId, userId)),
@@ -2129,6 +2131,9 @@ ${dbContext}`,
 
   // Управленческие отчёты: ОПиУ, ДДС, Баланс, Взаиморасчёты
   app.use("/api", createFinancialReportsRouter(authMiddleware));
+
+  // Пометка на удаление и окончательное удаление (как в УЭС)
+  app.use("/api", createDeletionsRouter(authMiddleware));
 
   // Periodic notification generation (every 30 minutes)
   setInterval(() => {

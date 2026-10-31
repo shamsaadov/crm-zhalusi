@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation, useParams } from "wouter";
-import { CheckCheck, Check, Loader2, Plus, Trash2, X } from "lucide-react";
+import { CheckCheck, Check, Loader2, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import { Layout } from "@/components/layout";
 import { fmtDate, fmtMoney, todayKey } from "@/components/ues/report-kit";
 import { useToast } from "@/hooks/use-toast";
@@ -212,13 +212,15 @@ export default function ReceiptDocumentPage() {
     onError: (e: Error) => toast({ title: "Не удалось провести", description: e.message, variant: "destructive" }),
   });
 
+  const marked = !!receipt?.deletedAt;
+  // Как в УЭС: поступление только помечается; окончательно — в настройках.
   const remove = useMutation({
-    mutationFn: () => apiRequest("DELETE", `/api/warehouse/${id}`),
+    mutationFn: () => apiRequest("POST", `/api/deletions/warehouse-receipts/${id}/${marked ? "restore" : "mark"}`),
     onSuccess: () => {
       invalidate();
-      toast({ title: "Поступление удалено" });
-      close(currentFullPath(), { silent: true });
-      navigate("/warehouse");
+      queryClient.invalidateQueries({ queryKey: ["/api/warehouse", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/deletions"] });
+      toast({ title: marked ? "Пометка снята" : "Поступление помечено на удаление" });
     },
     onError: (e: Error) => toast({ title: "Ошибка", description: e.message, variant: "destructive" }),
   });
@@ -263,7 +265,11 @@ export default function ReceiptDocumentPage() {
     <Layout
       title={title}
       caption="Склад · Поступление товаров"
-      actions={<span className={cn("ues-status", isNew && "is-draft")}>{isNew ? "Новое" : "Проведено"}</span>}
+      actions={
+        <span className={cn("ues-status", isNew && "is-draft", marked && "is-deleted")}>
+          {isNew ? "Новое" : marked ? "Помечено на удаление" : "Проведено"}
+        </span>
+      }
     >
       {!isNew && isLoading ? (
         <div className="flex justify-center py-16">
@@ -283,17 +289,17 @@ export default function ReceiptDocumentPage() {
             {!isNew && (
               <>
                 <span className="ues-toolbar-sep" />
-                <button
-                  type="button"
-                  className="ues-btn danger"
-                  onClick={() => {
-                    if (window.confirm("Удалить поступление? Остатки и долг поставщику пересчитаются.")) remove.mutate();
-                  }}
-                  disabled={busy}
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Удалить
-                </button>
+                {marked ? (
+                  <button type="button" className="ues-btn" onClick={() => remove.mutate()} disabled={busy}>
+                    <RotateCcw className="h-4 w-4" />
+                    Снять пометку
+                  </button>
+                ) : (
+                  <button type="button" className="ues-btn danger" onClick={() => remove.mutate()} disabled={busy}>
+                    <Trash2 className="h-4 w-4" />
+                    Пометить на удаление
+                  </button>
+                )}
               </>
             )}
             <span className="ml-auto text-[12px] text-[var(--ues-muted)]">
@@ -335,7 +341,7 @@ export default function ReceiptDocumentPage() {
                     data-testid="select-supplier"
                   >
                     <option value="">Выберите поставщика</option>
-                    {suppliers.map((s) => (
+                    {suppliers.filter((x) => !x.deletedAt || x.id === supplierId).map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.name}
                       </option>
@@ -421,7 +427,9 @@ export default function ReceiptDocumentPage() {
                             data-testid={`select-line-item-${i}`}
                           >
                             <option value="">{l.itemType === "fabric" ? "Выберите ткань" : "Выберите комплектующее"}</option>
-                            {(l.itemType === "fabric" ? fabrics : components).map((it) => (
+                            {((l.itemType === "fabric" ? fabrics : components) as (Fabric | Component)[])
+                              .filter((it) => !it.deletedAt || it.id === l.itemId)
+                              .map((it) => (
                               <option key={it.id} value={it.id}>
                                 {it.name}
                               </option>

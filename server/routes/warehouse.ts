@@ -63,6 +63,11 @@ export function createWarehouseRouter(authMiddleware: AuthMiddleware): Router {
             ? req.query.search
             : undefined;
 
+        // Помеченные на удаление: по умолчанию скрыты; ?deleted=include|only — показать.
+        const deleted: "exclude" | "include" | "only" =
+          req.query.deleted === "include" || req.query.deleted === "only"
+            ? (req.query.deleted as "include" | "only")
+            : "exclude";
         const supplierList = await storage.getSuppliers(req.userId!);
 
         const enrichReceipt = async (r: any) => {
@@ -80,7 +85,7 @@ export function createWarehouseRouter(authMiddleware: AuthMiddleware): Router {
           const result = await storage.getWarehouseReceiptsPaginated(
             req.userId!,
             { limit, cursor },
-            { supplierId, from, to, search }
+            { supplierId, from, to, search, deleted }
           );
 
           const enriched = await Promise.all(result.data.map(enrichReceipt));
@@ -97,6 +102,7 @@ export function createWarehouseRouter(authMiddleware: AuthMiddleware): Router {
             from,
             to,
             search,
+            deleted,
           });
           const enriched = await Promise.all(receipts.map(enrichReceipt));
           res.json(enriched);

@@ -403,7 +403,12 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
           );
         };
 
-        const filters = { status, dealerId, from, to, search };
+        // Помеченные на удаление: по умолчанию скрыты; ?deleted=include|only — показать.
+        const deleted: "exclude" | "include" | "only" =
+          req.query.deleted === "include" || req.query.deleted === "only"
+            ? (req.query.deleted as "include" | "only")
+            : "exclude";
+        const filters = { status, dealerId, from, to, search, deleted };
 
         if (paginated) {
           let result = await storage.getOrdersPaginated(
@@ -1413,8 +1418,11 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
     async (req: AuthRequest, res: Response) => {
       try {
         const orderToDelete = await storage.getOrder(req.params.id);
-        // Обнуляем ссылку в measurements перед удалением (FK без cascade)
-        await storage.unlinkMeasurementsFromOrder(req.params.id);
+        if (!orderToDelete || orderToDelete.userId !== req.userId) {
+          return res.status(404).json({ message: "Заказ не найден" });
+        }
+        // Пометка на удаление (как в УЭС): заказ выпадает из расчётов, связи с
+        // замерами сохраняются; окончательно — в «Настройки → Помеченные на удаление».
         await storage.deleteOrder(req.params.id);
 
         if (orderToDelete) {

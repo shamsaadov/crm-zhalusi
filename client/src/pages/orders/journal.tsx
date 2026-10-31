@@ -14,6 +14,7 @@ import {
   Package,
   Plus,
   Printer,
+  RotateCcw,
   RefreshCw,
   Scissors,
   Search,
@@ -71,6 +72,9 @@ export interface OrdersJournalProps {
   onReceipt: (o: OrderWithRelations) => void;
   onRefresh: () => void;
   isRefreshing: boolean;
+  showMarked: boolean;
+  onShowMarkedChange: (v: boolean) => void;
+  onRestore: (o: OrderWithRelations) => void;
 
   /** Содержимое вкладки «Из приложения». */
   appTab: React.ReactNode;
@@ -164,7 +168,7 @@ export function OrdersJournal(p: OrdersJournalProps) {
   };
 
   // Отгрузить: только не отгруженные и с ценами тканей.
-  const shippable = selected.filter((o) => o.status !== "Отгружен");
+  const shippable = selected.filter((o) => o.status !== "Отгружен" && !o.deletedAt);
   const shipBlockedBy = shippable.flatMap((o) => missingPriceFabrics(o, p.fabricStock).map((f) => `№${o.orderNumber}: ${f}`));
   const shipTitle = !selected.length
     ? "Выберите заказ в списке"
@@ -185,7 +189,7 @@ export function OrdersJournal(p: OrdersJournalProps) {
     }
   };
 
-  const receiptTarget = single && (single.paymentState ?? "none") !== "full" ? single : null;
+  const receiptTarget = single && !single.deletedAt && (single.paymentState ?? "none") !== "full" ? single : null;
 
   // Плашки активных фильтров (JournalFilterBar в УЭС).
   const chips: { key: string; label: string; clear: () => void }[] = [];
@@ -287,15 +291,30 @@ export function OrdersJournal(p: OrdersJournalProps) {
             })}
           </DropdownMenuContent>
         </DropdownMenu>
+        {single?.deletedAt ? (
+          <button type="button" className="ues-btn" onClick={() => p.onRestore(single)} data-testid="button-unmark-order">
+            <RotateCcw className="h-4 w-4" />
+            Снять пометку
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="ues-btn danger"
+            disabled={!single}
+            onClick={() => single && p.onDelete(single)}
+            data-testid="button-delete-order"
+          >
+            <Trash2 className="h-4 w-4" />
+            Пометить на удаление
+          </button>
+        )}
         <button
           type="button"
-          className="ues-btn danger"
-          disabled={!single}
-          onClick={() => single && p.onDelete(single)}
-          data-testid="button-delete-order"
+          className={cn("ues-btn", p.showMarked && "is-active")}
+          onClick={() => p.onShowMarkedChange(!p.showMarked)}
+          title="Показать заказы, помеченные на удаление"
         >
-          <Trash2 className="h-4 w-4" />
-          Удалить
+          Помеченные
         </button>
         <span className="ues-toolbar-sep" />
         <button type="button" className="ues-btn" onClick={p.onRefresh} disabled={p.isRefreshing} title="Обновить данные">
@@ -443,13 +462,17 @@ export function OrdersJournal(p: OrdersJournalProps) {
                     <tr
                       key={o.id}
                       tabIndex={0}
-                      className={cn("is-clickable", selectedIds.includes(o.id) && "is-selected")}
+                      className={cn("is-clickable", selectedIds.includes(o.id) && "is-selected", o.deletedAt && "is-marked-row")}
+                      title={o.deletedAt ? "Помечен на удаление" : undefined}
                       onClick={(e) => select(e, o)}
                       onDoubleClick={() => p.onOpen(o)}
                       onKeyDown={(e) => e.key === "Enter" && p.onOpen(o)}
                       data-testid={`row-${o.id}`}
                     >
                       <td className="ues-ind-cell">
+                        {o.deletedAt ? (
+                          <span className="ues-mark-x" title="Помечен на удаление">×</span>
+                        ) : (
                         <Dot
                           state={pay}
                           title={
@@ -460,6 +483,7 @@ export function OrdersJournal(p: OrdersJournalProps) {
                                 : "Оплаты по заказу нет"
                           }
                         />
+                        )}
                       </td>
                       <td className="ues-ind-cell">
                         <Dot

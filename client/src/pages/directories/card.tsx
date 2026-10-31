@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation, useParams } from "wouter";
-import { Check, CheckCheck, Loader2, Plus, Trash2, X } from "lucide-react";
+import { Check, CheckCheck, Loader2, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import { Layout } from "@/components/layout";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -133,7 +133,12 @@ function DirectoryCard({ dkey, id }: { dkey: DirectoryKey; id: string }) {
     const src = f.options;
     if (!src) return [];
     if (src.kind === "static") return src.options;
-    if (src.kind === "directory") return rowsOf(src.key).map((r: Row) => ({ value: r.id, label: optionLabel(src.key, r) }));
+    if (src.kind === "directory") {
+      // Помеченные на удаление не предлагаем, но текущее значение показываем.
+      return rowsOf(src.key)
+        .filter((r: Row) => !r.deletedAt || r.id === values[f.name])
+        .map((r: Row) => ({ value: r.id, label: optionLabel(src.key, r) + (r.deletedAt ? " (помечен на удаление)" : "") }));
+    }
     if (src.kind === "systemKeys") {
       const keys = systemKeys?.systemKeys ?? [];
       const current = values[f.name];
@@ -212,16 +217,15 @@ function DirectoryCard({ dkey, id }: { dkey: DirectoryKey; id: string }) {
     onError: (e: Error) => toast({ title: "Не удалось записать", description: e.message, variant: "destructive" }),
   });
 
+  const marked = !!record?.deletedAt;
   const remove = useMutation({
-    mutationFn: () => apiRequest("DELETE", `${def.api}/${id}`),
+    mutationFn: () => apiRequest("POST", `/api/deletions/${dkey}/${id}/${marked ? "restore" : "mark"}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [def.api] });
-      toast({ title: "Запись удалена" });
-      close(currentFullPath(), { silent: true });
-      navigate(`/lists/${dkey}`);
+      queryClient.invalidateQueries({ queryKey: ["/api/deletions"] });
+      toast({ title: marked ? "Пометка снята" : "Запись помечена на удаление" });
     },
-    onError: () =>
-      toast({ title: "Не удалось удалить", description: "Запись используется в документах.", variant: "destructive" }),
+    onError: (e: Error) => toast({ title: "Ошибка", description: e.message, variant: "destructive" }),
   });
 
   const submit = (andClose: boolean) => {
@@ -260,7 +264,11 @@ function DirectoryCard({ dkey, id }: { dkey: DirectoryKey; id: string }) {
   const componentRows = rowsOf("components");
 
   return (
-    <Layout title={title} caption={`Справочник «${def.title}»`}>
+    <Layout
+      title={title}
+      caption={`Справочник «${def.title}»`}
+      actions={marked ? <span className="ues-status is-deleted">Помечена на удаление</span> : undefined}
+    >
       <div className="space-y-4">
         <div className="ues-toolbar">
           <button type="button" className="ues-btn success" onClick={() => submit(true)} disabled={busy} data-testid="button-directory-save-close">
@@ -274,10 +282,17 @@ function DirectoryCard({ dkey, id }: { dkey: DirectoryKey; id: string }) {
           {!isNew && (
             <>
               <span className="ues-toolbar-sep" />
-              <button type="button" className="ues-btn danger" onClick={() => setConfirmDelete(true)} disabled={busy}>
-                <Trash2 className="h-4 w-4" />
-                Удалить
-              </button>
+              {marked ? (
+                <button type="button" className="ues-btn" onClick={() => remove.mutate()} disabled={busy}>
+                  <RotateCcw className="h-4 w-4" />
+                  Снять пометку
+                </button>
+              ) : (
+                <button type="button" className="ues-btn danger" onClick={() => setConfirmDelete(true)} disabled={busy}>
+                  <Trash2 className="h-4 w-4" />
+                  Пометить на удаление
+                </button>
+              )}
             </>
           )}
           <span className="ml-auto text-[12px] text-[var(--ues-muted)]">
@@ -402,7 +417,7 @@ function DirectoryCard({ dkey, id }: { dkey: DirectoryKey; id: string }) {
                         <td>
                           <select className={cn("ues-input h-8 w-full", editable)} value={c.componentId} onChange={(e) => upd({ componentId: e.target.value })}>
                             <option value="">Выберите комплектующее</option>
-                            {componentRows.map((r) => (
+                            {componentRows.filter((r) => !r.deletedAt || r.id === c.componentId).map((r) => (
                               <option key={r.id} value={r.id}>
                                 {r.name}
                               </option>
@@ -461,9 +476,9 @@ function DirectoryCard({ dkey, id }: { dkey: DirectoryKey; id: string }) {
 
       <ConfirmDialog
         open={confirmDelete}
-        title="Удалить запись?"
-        text={`«${title}» будет удалена из справочника «${def.title}».${def.deleteWarning ? ` ${def.deleteWarning}` : ""}`}
-        confirmLabel="Удалить"
+        title="Пометить на удаление?"
+        text={`«${title}» пропадёт из списков выбора. Удалить окончательно можно в «Настройки → Помеченные на удаление», если запись нигде не используется.`}
+        confirmLabel="Пометить"
         onCancel={() => setConfirmDelete(false)}
         onConfirm={() => {
           setConfirmDelete(false);

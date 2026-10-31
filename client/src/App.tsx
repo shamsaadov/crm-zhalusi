@@ -28,6 +28,7 @@ import AuditLogPage from "@/pages/audit-log";
 import NotificationsPage from "@/pages/notifications";
 import AppNotificationsPage from "@/pages/app-notifications";
 import SectionPage from "@/pages/section";
+import DeletionsPage from "@/pages/settings/deletions";
 import {
   AllOperationsJournalPage,
   ExpenseJournalPage,
@@ -157,6 +158,9 @@ function Router() {
       </Route>
       <Route path="/lists/:entity/:id">
         <ProtectedRoute component={DirectoryCardPage} />
+      </Route>
+      <Route path="/settings/deletions">
+        <ProtectedRoute component={DeletionsPage} />
       </Route>
       <Route path="/section/:key">
         <ProtectedRoute component={SectionPage} />

@@ -23,10 +23,12 @@ export default function ReceiptsJournalPage() {
   const [supplierId, setSupplierId] = useStoredState("journal:receipts:supplier", () => "all");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
+  const [showMarked, setShowMarked] = useState(false);
 
   const { data: suppliers = [] } = useQuery<Supplier[]>({ queryKey: ["/api/suppliers"] });
   const params = new URLSearchParams({ from: period.from, to: period.to });
   if (supplierId !== "all") params.set("supplierId", supplierId);
+  if (showMarked) params.set("deleted", "include");
   const qs = params.toString();
   const { data: receipts = [], isLoading } = useQuery<ReceiptRow[]>({
     queryKey: ["/api/warehouse", qs],
@@ -75,6 +77,9 @@ export default function ReceiptsJournalPage() {
             <Plus className="h-4 w-4" />
             Создать поступление
           </Link>
+          <button type="button" className={cn("ues-btn", showMarked && "is-active")} onClick={() => setShowMarked((v) => !v)}>
+            Помеченные
+          </button>
           <Link href="/warehouse/classic" className="ues-btn">
             Прежний экран склада
           </Link>
@@ -129,7 +134,8 @@ export default function ReceiptsJournalPage() {
                 ) : ((r: ReceiptRow) => (
                 <tr
                   key={r.id}
-                  className={cn("is-clickable", selected === r.id && "is-selected")}
+                  className={cn("is-clickable", selected === r.id && "is-selected", r.deletedAt && "is-marked")}
+                  title={r.deletedAt ? "Помечено на удаление" : undefined}
                   onClick={() => setSelected(r.id)}
                   onDoubleClick={() => navigate(`/warehouse/receipt/${r.id}`)}
                   onKeyDown={(e) => e.key === "Enter" && navigate(`/warehouse/receipt/${r.id}`)}

@@ -4,7 +4,7 @@
 import { useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Link, useLocation, useParams } from "wouter";
-import { Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+import { Pencil, Plus, RefreshCw, RotateCcw, Search, Trash2 } from "lucide-react";
 import { Layout } from "@/components/layout";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -46,21 +46,17 @@ function DirectoryList({ dkey }: { dkey: DirectoryKey }) {
   const selected = filtered.find((r) => r.id === selectedId) ?? null;
   const open = (r: Row) => navigate(`/lists/${dkey}/${r.id}`);
 
-  const remove = useMutation({
-    mutationFn: (id: string) => apiRequest("DELETE", `${def.api}/${id}`),
-    onSuccess: () => {
+  // Как в УЭС: из справочника запись только помечается на удаление;
+  // окончательно — в «Настройки → Помеченные на удаление».
+  const toggleMark = useMutation({
+    mutationFn: (r: Row) =>
+      apiRequest("POST", `/api/deletions/${dkey}/${r.id}/${r.deletedAt ? "restore" : "mark"}`),
+    onSuccess: (_, r) => {
       queryClient.invalidateQueries({ queryKey: [def.api] });
-      setSelectedId(null);
-      toast({ title: "Запись удалена" });
+      queryClient.invalidateQueries({ queryKey: ["/api/deletions"] });
+      toast({ title: r.deletedAt ? "Пометка снята" : "Запись помечена на удаление" });
     },
-    onError: (e: Error) =>
-      toast({
-        title: "Не удалось удалить",
-        description: e.message.includes("violates") || e.message.startsWith("500")
-          ? "Запись используется в документах."
-          : e.message,
-        variant: "destructive",
-      }),
+    onError: (e: Error) => toast({ title: "Ошибка", description: e.message, variant: "destructive" }),
   });
 
   return (
@@ -79,16 +75,29 @@ function DirectoryList({ dkey }: { dkey: DirectoryKey }) {
             <Pencil className="h-4 w-4" />
             Изменить
           </button>
-          <button
-            type="button"
-            className="ues-btn danger"
-            disabled={!selected || remove.isPending}
-            onClick={() => selected && setConfirm(selected)}
-            data-testid="button-directory-delete"
-          >
-            <Trash2 className="h-4 w-4" />
-            Удалить
-          </button>
+          {selected?.deletedAt ? (
+            <button
+              type="button"
+              className="ues-btn"
+              disabled={toggleMark.isPending}
+              onClick={() => toggleMark.mutate(selected)}
+              data-testid="button-directory-unmark"
+            >
+              <RotateCcw className="h-4 w-4" />
+              Снять пометку
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="ues-btn danger"
+              disabled={!selected || toggleMark.isPending}
+              onClick={() => selected && setConfirm(selected)}
+              data-testid="button-directory-delete"
+            >
+              <Trash2 className="h-4 w-4" />
+              Пометить на удаление
+            </button>
+          )}
           <span className="ues-toolbar-sep" />
           <button type="button" className="ues-btn" onClick={() => refetch()} disabled={isFetching}>
             <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
@@ -137,12 +146,13 @@ function DirectoryList({ dkey }: { dkey: DirectoryKey }) {
                 <tr
                   key={r.id}
                   tabIndex={0}
-                  className={cn("is-clickable", selectedId === r.id && "is-selected")}
+                  className={cn("is-clickable", selectedId === r.id && "is-selected", r.deletedAt && "is-marked")}
+                  title={r.deletedAt ? "Помечена на удаление" : undefined}
                   onClick={() => setSelectedId(r.id)}
                   onDoubleClick={() => open(r)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") open(r);
-                    if (e.key === "Delete") setConfirm(r);
+                    if (e.key === "Delete" && !r.deletedAt) setConfirm(r);
                   }}
                   data-testid={`directory-row-${r.id}`}
                 >
@@ -157,23 +167,21 @@ function DirectoryList({ dkey }: { dkey: DirectoryKey }) {
             </tbody>
           </table>
         </div>
-        <p className="text-[12px] text-[var(--ues-muted)]">Двойной щелчок или Enter — открыть карточку. Delete — удалить.</p>
+        <p className="text-[12px] text-[var(--ues-muted)]">Двойной щелчок или Enter — открыть карточку. Delete — пометить на удаление. Помеченные записи отмечены ×.</p>
       </div>
 
       <ConfirmDialog
         open={!!confirm}
-        title="Удалить запись?"
+        title="Пометить на удаление?"
         text={
           confirm
-            ? `«${def.recordTitle(confirm)}» будет удалена из справочника «${def.title}».${
-                def.deleteWarning ? ` ${def.deleteWarning}` : ""
-              }`
+            ? `«${def.recordTitle(confirm)}» пропадёт из списков выбора. Удалить окончательно можно в «Настройки → Помеченные на удаление», если запись нигде не используется.`
             : ""
         }
-        confirmLabel="Удалить"
+        confirmLabel="Пометить"
         onCancel={() => setConfirm(null)}
         onConfirm={() => {
-          if (confirm) remove.mutate(confirm.id);
+          if (confirm) toggleMark.mutate(confirm);
           setConfirm(null);
         }}
       />

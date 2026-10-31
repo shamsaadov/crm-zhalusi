@@ -1,7 +1,7 @@
 // Выгрузка данных пользователя для управленческих отчётов (server/reports/financial.ts).
 // Один проход по 8 таблицам с фильтром по userId — без N+1 запросов.
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
 import {
   cashboxes,
@@ -37,7 +37,7 @@ export async function loadFinData(userId: string): Promise<FinData> {
         date: orders.date,
       })
       .from(orders)
-      .where(eq(orders.userId, userId)),
+      .where(and(eq(orders.userId, userId), isNull(orders.deletedAt))),
     db
       .select({
         id: financeOperations.id,
@@ -84,7 +84,7 @@ export async function loadFinData(userId: string): Promise<FinData> {
         total: warehouseReceipts.total,
       })
       .from(warehouseReceipts)
-      .where(eq(warehouseReceipts.userId, userId)),
+      .where(and(eq(warehouseReceipts.userId, userId), isNull(warehouseReceipts.deletedAt))),
     db
       .select({
         id: warehouseWriteoffs.id,
@@ -93,7 +93,13 @@ export async function loadFinData(userId: string): Promise<FinData> {
         total: warehouseWriteoffs.total,
       })
       .from(warehouseWriteoffs)
-      .where(eq(warehouseWriteoffs.userId, userId)),
+      // Помеченные на удаление заказы и поступления в отчёты не входят.
+      .where(
+        and(
+          eq(warehouseWriteoffs.userId, userId),
+          sql`(${warehouseWriteoffs.orderId} is null or not exists (select 1 from ${orders} o where o.id = ${warehouseWriteoffs.orderId} and o.deleted_at is not null))`
+        )
+      ),
   ]);
 
   return {

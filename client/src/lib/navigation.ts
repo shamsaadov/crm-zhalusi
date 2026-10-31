@@ -32,6 +32,7 @@ import {
   Bell,
   User,
   Smartphone,
+  Trash2,
   Layers,
   Wrench,
   Settings2,
@@ -209,6 +210,12 @@ export const NAV_SECTIONS: NavSection[] = [
     path: "/section/settings",
     description: "Профиль и мобильное приложение",
     groups: [
+      {
+        title: "Администрирование",
+        items: [
+          { title: "Помеченные на удаление", path: "/settings/deletions", icon: Trash2, description: "Восстановление и окончательное удаление" },
+        ],
+      },
       {
         title: "Пользователь",
         items: [

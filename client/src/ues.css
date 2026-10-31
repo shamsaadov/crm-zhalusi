@@ -546,3 +546,13 @@ body {
 .ues-table tbody tr.ues-day-row:hover td { background: var(--ues-bg); }
 .ues-day-title { font-size: 12.5px; font-weight: 720; color: var(--ues-text); }
 .ues-day-meta { margin-left: 10px; font-size: 12px; color: var(--ues-muted); font-variant-numeric: tabular-nums; }
+
+/* Помеченные на удаление */
+.ues-del-state { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 12px; font-size: 12px; font-weight: 650; }
+.ues-del-state.is-available { background: var(--ues-success-soft); color: var(--ues-success); }
+.ues-del-state.is-blocked { background: var(--ues-danger-soft); color: var(--ues-danger); }
+.ues-table tbody tr.is-marked td { color: var(--ues-muted); }
+.ues-table tbody tr.is-marked td:first-child::before { content: "×"; color: var(--ues-danger); font-weight: 800; margin-right: 6px; }
+.ues-mark-x { color: var(--ues-danger); font-weight: 800; }
+.ues-table tbody tr.is-marked-row td { color: var(--ues-muted); text-decoration: line-through; text-decoration-color: rgba(180, 35, 24, 0.35); }
+.ues-table tbody tr.is-marked-row td.ues-ind-cell { text-decoration: none; }

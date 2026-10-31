@@ -193,7 +193,7 @@ export function FinanceJournal({ kind }: { kind: CashDocKind }) {
             data-testid="button-toggle-deleted"
           >
             <Trash2 className="h-4 w-4" />
-            Удалённые
+            Помеченные
           </button>
           {kind === "all" && (
             <Link href="/finance/classic" className="ues-btn">

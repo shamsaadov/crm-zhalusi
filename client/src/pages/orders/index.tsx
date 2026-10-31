@@ -86,6 +86,8 @@ export default function OrdersPage() {
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({});
   const [statusFilter, setStatusFilter] = useState("all");
   const [dealerFilter, setDealerFilter] = useState("all");
+  // Показывать помеченные на удаление заказы (с крестиком), как в журналах УЭС.
+  const [showMarked, setShowMarked] = useState(false);
   const [orderTypeFilter, setOrderTypeFilter] = useState<
     "all" | "sash" | "product" | "app"
   >("all");
@@ -127,6 +129,7 @@ export default function OrdersPage() {
         to: dateRange.to ? format(dateRange.to, "yyyy-MM-dd") : "",
         search: debouncedSearch,
         orderType: orderTypeFilter,
+        showMarked,
       },
     ],
     queryFn: async ({ pageParam }) => {
@@ -138,6 +141,7 @@ export default function OrdersPage() {
       if (dateRange.to) params.set("to", format(dateRange.to, "yyyy-MM-dd"));
       if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
       if (orderTypeFilter !== "all") params.set("orderType", orderTypeFilter);
+      if (showMarked) params.set("deleted", "include");
       if (pageParam) params.set("cursor", pageParam as string);
       const res = await fetch(`/api/orders?${params}`, {
         credentials: "include",
@@ -206,6 +210,15 @@ export default function OrdersPage() {
   }, [isRefreshing]);
 
   const fabricStock = stockData?.fabrics || [];
+
+  // В новом заказе помеченные на удаление записи справочников не предлагаем;
+  // при редактировании оставляем всё, чтобы старые заказы показывались целиком.
+  const activeOnly = <T extends { deletedAt?: Date | string | null }>(list: T[]) =>
+    editingOrder ? list : list.filter((x) => !x.deletedAt);
+  const formDealers = activeOnly(dealers);
+  const formSystems = activeOnly(systems);
+  const formFabrics = activeOnly(fabrics);
+  const formCashboxes = activeOnly(cashboxes);
   const componentStock = stockData?.components || [];
 
   // Form setup
@@ -358,7 +371,11 @@ export default function OrdersPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/charts"] });
       setIsDeleteDialogOpen(false);
       setOrderToDelete(null);
-      toast({ title: "Успешно", description: "Заказ удален" });
+      queryClient.invalidateQueries({ queryKey: ["/api/deletions"] });
+      for (const k of ["/api/reports/pnl", "/api/reports/balance", "/api/reports/settlements", "/api/warehouse/writeoffs"]) {
+        queryClient.invalidateQueries({ queryKey: [k] });
+      }
+      toast({ title: "Заказ помечен на удаление" });
     },
     onError: (error: Error) => {
       toast({
@@ -1299,12 +1316,12 @@ export default function OrdersPage() {
                   <OrderForm
                     form={form}
                     fieldArray={fieldArray}
-                    dealers={dealers}
-                    systems={systems}
-                    fabrics={fabrics}
+                    dealers={formDealers}
+                    systems={formSystems}
+                    fabrics={formFabrics}
                     fabricStock={fabricStock}
                     componentStock={componentStock}
-                    cashboxes={cashboxes}
+                    cashboxes={formCashboxes}
                     isEditing={false}
                     isPending={createMutation.isPending}
                     resetToken={resetToken}
@@ -1325,9 +1342,9 @@ export default function OrdersPage() {
                   <ProductForm
                     form={productForm}
                     fieldArray={productFieldArray}
-                    dealers={dealers}
+                    dealers={formDealers}
                     componentStock={componentStock}
-                    cashboxes={cashboxes}
+                    cashboxes={formCashboxes}
                     isPending={createProductMutation.isPending}
                     onSubmit={onProductSubmit}
                     onCancel={() => { resetForms(); setIsDialogOpen(false); }}
@@ -1340,12 +1357,12 @@ export default function OrdersPage() {
               <OrderForm
                 form={form}
                 fieldArray={fieldArray}
-                dealers={dealers}
-                systems={systems}
-                fabrics={fabrics}
+                dealers={formDealers}
+                systems={formSystems}
+                fabrics={formFabrics}
                 fabricStock={fabricStock}
                 componentStock={componentStock}
-                cashboxes={cashboxes}
+                cashboxes={formCashboxes}
                 isEditing={true}
                 isPending={updateMutation.isPending}
                 resetToken={resetToken}
@@ -1412,6 +1429,19 @@ export default function OrdersPage() {
         }}
         onRefresh={handleRefresh}
         isRefreshing={isRefreshing}
+        showMarked={showMarked}
+        onShowMarkedChange={setShowMarked}
+        onRestore={async (order) => {
+          try {
+            await apiRequest("POST", `/api/deletions/orders/${order.id}/restore`);
+            for (const k of ["/api/orders", "/api/stock", "/api/dealers", "/api/deletions", "/api/dashboard", "/api/reports/pnl", "/api/reports/balance", "/api/reports/settlements", "/api/warehouse/writeoffs"]) {
+              queryClient.invalidateQueries({ queryKey: [k] });
+            }
+            toast({ title: `Пометка с заказа №${order.orderNumber} снята` });
+          } catch (e) {
+            toast({ title: "Ошибка", description: (e as Error).message, variant: "destructive" });
+          }
+        }}
         appTab={<AppMeasurementsTab onConvertToOrder={openFromMeasurement} />}
       />
 
