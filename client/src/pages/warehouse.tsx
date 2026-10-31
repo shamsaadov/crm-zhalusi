@@ -656,7 +656,7 @@ export default function WarehousePage() {
   ];
 
   return (
-    <Layout title="Склад">
+    <Layout title="Склад (прежний экран)">
       <div className="flex items-center justify-between gap-4 mb-4">
         <Dialog
           open={isDialogOpen}

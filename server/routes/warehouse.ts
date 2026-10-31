@@ -12,6 +12,27 @@ type AuthMiddleware = (
   next: NextFunction
 ) => void;
 
+
+// Поступление: только поля документа и строк. Владелец, id и итог задаёт сервер.
+function receiptFields(body: any) {
+  const out: Record<string, unknown> = {};
+  for (const k of ["supplierId", "date", "comment"]) {
+    if (body && k in body) out[k] = body[k] === "" ? null : body[k];
+  }
+  return out;
+}
+
+function receiptItemFields(item: any) {
+  return {
+    itemType: item?.itemType,
+    fabricId: item?.itemType === "fabric" ? item?.fabricId ?? null : null,
+    componentId: item?.itemType === "component" ? item?.componentId ?? null : null,
+    quantity: item?.quantity,
+    price: item?.price,
+    total: item?.total,
+  };
+}
+
 export function createWarehouseRouter(authMiddleware: AuthMiddleware): Router {
   const router = Router();
 
@@ -108,13 +129,47 @@ export function createWarehouseRouter(authMiddleware: AuthMiddleware): Router {
     }
   );
 
+  // Объявлен раньше /warehouse/:id — иначе «writeoffs» воспринимался как id поступления.
+  router.get(
+    "/warehouse/writeoffs",
+    authMiddleware,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const [writeoffs, orders, fabrics, components] = await Promise.all([
+          storage.getWarehouseWriteoffs(req.userId!),
+          storage.getOrders(req.userId!),
+          storage.getFabrics(req.userId!),
+          storage.getComponents(req.userId!),
+        ]);
+
+        const writeoffsWithRelations = writeoffs.map((wo) => ({
+          ...wo,
+          order: orders.find((o) => o.id === wo.orderId),
+          fabric: fabrics.find((f) => f.id === wo.fabricId),
+          component: components.find((c) => c.id === wo.componentId),
+        }));
+
+        // Sort by date descending
+        writeoffsWithRelations.sort(
+          (a, b) =>
+            new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()
+        );
+
+        res.json(writeoffsWithRelations);
+      } catch (error) {
+        console.error("Get writeoffs error:", error);
+        res.status(500).json({ message: "Ошибка сервера" });
+      }
+    }
+  );
+
   router.get(
     "/warehouse/:id",
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
         const receipt = await storage.getWarehouseReceipt(req.params.id);
-        if (!receipt) {
+        if (!receipt || receipt.userId !== req.userId) {
           return res.status(404).json({ message: "Поступление не найдено" });
         }
         const items = await storage.getWarehouseReceiptItems(receipt.id);
@@ -145,7 +200,8 @@ export function createWarehouseRouter(authMiddleware: AuthMiddleware): Router {
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
-        const { items, ...receiptData } = req.body;
+        const { items } = req.body;
+        const receiptData = receiptFields(req.body);
 
         let total = 0;
         if (items && Array.isArray(items)) {
@@ -156,17 +212,17 @@ export function createWarehouseRouter(authMiddleware: AuthMiddleware): Router {
         }
 
         const receipt = await storage.createWarehouseReceipt({
-          ...receiptData,
+          ...(receiptData as any),
           total: total.toString(),
-          userId: req.userId,
+          userId: req.userId!,
         });
 
         if (items && Array.isArray(items)) {
           for (const item of items) {
             await storage.createWarehouseReceiptItem({
-              ...item,
+              ...receiptItemFields(item),
               receiptId: receipt.id,
-            });
+            } as any);
           }
         }
 
@@ -191,8 +247,12 @@ export function createWarehouseRouter(authMiddleware: AuthMiddleware): Router {
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
-        const { items, ...receiptData } = req.body;
-
+        const existing = await storage.getWarehouseReceipt(req.params.id);
+        if (!existing || existing.userId !== req.userId) {
+          return res.status(404).json({ message: "Поступление не найдено" });
+        }
+        const { items } = req.body;
+        const receiptData = receiptFields(req.body);
         let total = 0;
         if (items && Array.isArray(items)) {
           total = items.reduce(
@@ -202,7 +262,7 @@ export function createWarehouseRouter(authMiddleware: AuthMiddleware): Router {
         }
 
         const receipt = await storage.updateWarehouseReceipt(req.params.id, {
-          ...receiptData,
+          ...(receiptData as any),
           total: total.toString(),
         });
 
@@ -215,11 +275,19 @@ export function createWarehouseRouter(authMiddleware: AuthMiddleware): Router {
         if (items && Array.isArray(items)) {
           for (const item of items) {
             await storage.createWarehouseReceiptItem({
-              ...item,
+              ...receiptItemFields(item),
               receiptId: receipt.id,
-            });
+            } as any);
           }
         }
+        logAudit({
+          userId: req.userId!,
+          action: "update",
+          entityType: "warehouse_receipt",
+          entityId: receipt.id,
+          before: existing,
+          after: receipt,
+        });
 
         res.json(receipt);
       } catch (error) {
@@ -235,6 +303,9 @@ export function createWarehouseRouter(authMiddleware: AuthMiddleware): Router {
     async (req: AuthRequest, res: Response) => {
       try {
         const before = await storage.getWarehouseReceipt(req.params.id);
+        if (!before || before.userId !== req.userId) {
+          return res.status(404).json({ message: "Поступление не найдено" });
+        }
         await storage.deleteWarehouseReceipt(req.params.id);
 
         if (before) {
@@ -267,6 +338,14 @@ export function createWarehouseRouter(authMiddleware: AuthMiddleware): Router {
           storage.getComponents(req.userId!),
           storage.getWarehouseWriteoffs(req.userId!),
         ]);
+
+        const receiptDate = new Map(receipts.map((r) => [r.id, r.date]));
+        const bookValue = new Map<string, number>();
+        const lastMovement = new Map<string, string>();
+        const trackMovement = (id: string, date: string | null | undefined, delta: number) => {
+          bookValue.set(id, (bookValue.get(id) ?? 0) + delta);
+          if (date && (!lastMovement.has(id) || date > lastMovement.get(id)!)) lastMovement.set(id, date);
+        };
 
         // Get all receipt items in parallel
         const itemsArrays = await Promise.all(
@@ -304,6 +383,14 @@ export function createWarehouseRouter(authMiddleware: AuthMiddleware): Router {
           fabricStock[fabricId].totalReceived += qty;
           fabricStock[fabricId].lastPrice = price;
           fabricStock[fabricId].totalValue += qty * price;
+          trackMovement(fabricId, receiptDate.get(item.receiptId), parseFloat(item.total?.toString() || "0"));
+        }
+
+        // Балансовая стоимость (приходы − списания по их суммам) и последнее движение —
+        // так же считает строку «Запасы» отчёт «Баланс».
+        for (const wo of writeoffs) {
+          const id = wo.fabricId ?? wo.componentId;
+          if (id) trackMovement(id, wo.date, -parseFloat(wo.total?.toString() || "0"));
         }
 
         // Subtract fabric writeoffs
@@ -343,6 +430,7 @@ export function createWarehouseRouter(authMiddleware: AuthMiddleware): Router {
           componentStock[componentId].totalReceived += qty;
           componentStock[componentId].lastPrice = price;
           componentStock[componentId].totalValue += qty * price;
+          trackMovement(componentId, receiptDate.get(item.receiptId), parseFloat(item.total?.toString() || "0"));
         }
 
         // Subtract component writeoffs
@@ -369,24 +457,19 @@ export function createWarehouseRouter(authMiddleware: AuthMiddleware): Router {
         }
 
         // Build response with fabric/component details
+        const withBook = (id: string, stock: any) => ({
+          ...(stock || { quantity: 0, lastPrice: 0, avgPrice: 0, totalValue: 0 }),
+          bookValue: Math.round((bookValue.get(id) ?? 0) * 100) / 100,
+          lastMovement: lastMovement.get(id) ?? null,
+        });
         const fabricStockList = fabrics.map((f) => ({
           ...f,
-          stock: fabricStock[f.id] || {
-            quantity: 0,
-            lastPrice: 0,
-            avgPrice: 0,
-            totalValue: 0,
-          },
+          stock: withBook(f.id, fabricStock[f.id]),
         }));
 
         const componentStockList = components.map((c) => ({
           ...c,
-          stock: componentStock[c.id] || {
-            quantity: 0,
-            lastPrice: 0,
-            avgPrice: 0,
-            totalValue: 0,
-          },
+          stock: withBook(c.id, componentStock[c.id]),
         }));
 
         res.json({
@@ -401,39 +484,6 @@ export function createWarehouseRouter(authMiddleware: AuthMiddleware): Router {
   );
 
   // Warehouse writeoffs endpoint
-  router.get(
-    "/warehouse/writeoffs",
-    authMiddleware,
-    async (req: AuthRequest, res: Response) => {
-      try {
-        const [writeoffs, orders, fabrics, components] = await Promise.all([
-          storage.getWarehouseWriteoffs(req.userId!),
-          storage.getOrders(req.userId!),
-          storage.getFabrics(req.userId!),
-          storage.getComponents(req.userId!),
-        ]);
-
-        const writeoffsWithRelations = writeoffs.map((wo) => ({
-          ...wo,
-          order: orders.find((o) => o.id === wo.orderId),
-          fabric: fabrics.find((f) => f.id === wo.fabricId),
-          component: components.find((c) => c.id === wo.componentId),
-        }));
-
-        // Sort by date descending
-        writeoffsWithRelations.sort(
-          (a, b) =>
-            new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()
-        );
-
-        res.json(writeoffsWithRelations);
-      } catch (error) {
-        console.error("Get writeoffs error:", error);
-        res.status(500).json({ message: "Ошибка сервера" });
-      }
-    }
-  );
-
   // Get inventory adjustments history
   router.get(
     "/stock/adjustments",

@@ -34,6 +34,11 @@ import {
 } from "@/pages/finance/journal";
 import FinanceDocumentPage from "@/pages/finance/document";
 import SettlementsPage from "@/pages/finance/settlements";
+import ReceiptsJournalPage from "@/pages/warehouse/receipts";
+import ReceiptDocumentPage from "@/pages/warehouse/receipt-document";
+import StockPage from "@/pages/warehouse/stock";
+import WriteoffsJournalPage from "@/pages/warehouse/writeoffs";
+import AdjustmentsJournalPage from "@/pages/warehouse/adjustments";
 import PnlReportPage from "@/pages/reports/pnl";
 import CashFlowReportPage from "@/pages/reports/cash-flow";
 import BalanceReportPage from "@/pages/reports/balance";
@@ -125,7 +130,22 @@ function Router() {
         <ProtectedRoute component={FinanceDocumentPage} />
       </Route>
       <Route path="/warehouse">
+        <ProtectedRoute component={ReceiptsJournalPage} />
+      </Route>
+      <Route path="/warehouse/classic">
         <ProtectedRoute component={WarehousePage} />
+      </Route>
+      <Route path="/warehouse/receipt/:id">
+        <ProtectedRoute component={ReceiptDocumentPage} />
+      </Route>
+      <Route path="/warehouse/stock">
+        <ProtectedRoute component={StockPage} />
+      </Route>
+      <Route path="/warehouse/writeoffs">
+        <ProtectedRoute component={WriteoffsJournalPage} />
+      </Route>
+      <Route path="/warehouse/adjustments">
+        <ProtectedRoute component={AdjustmentsJournalPage} />
       </Route>
       <Route path="/lists">
         <ProtectedRoute component={ListsPage} />
