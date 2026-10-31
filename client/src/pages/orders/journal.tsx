@@ -406,7 +406,7 @@ export function OrdersJournal(p: OrdersJournalProps) {
                   <th className="num w-[70px]">Створок</th>
                   <th className="w-[130px]">Статус</th>
                   <th>Комментарий</th>
-                  <th className="num" title="Долг контрагента по всем заказам с учётом ожидаемых отгрузок">
+                  <th className="num" title="Долг дилера по отгрузкам плюс ожидаемые отгрузки (неотгруженные заказы) минус оплаты">
                     Общий долг
                   </th>
                   {p.showProfit && <th className="num">Прибыль</th>}
@@ -513,7 +513,16 @@ export function OrdersJournal(p: OrdersJournalProps) {
                       <td className="max-w-[520px] truncate" title={o.comment ?? ""}>
                         {o.comment || <span className="ues-muted">—</span>}
                       </td>
-                      <td className={cn("num", debt !== null && debt > 0.004 && "ues-neg", debt !== null && debt < -0.004 && "ues-pos")}>
+                      <td
+                        className={cn("num", debt !== null && debt > 0.004 && "ues-neg", debt !== null && debt < -0.004 && "ues-pos")}
+                        title={
+                          debt === null
+                            ? undefined
+                            : `Долг по отгрузкам: ${fmtMoney(o.dealerShippedDebt ?? 0)}\nОжидаемые отгрузки: ${fmtMoney(
+                                debt - (o.dealerShippedDebt ?? 0)
+                              )}\nОбщий долг: ${fmtMoney(debt)}`
+                        }
+                      >
                         {debt === null ? "—" : debt < -0.004 ? `аванс ${fmtMoney(-debt)}` : fmtMoney(debt)}
                       </td>
                       {p.showProfit && (
