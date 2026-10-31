@@ -27,6 +27,14 @@ export interface OrderSash {
   systemType: string | null;
   category: string | null;
   fabricName: string | null;
+  componentId?: string | null;
+  room?: number | null;
+  roomName?: string | null;
+  coefficient?: string | null;
+  // Производство: null — не передано, in_work — в работе, ready — готово.
+  productionStatus?: "in_work" | "ready" | null;
+  productionSentAt?: string | null;
+  productionReadyAt?: string | null;
   system?: System;
   systemColor?: Color;
   fabric?: Fabric;
@@ -51,6 +59,10 @@ export interface OrderWithRelations extends Order {
   paidAmount?: number;
   paymentState?: "full" | "partial" | "none";
   materialsWrittenOff?: boolean;
+  // Производство по изделиям: всего / передано / готово.
+  productionTotal?: number;
+  productionSent?: number;
+  productionReady?: number;
 }
 
 export interface StockItem {

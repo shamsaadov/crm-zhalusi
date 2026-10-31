@@ -39,6 +39,8 @@ import {
   Palette,
   Percent,
   Truck,
+  Factory,
+  CircleCheckBig,
 } from "lucide-react";
 
 export interface NavItem {
@@ -84,6 +86,22 @@ export const NAV_SECTIONS: NavSection[] = [
         items: [
           { title: "Заказы покупателей", path: "/orders", code: "ЗП", icon: ClipboardList, description: "Заказы дилеров и розницы" },
           { title: "Канбан", path: "/kanban", icon: KanbanSquare, description: "Заказы по статусам производства" },
+        ],
+      },
+    ],
+  },
+  {
+    key: "production",
+    title: "Производство",
+    icon: Factory,
+    path: "/section/production",
+    description: "Изделия в работе и готовность",
+    groups: [
+      {
+        title: "Цех",
+        items: [
+          { title: "В производстве", path: "/production", icon: Factory, description: "Очередь изделий, отметка «Готов»" },
+          { title: "Готовые", path: "/production/ready", icon: CircleCheckBig, description: "Готовые изделия до отгрузки" },
         ],
       },
     ],

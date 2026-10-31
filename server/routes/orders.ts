@@ -1,8 +1,8 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { db } from "../db";
-import { installmentPlans as installmentPlansTable } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { installmentPlans as installmentPlansTable, orderSashes as orderSashesTable, orders as ordersTable } from "@shared/schema";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { logAudit } from "../audit";
 import { calculateOrderPayments } from "../reports/financial";
 import { loadFinData } from "../reports/load";
@@ -17,6 +17,41 @@ type AuthMiddleware = (
   res: Response,
   next: NextFunction
 ) => void;
+
+/** Строка заказа, которая идёт в производство (товар-комплектующая — нет). */
+export function isProductionSash(s: { componentId?: string | null; systemId?: string | null }) {
+  return !(s.componentId && !s.systemId);
+}
+
+/** Для значка «Производство» в журнале: передано / готово из N изделий. */
+function productionCounts(sashes: { componentId?: string | null; systemId?: string | null; productionStatus?: string | null }[]) {
+  const prod = sashes.filter(isProductionSash);
+  return {
+    productionTotal: prod.length,
+    productionSent: prod.filter((s) => s.productionStatus).length,
+    productionReady: prod.filter((s) => s.productionStatus === "ready").length,
+  };
+}
+
+const PRODUCTION_SASH = sql`not (component_id is not null and system_id is null)`;
+
+/**
+ * Статус заказа → состояние створок в производстве (ручная смена статуса).
+ * Откат из «Готов/Отгружен» в работу отменяет выпуск: списание материалов снимается.
+ */
+async function syncSashProduction(orderId: string, from: string, to: string) {
+  if (to === "Новый") {
+    await db.execute(sql`update order_sashes set production_status = null, production_sent_at = null, production_ready_at = null where order_id = ${orderId}`);
+  } else if (to === "В производстве") {
+    await db.execute(sql`update order_sashes set production_status = 'in_work', production_sent_at = coalesce(production_sent_at, timezone('utc', now())), production_ready_at = null where order_id = ${orderId} and ${PRODUCTION_SASH}`);
+  } else if (to === "Готов" || to === "Отгружен") {
+    await db.execute(sql`update order_sashes set production_status = 'ready', production_sent_at = coalesce(production_sent_at, timezone('utc', now())), production_ready_at = coalesce(production_ready_at, timezone('utc', now())) where order_id = ${orderId} and coalesce(production_status, '') <> 'ready' and ${PRODUCTION_SASH}`);
+  }
+  const wasReleased = from === "Готов" || from === "Отгружен";
+  if (wasReleased && (to === "Новый" || to === "В производстве")) {
+    await storage.deleteWarehouseWriteoffsByOrderId(orderId);
+  }
+}
 
 export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
   const router = Router();
@@ -41,6 +76,7 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
     systemType?: string;
     category?: string;
     fabricName?: string;
+    componentId?: string;
   }) => ({
     width: sash.width,
     height: sash.height,
@@ -58,6 +94,7 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
     systemType: sash.systemType || null,
     category: sash.category || null,
     fabricName: sash.fabricName || null,
+    componentId: sash.componentId || null,
   });
 
   // Helper function to calculate current stock levels
@@ -398,6 +435,7 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
                 paidAmount: payments.get(order.id)?.paid ?? 0,
                 paymentState: payments.get(order.id)?.state ?? "none",
                 materialsWrittenOff: ordersWithWriteoffs.has(order.id),
+                ...productionCounts(sashes),
               };
             })
           );
@@ -478,7 +516,7 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
     async (req: AuthRequest, res: Response) => {
       try {
         const order = await storage.getOrder(req.params.id);
-        if (!order) {
+        if (!order || order.userId !== req.userId) {
           return res.status(404).json({ message: "Заказ не найден" });
         }
         const sashes = await storage.getOrderSashes(order.id);
@@ -494,6 +532,10 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
           fabric: fabricList.find((f) => f.id === sash.fabricId),
           fabricColor: colorList.find((c) => c.id === sash.fabricColorId),
         }));
+
+        // Оплата по заказу — тем же распределением, что и значок в журнале.
+        const payment = calculateOrderPayments(await loadFinData(req.userId!)).get(order.id);
+        const writeoffs = await storage.getWarehouseWriteoffsByOrderId(order.id);
 
         // Ищем финансовую операцию оплаты для этого заказа
         const financeOps = await storage.getFinanceOperations(req.userId!);
@@ -512,6 +554,10 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
           sashes: enrichedSashes,
           isPaid: !!paymentOp,
           cashboxId: paymentOp?.cashboxId || null,
+          paidAmount: payment?.paid ?? 0,
+          paymentState: payment?.state ?? "none",
+          materialsWrittenOff: writeoffs.length > 0,
+          ...productionCounts(sashes),
         });
       } catch (error) {
         console.error(`[${req.method} ${req.path}]`, error);
@@ -549,6 +595,7 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
 
         const order = await storage.createOrder({
           ...orderData,
+          dealerId: orderData.dealerId || null, // пусто — розница
           orderNumber,
           userId: req.userId,
         });
@@ -662,6 +709,7 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
 
         const order = await storage.createOrder({
           ...orderData,
+          dealerId: orderData.dealerId || null, // пусто — розница
           comment,
           orderNumber,
           userId: req.userId,
@@ -727,6 +775,9 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
 
         // Получаем существующий заказ
         const existingOrder = await storage.getOrder(req.params.id);
+        if (!existingOrder || existingOrder.userId !== req.userId) {
+          return res.status(404).json({ message: "Заказ не найден" });
+        }
 
         // Проверка остатков при редактировании заказа (только если статус НЕ "Новый" и НЕ "В производстве")
         const editStatus = orderData.status || existingOrder?.status || "Новый";
@@ -745,15 +796,31 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
           }
         }
 
+        if ("dealerId" in orderData && !orderData.dealerId) orderData.dealerId = null; // пусто — розница
         const order = await storage.updateOrder(req.params.id, orderData);
 
         if (sashes && Array.isArray(sashes)) {
+          // Строки пересоздаются, но створка с прежним id сохраняет id и своё
+          // состояние в производстве (в работе / готово).
+          const before = new Map(
+            (await storage.getOrderSashes(req.params.id)).map((s) => [s.id, s])
+          );
           await storage.deleteOrderSashesByOrderId(req.params.id);
           for (const sash of sashes) {
+            const prev = typeof sash.id === "string" ? before.get(sash.id) : undefined;
+            before.delete(sash.id);
             await storage.createOrderSash({
               ...sanitizeSashData(sash),
               orderId: req.params.id,
-            });
+              ...(prev
+                ? {
+                    id: prev.id,
+                    productionStatus: prev.productionStatus,
+                    productionSentAt: prev.productionSentAt,
+                    productionReadyAt: prev.productionReadyAt,
+                  }
+                : {}),
+            } as typeof orderSashesTable.$inferInsert);
           }
         }
 
@@ -821,590 +888,619 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
     }
   );
 
+  type StatusReply = { code: number; body: any };
+  const reply = (code: number, body: any): StatusReply => ({ code, body });
+
+  /**
+   * Смена статуса заказа со всеми последствиями (долг дилера, списание материалов
+   * при «Готов», проверка цен при «Отгружен»). Используется журналом и производством.
+   */
+  async function applyOrderStatus(
+    userId: string,
+    orderId: string,
+    status: string
+  ): Promise<StatusReply> {
+    const order = await storage.getOrder(orderId);
+    if (!order || order.userId !== userId) {
+      return reply(404, { message: "Заказ не найден" });
+    }
+
+    const oldStatus = order.status || "Новый";
+    if (status === oldStatus) return reply(200, order);
+
+    // Как в УЭС: отгрузить можно только то, что готово с производства.
+    if (status === "Отгружен") {
+      const prod = (await storage.getOrderSashes(orderId)).filter(isProductionSash);
+      const ready = prod.filter((s) => s.productionStatus === "ready").length;
+      if (ready < prod.length && oldStatus !== "Готов") {
+        return reply(400, {
+          message: `Нельзя отгрузить: производство не завершено (готово ${ready} из ${prod.length}).`,
+          productionError: true,
+        });
+      }
+    }
+    let dealerDebt = parseFloat(order.dealerDebt?.toString() || "0");
+
+    // 1. Новый → просто черновик, ничего не делаем
+
+    // 2. В производстве → добавляем долг дилеру (если долг ещё не установлен)
+    if (status === "В производстве" && oldStatus === "Новый") {
+      dealerDebt = parseFloat(order.salePrice?.toString() || "0");
+    }
+
+    // 3. Готов → списываем материалы со склада
+    if (status === "Готов" && oldStatus !== "Готов") {
+      // Проверяем, не было ли уже списания для этого заказа
+      const existingWriteoffs =
+        await storage.getWarehouseWriteoffsByOrderId(orderId);
+
+      if (existingWriteoffs.length === 0) {
+        // Получаем створки заказа
+        const sashes = await storage.getOrderSashes(orderId);
+
+        // ПРОВЕРКА ОСТАТКОВ перед изменением статуса на "Готов"
+        const validation = await validateSashOrderStock(
+          userId,
+          sashes
+        );
+        if (!validation.valid) {
+          return reply(400, {
+            message:
+              "Невозможно изменить статус на 'Готов'. Недостаточно материалов на складе",
+            errors: validation.errors,
+            stockError: true,
+          });
+        }
+
+        const allFabrics = await storage.getFabrics(userId);
+        const allSystems = await storage.getSystems(userId);
+        const allComponents = await storage.getComponents(userId);
+
+        // Получаем текущие остатки и средние цены
+        const receipts = await storage.getWarehouseReceipts(userId);
+        const writeoffs = await storage.getWarehouseWriteoffs(userId);
+
+        // Рассчитываем текущие остатки тканей
+        const fabricStock: Record<
+          string,
+          {
+            quantity: number;
+            totalReceived: number;
+            avgPrice: number;
+            totalValue: number;
+            lastPrice: number;
+          }
+        > = {};
+        for (const receipt of receipts) {
+          const items = await storage.getWarehouseReceiptItems(receipt.id);
+          for (const item of items.filter((i) => i.fabricId)) {
+            if (!fabricStock[item.fabricId!]) {
+              fabricStock[item.fabricId!] = {
+                quantity: 0,
+                totalReceived: 0,
+                avgPrice: 0,
+                totalValue: 0,
+                lastPrice: 0,
+              };
+            }
+            const qty = parseFloat(item.quantity?.toString() || "0");
+            const price = parseFloat(item.price?.toString() || "0");
+            fabricStock[item.fabricId!].quantity += qty;
+            fabricStock[item.fabricId!].totalReceived += qty;
+            fabricStock[item.fabricId!].totalValue += qty * price;
+            fabricStock[item.fabricId!].lastPrice = price; // Последняя цена закупки
+          }
+        }
+        // Вычитаем предыдущие списания
+        for (const wo of writeoffs) {
+          if (wo.fabricId && fabricStock[wo.fabricId]) {
+            fabricStock[wo.fabricId].quantity -= parseFloat(
+              wo.quantity?.toString() || "0"
+            );
+          }
+        }
+        // Считаем средние цены (от общего количества поступлений, а не от остатка)
+        for (const id of Object.keys(fabricStock)) {
+          if (fabricStock[id].totalReceived > 0) {
+            fabricStock[id].avgPrice =
+              fabricStock[id].totalValue / fabricStock[id].totalReceived;
+          }
+        }
+
+        // Рассчитываем текущие остатки комплектующих
+        const componentStock: Record<
+          string,
+          {
+            quantity: number;
+            totalReceived: number;
+            avgPrice: number;
+            totalValue: number;
+            lastPrice: number;
+          }
+        > = {};
+        for (const receipt of receipts) {
+          const items = await storage.getWarehouseReceiptItems(receipt.id);
+          for (const item of items.filter((i) => i.componentId)) {
+            if (!componentStock[item.componentId!]) {
+              componentStock[item.componentId!] = {
+                quantity: 0,
+                totalReceived: 0,
+                avgPrice: 0,
+                totalValue: 0,
+                lastPrice: 0,
+              };
+            }
+            const qty = parseFloat(item.quantity?.toString() || "0");
+            const price = parseFloat(item.price?.toString() || "0");
+            componentStock[item.componentId!].quantity += qty;
+            componentStock[item.componentId!].totalReceived += qty;
+            componentStock[item.componentId!].totalValue += qty * price;
+            componentStock[item.componentId!].lastPrice = price;
+          }
+        }
+        // Вычитаем предыдущие списания
+        for (const wo of writeoffs) {
+          if (wo.componentId && componentStock[wo.componentId]) {
+            componentStock[wo.componentId].quantity -= parseFloat(
+              wo.quantity?.toString() || "0"
+            );
+          }
+        }
+        // Считаем средние цены (от общего количества поступлений, а не от остатка)
+        for (const id of Object.keys(componentStock)) {
+          if (componentStock[id].totalReceived > 0) {
+            componentStock[id].avgPrice =
+              componentStock[id].totalValue /
+              componentStock[id].totalReceived;
+          }
+        }
+
+        const today = new Date().toISOString().split("T")[0];
+        let writeoffsCreated = 0;
+
+        // Обрабатываем каждую створку
+        for (const sash of sashes) {
+          const width = parseFloat(sash.width?.toString() || "0");
+          const height = parseFloat(sash.height?.toString() || "0");
+          const widthM = width / 100;
+          const heightM = height / 100;
+          const areaM2 = widthM * heightM;
+          // Свойство quantity отсутствует у sash, использовать 1 по умолчанию
+          const quantity = 1;
+
+          // Списываем ткань
+          if (sash.fabricId) {
+            const fabric = allFabrics.find((f) => f.id === sash.fabricId);
+            const stock = fabricStock[sash.fabricId];
+
+            // Списываем даже если stock не найден, используем цену 0
+            if (fabric) {
+              const fabricMultiplier =
+                fabric.fabricType === "zebra" ? 2 : 1;
+              const fabricQty = areaM2 * fabricMultiplier * quantity;
+              const price = stock?.lastPrice || stock?.avgPrice || 0;
+
+              await storage.createWarehouseWriteoff({
+                orderId: orderId,
+                itemType: "fabric",
+                fabricId: sash.fabricId,
+                quantity: fabricQty.toFixed(4),
+                price: price.toFixed(2),
+                total: (fabricQty * price).toFixed(2),
+                date: today,
+                userId: userId,
+              });
+              writeoffsCreated++;
+            }
+          }
+
+          // Списываем комплектующие системы
+          if (sash.systemId) {
+            const system = allSystems.find((s) => s.id === sash.systemId);
+            if (system) {
+              // Получаем компоненты системы
+              const systemComps = await storage.getSystemComponents(
+                system.id
+              );
+
+              for (const sc of systemComps) {
+                const component = allComponents.find(
+                  (c) => c.id === sc.componentId
+                );
+                const stock = componentStock[sc.componentId];
+
+                // Списываем даже если stock не найден
+                if (component) {
+                  const compQuantity = parseFloat(
+                    sc.quantity?.toString() || "1"
+                  );
+                  const sizeSource = sc.sizeSource || null;
+                  const sizeMultiplier = parseFloat(
+                    sc.sizeMultiplier?.toString() || "1"
+                  );
+                  const unit = component.unit || "шт";
+
+                  let componentQty = compQuantity;
+                  const isMetric = ["м", "пм", "п.м.", "м.п."].includes(
+                    unit.toLowerCase()
+                  );
+
+                  if (isMetric) {
+                    if (sizeSource === "width") {
+                      componentQty = widthM * sizeMultiplier * compQuantity;
+                    } else if (sizeSource === "height") {
+                      componentQty =
+                        heightM * sizeMultiplier * compQuantity;
+                    } else {
+                      componentQty = widthM * sizeMultiplier * compQuantity;
+                    }
+                  }
+
+                  // Умножаем на количество створок
+                  componentQty *= quantity;
+
+                  const price = stock?.lastPrice || stock?.avgPrice || 0;
+
+                  await storage.createWarehouseWriteoff({
+                    orderId: orderId,
+                    itemType: "component",
+                    componentId: sc.componentId,
+                    quantity: componentQty.toFixed(4),
+                    price: price.toFixed(2),
+                    total: (componentQty * price).toFixed(2),
+                    date: today,
+                    userId: userId,
+                  });
+                  writeoffsCreated++;
+                }
+              }
+            }
+          }
+
+          // Списываем компонент напрямую (для заказов товара)
+          if (sash.componentId && !sash.systemId) {
+            const component = allComponents.find(
+              (c) => c.id === sash.componentId
+            );
+            const stock = componentStock[sash.componentId];
+
+            if (component) {
+              const componentQty = quantity; // quantity уже парсится из sash.quantity
+              const price = stock?.lastPrice || stock?.avgPrice || 0;
+
+              await storage.createWarehouseWriteoff({
+                orderId: orderId,
+                itemType: "component",
+                componentId: sash.componentId,
+                quantity: componentQty.toFixed(4),
+                price: price.toFixed(2),
+                total: (componentQty * price).toFixed(2),
+                date: today,
+                userId: userId,
+              });
+              writeoffsCreated++;
+            }
+          }
+        }
+      }
+    }
+
+    // 4. Отгружен → если материалы ещё не были списаны (пропустили "Готов"), списываем
+    if (status === "Отгружен" && oldStatus !== "Отгружен") {
+      // Блокируем отгрузку, если у любой ткани заказа нет средней цены
+      // (ткань была создана, но поступлений не было — себестоимость была
+      // бы занижена). Пользователь должен сначала оприходовать закупку.
+      const orderSashes = await storage.getOrderSashes(orderId);
+      const orderFabricIds = Array.from(
+        new Set(
+          orderSashes
+            .map((s) => s.fabricId)
+            .filter((id): id is string => !!id)
+        )
+      );
+      if (orderFabricIds.length > 0) {
+        const fabricAvgPrices = await getFabricAvgPrices(userId);
+        const allFabrics = await storage.getFabrics(userId);
+        const missing = orderFabricIds
+          .filter((id) => !fabricAvgPrices[id] || fabricAvgPrices[id] === 0)
+          .map(
+            (id) => allFabrics.find((f) => f.id === id)?.name || id
+          );
+        if (missing.length > 0) {
+          return reply(400, {
+            message: `Невозможно отгрузить заказ: не указана цена за ткань (${missing.join(
+              ", "
+            )}). Оприходуйте закупку на складе.`,
+            missingFabricPrices: missing,
+            fabricPriceError: true,
+          });
+        }
+      }
+
+      const existingWriteoffs =
+        await storage.getWarehouseWriteoffsByOrderId(orderId);
+
+      if (existingWriteoffs.length === 0) {
+        // Материалы не списаны — выполняем списание как при "Готов"
+        const sashes = await storage.getOrderSashes(orderId);
+
+        const validation = await validateSashOrderStock(
+          userId,
+          sashes
+        );
+        if (!validation.valid) {
+          return reply(400, {
+            message:
+              "Невозможно изменить статус на 'Отгружен'. Недостаточно материалов на складе",
+            errors: validation.errors,
+            stockError: true,
+          });
+        }
+
+        const allFabrics = await storage.getFabrics(userId);
+        const allSystems = await storage.getSystems(userId);
+        const allComponents = await storage.getComponents(userId);
+
+        const receipts = await storage.getWarehouseReceipts(userId);
+        const writeoffs = await storage.getWarehouseWriteoffs(userId);
+
+        // Рассчитываем текущие остатки тканей
+        const fabricStock: Record<
+          string,
+          {
+            quantity: number;
+            totalReceived: number;
+            avgPrice: number;
+            totalValue: number;
+            lastPrice: number;
+          }
+        > = {};
+        for (const receipt of receipts) {
+          const items = await storage.getWarehouseReceiptItems(receipt.id);
+          for (const item of items.filter((i) => i.fabricId)) {
+            if (!fabricStock[item.fabricId!]) {
+              fabricStock[item.fabricId!] = {
+                quantity: 0,
+                totalReceived: 0,
+                avgPrice: 0,
+                totalValue: 0,
+                lastPrice: 0,
+              };
+            }
+            const qty = parseFloat(item.quantity?.toString() || "0");
+            const price = parseFloat(item.price?.toString() || "0");
+            fabricStock[item.fabricId!].quantity += qty;
+            fabricStock[item.fabricId!].totalReceived += qty;
+            fabricStock[item.fabricId!].totalValue += qty * price;
+            fabricStock[item.fabricId!].lastPrice = price;
+          }
+        }
+        for (const wo of writeoffs) {
+          if (wo.fabricId && fabricStock[wo.fabricId]) {
+            fabricStock[wo.fabricId].quantity -= parseFloat(
+              wo.quantity?.toString() || "0"
+            );
+          }
+        }
+        for (const id of Object.keys(fabricStock)) {
+          if (fabricStock[id].totalReceived > 0) {
+            fabricStock[id].avgPrice =
+              fabricStock[id].totalValue / fabricStock[id].totalReceived;
+          }
+        }
+
+        // Рассчитываем текущие остатки комплектующих
+        const componentStock: Record<
+          string,
+          {
+            quantity: number;
+            totalReceived: number;
+            avgPrice: number;
+            totalValue: number;
+            lastPrice: number;
+          }
+        > = {};
+        for (const receipt of receipts) {
+          const items = await storage.getWarehouseReceiptItems(receipt.id);
+          for (const item of items.filter((i) => i.componentId)) {
+            if (!componentStock[item.componentId!]) {
+              componentStock[item.componentId!] = {
+                quantity: 0,
+                totalReceived: 0,
+                avgPrice: 0,
+                totalValue: 0,
+                lastPrice: 0,
+              };
+            }
+            const qty = parseFloat(item.quantity?.toString() || "0");
+            const price = parseFloat(item.price?.toString() || "0");
+            componentStock[item.componentId!].quantity += qty;
+            componentStock[item.componentId!].totalReceived += qty;
+            componentStock[item.componentId!].totalValue += qty * price;
+            componentStock[item.componentId!].lastPrice = price;
+          }
+        }
+        for (const wo of writeoffs) {
+          if (wo.componentId && componentStock[wo.componentId]) {
+            componentStock[wo.componentId].quantity -= parseFloat(
+              wo.quantity?.toString() || "0"
+            );
+          }
+        }
+        for (const id of Object.keys(componentStock)) {
+          if (componentStock[id].totalReceived > 0) {
+            componentStock[id].avgPrice =
+              componentStock[id].totalValue /
+              componentStock[id].totalReceived;
+          }
+        }
+
+        const today = new Date().toISOString().split("T")[0];
+
+        for (const sash of sashes) {
+          const width = parseFloat(sash.width?.toString() || "0");
+          const height = parseFloat(sash.height?.toString() || "0");
+          const widthM = width / 100;
+          const heightM = height / 100;
+          const areaM2 = widthM * heightM;
+          const quantity = 1;
+
+          if (sash.fabricId) {
+            const fabric = allFabrics.find((f) => f.id === sash.fabricId);
+            const stock = fabricStock[sash.fabricId];
+
+            if (fabric) {
+              const fabricMultiplier =
+                fabric.fabricType === "zebra" ? 2 : 1;
+              const fabricQty = areaM2 * fabricMultiplier * quantity;
+              const price = stock?.lastPrice || stock?.avgPrice || 0;
+
+              await storage.createWarehouseWriteoff({
+                orderId: orderId,
+                itemType: "fabric",
+                fabricId: sash.fabricId,
+                quantity: fabricQty.toFixed(4),
+                price: price.toFixed(2),
+                total: (fabricQty * price).toFixed(2),
+                date: today,
+                userId: userId,
+              });
+            }
+          }
+
+          if (sash.systemId) {
+            const system = allSystems.find((s) => s.id === sash.systemId);
+            if (system) {
+              const systemComps = await storage.getSystemComponents(
+                system.id
+              );
+
+              for (const sc of systemComps) {
+                const component = allComponents.find(
+                  (c) => c.id === sc.componentId
+                );
+                const stock = componentStock[sc.componentId];
+
+                if (component) {
+                  const compQuantity = parseFloat(
+                    sc.quantity?.toString() || "1"
+                  );
+                  const sizeSource = sc.sizeSource || null;
+                  const sizeMultiplier = parseFloat(
+                    sc.sizeMultiplier?.toString() || "1"
+                  );
+                  const unit = component.unit || "шт";
+
+                  let componentQty = compQuantity;
+                  const isMetric = ["м", "пм", "п.м.", "м.п."].includes(
+                    unit.toLowerCase()
+                  );
+
+                  if (isMetric) {
+                    if (sizeSource === "width") {
+                      componentQty = widthM * sizeMultiplier * compQuantity;
+                    } else if (sizeSource === "height") {
+                      componentQty =
+                        heightM * sizeMultiplier * compQuantity;
+                    } else {
+                      componentQty = widthM * sizeMultiplier * compQuantity;
+                    }
+                  }
+
+                  const price = stock?.lastPrice || stock?.avgPrice || 0;
+
+                  await storage.createWarehouseWriteoff({
+                    orderId: orderId,
+                    itemType: "component",
+                    componentId: sc.componentId,
+                    quantity: componentQty.toFixed(4),
+                    price: price.toFixed(2),
+                    total: (componentQty * price).toFixed(2),
+                    date: today,
+                    userId: userId,
+                  });
+                }
+              }
+            }
+          }
+
+          if (sash.componentId && !sash.systemId) {
+            const component = allComponents.find(
+              (c) => c.id === sash.componentId
+            );
+            const stock = componentStock[sash.componentId];
+
+            if (component) {
+              const price = stock?.lastPrice || stock?.avgPrice || 0;
+
+              await storage.createWarehouseWriteoff({
+                orderId: orderId,
+                itemType: "component",
+                componentId: sash.componentId,
+                quantity: quantity.toFixed(4),
+                price: price.toFixed(2),
+                total: (quantity * price).toFixed(2),
+                date: today,
+                userId: userId,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    const updated = await storage.updateOrder(orderId, {
+      status,
+      dealerDebt: dealerDebt.toString(),
+    });
+    await syncSashProduction(orderId, oldStatus, status);
+
+    logAudit({
+      userId: userId,
+      action: "status_change",
+      entityType: "order",
+      entityId: orderId,
+      before: { status: oldStatus },
+      after: { status },
+      metadata: { orderNumber: order.orderNumber },
+    });
+
+    notify({
+      userId: userId,
+      type: "order_status",
+      title: "Статус заказа изменен",
+      message: `Заказ №${order.orderNumber}: ${oldStatus} -> ${status}`,
+      entityType: "order",
+      entityId: order.id,
+    });
+
+    if (order.dealerId) {
+      const statusLabels: Record<string, string> = {
+        "Новый": "Новый",
+        "В производстве": "В производстве",
+        "Готов": "Готов к выдаче",
+        "Отгружен": "Отгружен",
+      };
+      notifyDealer({
+        dealerId: order.dealerId,
+        userId: userId,
+        title: "Статус заказа изменён",
+        message: `Заказ №${order.orderNumber}: ${statusLabels[status] || status}`,
+        entityType: "order",
+        entityId: order.id,
+      });
+    }
+
+    return reply(200, updated);
+  }
+
   router.patch(
     "/orders/:id/status",
     authMiddleware,
     async (req: AuthRequest, res: Response) => {
       try {
-        const { status } = req.body;
-        const order = await storage.getOrder(req.params.id);
-        if (!order) {
-          return res.status(404).json({ message: "Заказ не найден" });
-        }
-
-        const oldStatus = order.status || "Новый";
-        let dealerDebt = parseFloat(order.dealerDebt?.toString() || "0");
-
-        // 1. Новый → просто черновик, ничего не делаем
-
-        // 2. В производстве → добавляем долг дилеру (если долг ещё не установлен)
-        if (status === "В производстве" && oldStatus === "Новый") {
-          dealerDebt = parseFloat(order.salePrice?.toString() || "0");
-        }
-
-        // 3. Готов → списываем материалы со склада
-        if (status === "Готов" && oldStatus !== "Готов") {
-          // Проверяем, не было ли уже списания для этого заказа
-          const existingWriteoffs =
-            await storage.getWarehouseWriteoffsByOrderId(req.params.id);
-
-          if (existingWriteoffs.length === 0) {
-            // Получаем створки заказа
-            const sashes = await storage.getOrderSashes(req.params.id);
-
-            // ПРОВЕРКА ОСТАТКОВ перед изменением статуса на "Готов"
-            const validation = await validateSashOrderStock(
-              req.userId!,
-              sashes
-            );
-            if (!validation.valid) {
-              return res.status(400).json({
-                message:
-                  "Невозможно изменить статус на 'Готов'. Недостаточно материалов на складе",
-                errors: validation.errors,
-                stockError: true,
-              });
-            }
-
-            const allFabrics = await storage.getFabrics(req.userId!);
-            const allSystems = await storage.getSystems(req.userId!);
-            const allComponents = await storage.getComponents(req.userId!);
-
-            // Получаем текущие остатки и средние цены
-            const receipts = await storage.getWarehouseReceipts(req.userId!);
-            const writeoffs = await storage.getWarehouseWriteoffs(req.userId!);
-
-            // Рассчитываем текущие остатки тканей
-            const fabricStock: Record<
-              string,
-              {
-                quantity: number;
-                totalReceived: number;
-                avgPrice: number;
-                totalValue: number;
-                lastPrice: number;
-              }
-            > = {};
-            for (const receipt of receipts) {
-              const items = await storage.getWarehouseReceiptItems(receipt.id);
-              for (const item of items.filter((i) => i.fabricId)) {
-                if (!fabricStock[item.fabricId!]) {
-                  fabricStock[item.fabricId!] = {
-                    quantity: 0,
-                    totalReceived: 0,
-                    avgPrice: 0,
-                    totalValue: 0,
-                    lastPrice: 0,
-                  };
-                }
-                const qty = parseFloat(item.quantity?.toString() || "0");
-                const price = parseFloat(item.price?.toString() || "0");
-                fabricStock[item.fabricId!].quantity += qty;
-                fabricStock[item.fabricId!].totalReceived += qty;
-                fabricStock[item.fabricId!].totalValue += qty * price;
-                fabricStock[item.fabricId!].lastPrice = price; // Последняя цена закупки
-              }
-            }
-            // Вычитаем предыдущие списания
-            for (const wo of writeoffs) {
-              if (wo.fabricId && fabricStock[wo.fabricId]) {
-                fabricStock[wo.fabricId].quantity -= parseFloat(
-                  wo.quantity?.toString() || "0"
-                );
-              }
-            }
-            // Считаем средние цены (от общего количества поступлений, а не от остатка)
-            for (const id of Object.keys(fabricStock)) {
-              if (fabricStock[id].totalReceived > 0) {
-                fabricStock[id].avgPrice =
-                  fabricStock[id].totalValue / fabricStock[id].totalReceived;
-              }
-            }
-
-            // Рассчитываем текущие остатки комплектующих
-            const componentStock: Record<
-              string,
-              {
-                quantity: number;
-                totalReceived: number;
-                avgPrice: number;
-                totalValue: number;
-                lastPrice: number;
-              }
-            > = {};
-            for (const receipt of receipts) {
-              const items = await storage.getWarehouseReceiptItems(receipt.id);
-              for (const item of items.filter((i) => i.componentId)) {
-                if (!componentStock[item.componentId!]) {
-                  componentStock[item.componentId!] = {
-                    quantity: 0,
-                    totalReceived: 0,
-                    avgPrice: 0,
-                    totalValue: 0,
-                    lastPrice: 0,
-                  };
-                }
-                const qty = parseFloat(item.quantity?.toString() || "0");
-                const price = parseFloat(item.price?.toString() || "0");
-                componentStock[item.componentId!].quantity += qty;
-                componentStock[item.componentId!].totalReceived += qty;
-                componentStock[item.componentId!].totalValue += qty * price;
-                componentStock[item.componentId!].lastPrice = price;
-              }
-            }
-            // Вычитаем предыдущие списания
-            for (const wo of writeoffs) {
-              if (wo.componentId && componentStock[wo.componentId]) {
-                componentStock[wo.componentId].quantity -= parseFloat(
-                  wo.quantity?.toString() || "0"
-                );
-              }
-            }
-            // Считаем средние цены (от общего количества поступлений, а не от остатка)
-            for (const id of Object.keys(componentStock)) {
-              if (componentStock[id].totalReceived > 0) {
-                componentStock[id].avgPrice =
-                  componentStock[id].totalValue /
-                  componentStock[id].totalReceived;
-              }
-            }
-
-            const today = new Date().toISOString().split("T")[0];
-            let writeoffsCreated = 0;
-
-            // Обрабатываем каждую створку
-            for (const sash of sashes) {
-              const width = parseFloat(sash.width?.toString() || "0");
-              const height = parseFloat(sash.height?.toString() || "0");
-              const widthM = width / 100;
-              const heightM = height / 100;
-              const areaM2 = widthM * heightM;
-              // Свойство quantity отсутствует у sash, использовать 1 по умолчанию
-              const quantity = 1;
-
-              // Списываем ткань
-              if (sash.fabricId) {
-                const fabric = allFabrics.find((f) => f.id === sash.fabricId);
-                const stock = fabricStock[sash.fabricId];
-
-                // Списываем даже если stock не найден, используем цену 0
-                if (fabric) {
-                  const fabricMultiplier =
-                    fabric.fabricType === "zebra" ? 2 : 1;
-                  const fabricQty = areaM2 * fabricMultiplier * quantity;
-                  const price = stock?.lastPrice || stock?.avgPrice || 0;
-
-                  await storage.createWarehouseWriteoff({
-                    orderId: req.params.id,
-                    itemType: "fabric",
-                    fabricId: sash.fabricId,
-                    quantity: fabricQty.toFixed(4),
-                    price: price.toFixed(2),
-                    total: (fabricQty * price).toFixed(2),
-                    date: today,
-                    userId: req.userId!,
-                  });
-                  writeoffsCreated++;
-                }
-              }
-
-              // Списываем комплектующие системы
-              if (sash.systemId) {
-                const system = allSystems.find((s) => s.id === sash.systemId);
-                if (system) {
-                  // Получаем компоненты системы
-                  const systemComps = await storage.getSystemComponents(
-                    system.id
-                  );
-
-                  for (const sc of systemComps) {
-                    const component = allComponents.find(
-                      (c) => c.id === sc.componentId
-                    );
-                    const stock = componentStock[sc.componentId];
-
-                    // Списываем даже если stock не найден
-                    if (component) {
-                      const compQuantity = parseFloat(
-                        sc.quantity?.toString() || "1"
-                      );
-                      const sizeSource = sc.sizeSource || null;
-                      const sizeMultiplier = parseFloat(
-                        sc.sizeMultiplier?.toString() || "1"
-                      );
-                      const unit = component.unit || "шт";
-
-                      let componentQty = compQuantity;
-                      const isMetric = ["м", "пм", "п.м.", "м.п."].includes(
-                        unit.toLowerCase()
-                      );
-
-                      if (isMetric) {
-                        if (sizeSource === "width") {
-                          componentQty = widthM * sizeMultiplier * compQuantity;
-                        } else if (sizeSource === "height") {
-                          componentQty =
-                            heightM * sizeMultiplier * compQuantity;
-                        } else {
-                          componentQty = widthM * sizeMultiplier * compQuantity;
-                        }
-                      }
-
-                      // Умножаем на количество створок
-                      componentQty *= quantity;
-
-                      const price = stock?.lastPrice || stock?.avgPrice || 0;
-
-                      await storage.createWarehouseWriteoff({
-                        orderId: req.params.id,
-                        itemType: "component",
-                        componentId: sc.componentId,
-                        quantity: componentQty.toFixed(4),
-                        price: price.toFixed(2),
-                        total: (componentQty * price).toFixed(2),
-                        date: today,
-                        userId: req.userId!,
-                      });
-                      writeoffsCreated++;
-                    }
-                  }
-                }
-              }
-
-              // Списываем компонент напрямую (для заказов товара)
-              if (sash.componentId && !sash.systemId) {
-                const component = allComponents.find(
-                  (c) => c.id === sash.componentId
-                );
-                const stock = componentStock[sash.componentId];
-
-                if (component) {
-                  const componentQty = quantity; // quantity уже парсится из sash.quantity
-                  const price = stock?.lastPrice || stock?.avgPrice || 0;
-
-                  await storage.createWarehouseWriteoff({
-                    orderId: req.params.id,
-                    itemType: "component",
-                    componentId: sash.componentId,
-                    quantity: componentQty.toFixed(4),
-                    price: price.toFixed(2),
-                    total: (componentQty * price).toFixed(2),
-                    date: today,
-                    userId: req.userId!,
-                  });
-                  writeoffsCreated++;
-                }
-              }
-            }
-          }
-        }
-
-        // 4. Отгружен → если материалы ещё не были списаны (пропустили "Готов"), списываем
-        if (status === "Отгружен" && oldStatus !== "Отгружен") {
-          // Блокируем отгрузку, если у любой ткани заказа нет средней цены
-          // (ткань была создана, но поступлений не было — себестоимость была
-          // бы занижена). Пользователь должен сначала оприходовать закупку.
-          const orderSashes = await storage.getOrderSashes(req.params.id);
-          const orderFabricIds = Array.from(
-            new Set(
-              orderSashes
-                .map((s) => s.fabricId)
-                .filter((id): id is string => !!id)
-            )
-          );
-          if (orderFabricIds.length > 0) {
-            const fabricAvgPrices = await getFabricAvgPrices(req.userId!);
-            const allFabrics = await storage.getFabrics(req.userId!);
-            const missing = orderFabricIds
-              .filter((id) => !fabricAvgPrices[id] || fabricAvgPrices[id] === 0)
-              .map(
-                (id) => allFabrics.find((f) => f.id === id)?.name || id
-              );
-            if (missing.length > 0) {
-              return res.status(400).json({
-                message: `Невозможно отгрузить заказ: не указана цена за ткань (${missing.join(
-                  ", "
-                )}). Оприходуйте закупку на складе.`,
-                missingFabricPrices: missing,
-                fabricPriceError: true,
-              });
-            }
-          }
-
-          const existingWriteoffs =
-            await storage.getWarehouseWriteoffsByOrderId(req.params.id);
-
-          if (existingWriteoffs.length === 0) {
-            // Материалы не списаны — выполняем списание как при "Готов"
-            const sashes = await storage.getOrderSashes(req.params.id);
-
-            const validation = await validateSashOrderStock(
-              req.userId!,
-              sashes
-            );
-            if (!validation.valid) {
-              return res.status(400).json({
-                message:
-                  "Невозможно изменить статус на 'Отгружен'. Недостаточно материалов на складе",
-                errors: validation.errors,
-                stockError: true,
-              });
-            }
-
-            const allFabrics = await storage.getFabrics(req.userId!);
-            const allSystems = await storage.getSystems(req.userId!);
-            const allComponents = await storage.getComponents(req.userId!);
-
-            const receipts = await storage.getWarehouseReceipts(req.userId!);
-            const writeoffs = await storage.getWarehouseWriteoffs(req.userId!);
-
-            // Рассчитываем текущие остатки тканей
-            const fabricStock: Record<
-              string,
-              {
-                quantity: number;
-                totalReceived: number;
-                avgPrice: number;
-                totalValue: number;
-                lastPrice: number;
-              }
-            > = {};
-            for (const receipt of receipts) {
-              const items = await storage.getWarehouseReceiptItems(receipt.id);
-              for (const item of items.filter((i) => i.fabricId)) {
-                if (!fabricStock[item.fabricId!]) {
-                  fabricStock[item.fabricId!] = {
-                    quantity: 0,
-                    totalReceived: 0,
-                    avgPrice: 0,
-                    totalValue: 0,
-                    lastPrice: 0,
-                  };
-                }
-                const qty = parseFloat(item.quantity?.toString() || "0");
-                const price = parseFloat(item.price?.toString() || "0");
-                fabricStock[item.fabricId!].quantity += qty;
-                fabricStock[item.fabricId!].totalReceived += qty;
-                fabricStock[item.fabricId!].totalValue += qty * price;
-                fabricStock[item.fabricId!].lastPrice = price;
-              }
-            }
-            for (const wo of writeoffs) {
-              if (wo.fabricId && fabricStock[wo.fabricId]) {
-                fabricStock[wo.fabricId].quantity -= parseFloat(
-                  wo.quantity?.toString() || "0"
-                );
-              }
-            }
-            for (const id of Object.keys(fabricStock)) {
-              if (fabricStock[id].totalReceived > 0) {
-                fabricStock[id].avgPrice =
-                  fabricStock[id].totalValue / fabricStock[id].totalReceived;
-              }
-            }
-
-            // Рассчитываем текущие остатки комплектующих
-            const componentStock: Record<
-              string,
-              {
-                quantity: number;
-                totalReceived: number;
-                avgPrice: number;
-                totalValue: number;
-                lastPrice: number;
-              }
-            > = {};
-            for (const receipt of receipts) {
-              const items = await storage.getWarehouseReceiptItems(receipt.id);
-              for (const item of items.filter((i) => i.componentId)) {
-                if (!componentStock[item.componentId!]) {
-                  componentStock[item.componentId!] = {
-                    quantity: 0,
-                    totalReceived: 0,
-                    avgPrice: 0,
-                    totalValue: 0,
-                    lastPrice: 0,
-                  };
-                }
-                const qty = parseFloat(item.quantity?.toString() || "0");
-                const price = parseFloat(item.price?.toString() || "0");
-                componentStock[item.componentId!].quantity += qty;
-                componentStock[item.componentId!].totalReceived += qty;
-                componentStock[item.componentId!].totalValue += qty * price;
-                componentStock[item.componentId!].lastPrice = price;
-              }
-            }
-            for (const wo of writeoffs) {
-              if (wo.componentId && componentStock[wo.componentId]) {
-                componentStock[wo.componentId].quantity -= parseFloat(
-                  wo.quantity?.toString() || "0"
-                );
-              }
-            }
-            for (const id of Object.keys(componentStock)) {
-              if (componentStock[id].totalReceived > 0) {
-                componentStock[id].avgPrice =
-                  componentStock[id].totalValue /
-                  componentStock[id].totalReceived;
-              }
-            }
-
-            const today = new Date().toISOString().split("T")[0];
-
-            for (const sash of sashes) {
-              const width = parseFloat(sash.width?.toString() || "0");
-              const height = parseFloat(sash.height?.toString() || "0");
-              const widthM = width / 100;
-              const heightM = height / 100;
-              const areaM2 = widthM * heightM;
-              const quantity = 1;
-
-              if (sash.fabricId) {
-                const fabric = allFabrics.find((f) => f.id === sash.fabricId);
-                const stock = fabricStock[sash.fabricId];
-
-                if (fabric) {
-                  const fabricMultiplier =
-                    fabric.fabricType === "zebra" ? 2 : 1;
-                  const fabricQty = areaM2 * fabricMultiplier * quantity;
-                  const price = stock?.lastPrice || stock?.avgPrice || 0;
-
-                  await storage.createWarehouseWriteoff({
-                    orderId: req.params.id,
-                    itemType: "fabric",
-                    fabricId: sash.fabricId,
-                    quantity: fabricQty.toFixed(4),
-                    price: price.toFixed(2),
-                    total: (fabricQty * price).toFixed(2),
-                    date: today,
-                    userId: req.userId!,
-                  });
-                }
-              }
-
-              if (sash.systemId) {
-                const system = allSystems.find((s) => s.id === sash.systemId);
-                if (system) {
-                  const systemComps = await storage.getSystemComponents(
-                    system.id
-                  );
-
-                  for (const sc of systemComps) {
-                    const component = allComponents.find(
-                      (c) => c.id === sc.componentId
-                    );
-                    const stock = componentStock[sc.componentId];
-
-                    if (component) {
-                      const compQuantity = parseFloat(
-                        sc.quantity?.toString() || "1"
-                      );
-                      const sizeSource = sc.sizeSource || null;
-                      const sizeMultiplier = parseFloat(
-                        sc.sizeMultiplier?.toString() || "1"
-                      );
-                      const unit = component.unit || "шт";
-
-                      let componentQty = compQuantity;
-                      const isMetric = ["м", "пм", "п.м.", "м.п."].includes(
-                        unit.toLowerCase()
-                      );
-
-                      if (isMetric) {
-                        if (sizeSource === "width") {
-                          componentQty = widthM * sizeMultiplier * compQuantity;
-                        } else if (sizeSource === "height") {
-                          componentQty =
-                            heightM * sizeMultiplier * compQuantity;
-                        } else {
-                          componentQty = widthM * sizeMultiplier * compQuantity;
-                        }
-                      }
-
-                      const price = stock?.lastPrice || stock?.avgPrice || 0;
-
-                      await storage.createWarehouseWriteoff({
-                        orderId: req.params.id,
-                        itemType: "component",
-                        componentId: sc.componentId,
-                        quantity: componentQty.toFixed(4),
-                        price: price.toFixed(2),
-                        total: (componentQty * price).toFixed(2),
-                        date: today,
-                        userId: req.userId!,
-                      });
-                    }
-                  }
-                }
-              }
-
-              if (sash.componentId && !sash.systemId) {
-                const component = allComponents.find(
-                  (c) => c.id === sash.componentId
-                );
-                const stock = componentStock[sash.componentId];
-
-                if (component) {
-                  const price = stock?.lastPrice || stock?.avgPrice || 0;
-
-                  await storage.createWarehouseWriteoff({
-                    orderId: req.params.id,
-                    itemType: "component",
-                    componentId: sash.componentId,
-                    quantity: quantity.toFixed(4),
-                    price: price.toFixed(2),
-                    total: (quantity * price).toFixed(2),
-                    date: today,
-                    userId: req.userId!,
-                  });
-                }
-              }
-            }
-          }
-        }
-
-        const updated = await storage.updateOrder(req.params.id, {
-          status,
-          dealerDebt: dealerDebt.toString(),
-        });
-
-        logAudit({
-          userId: req.userId!,
-          action: "status_change",
-          entityType: "order",
-          entityId: req.params.id,
-          before: { status: oldStatus },
-          after: { status },
-          metadata: { orderNumber: order.orderNumber },
-        });
-
-        notify({
-          userId: req.userId!,
-          type: "order_status",
-          title: "Статус заказа изменен",
-          message: `Заказ №${order.orderNumber}: ${oldStatus} -> ${status}`,
-          entityType: "order",
-          entityId: order.id,
-        });
-
-        if (order.dealerId) {
-          const statusLabels: Record<string, string> = {
-            "Новый": "Новый",
-            "В производстве": "В производстве",
-            "Готов": "Готов к выдаче",
-            "Отгружен": "Отгружен",
-          };
-          notifyDealer({
-            dealerId: order.dealerId,
-            userId: req.userId!,
-            title: "Статус заказа изменён",
-            message: `Заказ №${order.orderNumber}: ${statusLabels[status] || status}`,
-            entityType: "order",
-            entityId: order.id,
-          });
-        }
-
-        res.json(updated);
+        const r = await applyOrderStatus(req.userId!, req.params.id, req.body.status);
+        res.status(r.code).json(r.body);
       } catch (error) {
         console.error("Update order status error:", error);
         res.status(500).json({ message: "Ошибка сервера" });
@@ -1935,6 +2031,247 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
       }
     }
   );
+
+  // ---------- Производство как в УЭС: передача, готовность по створкам ----------
+
+  const PRIORITIES = ["Обычно", "К утру", "Срочно"];
+
+  async function ownedOrder(userId: string, orderId: string) {
+    const order = await storage.getOrder(orderId);
+    return order && order.userId === userId && !order.deletedAt ? order : null;
+  }
+
+  /** Очередь производства: все переданные створки неотгруженных заказов. */
+  router.get("/production", authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const r = await db.execute(sql`
+        select s.id, s.order_id as "orderId", s.width, s.height, s.control_side as "controlSide",
+          s.room, s.room_name as "roomName", s.production_status as "productionStatus",
+          to_char(s.production_sent_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "sentAt", to_char(s.production_ready_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "readyAt",
+          coalesce(sy.name, s.system_name) as "systemName",
+          coalesce(f.name, s.fabric_name) as "fabricName",
+          f.fabric_type as "fabricType",
+          coalesce(fc.name, '') as "fabricColor",
+          coalesce(sc.name, '') as "systemColor",
+          o.order_number as "orderNumber", to_char(o.date, 'YYYY-MM-DD') as "orderDate", o.status as "orderStatus",
+          coalesce(o.production_priority, 'Обычно') as priority, o.comment,
+          d.full_name as "dealerName"
+        from order_sashes s
+        join orders o on o.id = s.order_id
+        left join systems sy on sy.id = s.system_id
+        left join fabrics f on f.id = s.fabric_id
+        left join colors fc on fc.id = coalesce(s.fabric_color_id, f.color_id)
+        left join colors sc on sc.id = coalesce(s.system_color_id, sy.color_id)
+        left join dealers d on d.id = o.dealer_id
+        where o.user_id = ${req.userId!} and o.deleted_at is null
+          and s.production_status is not null and o.status <> 'Отгружен'
+        order by o.order_number, s.room, s.production_sent_at, s.id
+      `);
+      res.json(r.rows);
+    } catch (error) {
+      console.error(`[${req.method} ${req.path}]`, error);
+      res.status(500).json({ message: "Ошибка сервера" });
+    }
+  });
+
+  /** «Передать в производство»: все ещё не переданные изделия заказа. */
+  router.post("/orders/:id/production/send", authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const order = await ownedOrder(req.userId!, req.params.id);
+      if (!order) return res.status(404).json({ message: "Заказ не найден" });
+      if (order.status === "Отгружен") {
+        return res.status(400).json({ message: "Заказ уже отгружен" });
+      }
+      const prod = (await storage.getOrderSashes(order.id)).filter(isProductionSash);
+      if (!prod.length) {
+        return res.status(400).json({ message: "В заказе нет изделий для производства" });
+      }
+      const unsent = prod.filter((s) => !s.productionStatus);
+      if (!unsent.length) {
+        return res.status(400).json({ message: "Все изделия уже переданы в производство" });
+      }
+      const priority = req.body?.priority;
+      if (typeof priority === "string" && PRIORITIES.includes(priority)) {
+        await db.update(ordersTable).set({ productionPriority: priority }).where(eq(ordersTable.id, order.id));
+      }
+
+      if ((order.status || "Новый") === "Новый") {
+        const r = await applyOrderStatus(req.userId!, order.id, "В производстве");
+        if (r.code !== 200) return res.status(r.code).json(r.body);
+      } else {
+        await db
+          .update(orderSashesTable)
+          .set({ productionStatus: "in_work", productionSentAt: new Date(), productionReadyAt: null })
+          .where(and(eq(orderSashesTable.orderId, order.id), inArray(orderSashesTable.id, unsent.map((s) => s.id))));
+        if (order.status === "Готов") {
+          // Дозаказ в готовый заказ: выпуск отменяется, материалы спишутся при новой готовности.
+          await storage.updateOrder(order.id, { status: "В производстве" });
+          await storage.deleteWarehouseWriteoffsByOrderId(order.id);
+        }
+      }
+
+      logAudit({
+        userId: req.userId!,
+        action: "update",
+        entityType: "order",
+        entityId: order.id,
+        before: { production: "not_sent" },
+        after: { production: "sent", sashes: unsent.length },
+        metadata: { orderNumber: order.orderNumber },
+      });
+      res.json({ sent: unsent.length });
+    } catch (error) {
+      console.error(`[${req.method} ${req.path}]`, error);
+      res.status(500).json({ message: "Ошибка сервера" });
+    }
+  });
+
+  router.post("/orders/:id/production/priority", authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const order = await ownedOrder(req.userId!, req.params.id);
+      if (!order) return res.status(404).json({ message: "Заказ не найден" });
+      const priority = req.body?.priority;
+      if (!PRIORITIES.includes(priority)) return res.status(400).json({ message: "Неизвестная срочность" });
+      await db.update(ordersTable).set({ productionPriority: priority }).where(eq(ordersTable.id, order.id));
+      res.json({ ok: true });
+    } catch (error) {
+      console.error(`[${req.method} ${req.path}]`, error);
+      res.status(500).json({ message: "Ошибка сервера" });
+    }
+  });
+
+  /**
+   * Отметить готовность створок. Когда готово всё переданное и непереданного нет —
+   * заказ становится «Готов» и материалы списываются (как выпуск продукции в УЭС).
+   */
+  async function markReady(userId: string, orderId: string, sashIds: string[] | "all") {
+    const order = await ownedOrder(userId, orderId);
+    if (!order) return reply(404, { message: "Заказ не найден" });
+    if (order.status === "Отгружен") return reply(400, { message: "Заказ уже отгружен" });
+
+    const prod = (await storage.getOrderSashes(orderId)).filter(isProductionSash);
+    const target = prod.filter(
+      (s) => s.productionStatus === "in_work" && (sashIds === "all" || sashIds.includes(s.id))
+    );
+    if (!target.length) return reply(400, { message: "Нет изделий в работе для отметки" });
+    const ids = target.map((s) => s.id);
+
+    await db
+      .update(orderSashesTable)
+      .set({ productionStatus: "ready", productionReadyAt: new Date() })
+      .where(and(eq(orderSashesTable.orderId, orderId), inArray(orderSashesTable.id, ids)));
+
+    const readyCount = prod.filter((s) => s.productionStatus === "ready").length + ids.length;
+    if (readyCount === prod.length && order.status !== "Готов") {
+      const r = await applyOrderStatus(userId, orderId, "Готов");
+      if (r.code !== 200) {
+        // Материалов не хватило — готовность не фиксируем.
+        await db
+          .update(orderSashesTable)
+          .set({ productionStatus: "in_work", productionReadyAt: null })
+          .where(and(eq(orderSashesTable.orderId, orderId), inArray(orderSashesTable.id, ids)));
+        return r;
+      }
+    }
+    return reply(200, { ready: ids.length, orderReady: readyCount === prod.length });
+  }
+
+  router.post("/production/sashes/:sashId/ready", authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const [sash] = await db.select().from(orderSashesTable).where(eq(orderSashesTable.id, req.params.sashId));
+      if (!sash) return res.status(404).json({ message: "Изделие не найдено" });
+      const r = await markReady(req.userId!, sash.orderId, [sash.id]);
+      res.status(r.code).json(r.body);
+    } catch (error) {
+      console.error(`[${req.method} ${req.path}]`, error);
+      res.status(500).json({ message: "Ошибка сервера" });
+    }
+  });
+
+  router.post("/orders/:id/production/ready", authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const r = await markReady(req.userId!, req.params.id, "all");
+      res.status(r.code).json(r.body);
+    } catch (error) {
+      console.error(`[${req.method} ${req.path}]`, error);
+      res.status(500).json({ message: "Ошибка сервера" });
+    }
+  });
+
+  /** «Отменить готовность»: створка возвращается в работу, выпуск заказа отменяется. */
+  router.post("/production/sashes/:sashId/undo", authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const [sash] = await db.select().from(orderSashesTable).where(eq(orderSashesTable.id, req.params.sashId));
+      const order = sash ? await ownedOrder(req.userId!, sash.orderId) : null;
+      if (!sash || !order) return res.status(404).json({ message: "Изделие не найдено" });
+      if (order.status === "Отгружен") {
+        return res.status(400).json({ message: "Заказ отгружен — готовность отменить нельзя" });
+      }
+      if (sash.productionStatus !== "ready") {
+        return res.status(400).json({ message: "Изделие не отмечено готовым" });
+      }
+      await db
+        .update(orderSashesTable)
+        .set({ productionStatus: "in_work", productionReadyAt: null })
+        .where(eq(orderSashesTable.id, sash.id));
+      if (order.status === "Готов") {
+        await storage.updateOrder(order.id, { status: "В производстве" });
+        await storage.deleteWarehouseWriteoffsByOrderId(order.id);
+        logAudit({
+          userId: req.userId!,
+          action: "status_change",
+          entityType: "order",
+          entityId: order.id,
+          before: { status: "Готов" },
+          after: { status: "В производстве" },
+          metadata: { orderNumber: order.orderNumber, reason: "Отмена готовности" },
+        });
+      }
+      res.json({ ok: true });
+    } catch (error) {
+      console.error(`[${req.method} ${req.path}]`, error);
+      res.status(500).json({ message: "Ошибка сервера" });
+    }
+  });
+
+  /** Связанные документы заказа: оплаты, списание материалов, производство. */
+  router.get("/orders/:id/related", authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const order = await storage.getOrder(req.params.id);
+      if (!order || order.userId !== req.userId) return res.status(404).json({ message: "Заказ не найден" });
+      const payments = await db.execute(sql`
+        select id, to_char(date, 'YYYY-MM-DD') as date, amount, is_draft as "isDraft", deleted_at as "deletedAt", comment
+        from finance_operations
+        where user_id = ${req.userId!} and type = 'income'
+          and comment ilike ${"%№%" + order.orderNumber + "%"}
+        order by date, id
+      `);
+      const paymentsExact = (payments.rows as any[]).filter((p) =>
+        new RegExp(`№\\s*${order.orderNumber}(?!\\d)`).test(p.comment || "")
+      );
+      const writeoffs = await db.execute(sql`
+        select to_char(min(date), 'YYYY-MM-DD') as date, count(*)::int as lines, coalesce(sum(total), 0) as total
+        from warehouse_writeoffs where order_id = ${order.id}
+      `);
+      const prod = await db.execute(sql`
+        select count(*)::int as total,
+          count(*) filter (where production_status is not null)::int as sent,
+          count(*) filter (where production_status = 'ready')::int as ready,
+          to_char(min(production_sent_at), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "sentAt", to_char(max(production_ready_at), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "readyAt"
+        from order_sashes where order_id = ${order.id} and ${PRODUCTION_SASH}
+      `);
+      const w = writeoffs.rows[0] as any;
+      res.json({
+        payments: paymentsExact,
+        writeoff: Number(w?.lines) > 0 ? w : null,
+        production: prod.rows[0],
+        shippedAt: order.shippedAt,
+      });
+    } catch (error) {
+      console.error(`[${req.method} ${req.path}]`, error);
+      res.status(500).json({ message: "Ошибка сервера" });
+    }
+  });
 
   return router;
 }

@@ -340,6 +340,8 @@ export const orders = pgTable("orders", {
   // Дата отгрузки: момент признания выручки в ОПиУ и долга дилера в балансе.
   // Ставится при переходе в «Отгружен», снимается при откате статуса.
   shippedAt: date("shipped_at"),
+  // Срочность для производства: Обычно / К утру / Срочно (как в УЭС).
+  productionPriority: text("production_priority").default("Обычно"),
   salePrice: decimal("sale_price", { precision: 12, scale: 2 }).default("0"),
   costPrice: decimal("cost_price", { precision: 12, scale: 2 }).default("0"),
   dealerDebt: decimal("dealer_debt", { precision: 12, scale: 2 }).default("0"),
@@ -398,6 +400,10 @@ export const orderSashes = pgTable("order_sashes", {
   systemType: text("system_type"),
   category: text("category"),
   fabricName: text("fabric_name"),
+  // Производство как в УЭС: NULL — не передано, in_work — в работе, ready — готово.
+  productionStatus: text("production_status"),
+  productionSentAt: timestamp("production_sent_at"),
+  productionReadyAt: timestamp("production_ready_at"),
 });
 
 export const orderSashesRelations = relations(orderSashes, ({ one }) => ({
@@ -1015,6 +1021,10 @@ export const ORDER_STATUSES = [
   "Отгружен",
 ] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
+
+// Срочность производства (как темп в УЭС)
+export const PRODUCTION_PRIORITIES = ["Обычно", "К утру", "Срочно"] as const;
+export type ProductionPriority = (typeof PRODUCTION_PRIORITIES)[number];
 
 // Fabric categories
 export const FABRIC_CATEGORIES = ["1", "2", "3", "4", "5", "E"] as const;

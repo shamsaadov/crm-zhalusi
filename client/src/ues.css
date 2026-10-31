@@ -556,3 +556,141 @@ body {
 .ues-mark-x { color: var(--ues-danger); font-weight: 800; }
 .ues-table tbody tr.is-marked-row td { color: var(--ues-muted); text-decoration: line-through; text-decoration-color: rgba(180, 35, 24, 0.35); }
 .ues-table tbody tr.is-marked-row td.ues-ind-cell { text-decoration: none; }
+
+/* ---------- Документ «Заказ покупателя» (ErpDocumentCard в УЭС) ---------- */
+/* Недоступная кнопка как в УЭС: серая, но с подсказкой «почему» при наведении. */
+.ues-btn:disabled { background: var(--ues-surface-soft); border-color: var(--ues-border); color: var(--ues-muted); opacity: 0.78; cursor: not-allowed; pointer-events: auto; }
+.ues-btn:disabled:hover { background: var(--ues-surface-soft); border-color: var(--ues-border); }
+.ues-btn.production:not(:disabled) { background: var(--ues-primary-soft); border-color: var(--ues-primary-border); color: var(--ues-primary-text); }
+.ues-btn.production:not(:disabled):hover { background: var(--ues-primary-selected); }
+.ues-btn.production.is-done:disabled { background: var(--ues-success-soft); border-color: #b7dfc8; color: var(--ues-success); opacity: 1; }
+.ues-split-btn { display: inline-flex; }
+.ues-split-btn > .ues-btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.ues-split-btn > .ues-btn:last-child { border-top-left-radius: 0; border-bottom-left-radius: 0; border-left-color: rgba(255, 255, 255, 0.35); }
+.ues-shipped-badge {
+  display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 18px;
+  background: var(--ues-success-soft); color: var(--ues-success); font-size: 12px; font-weight: 700;
+}
+.ues-doc-banner {
+  padding: 9px 14px; border-radius: 10px; font-size: 13px;
+  background: #fff8e6; border: 1px solid #f5d48a; color: #7a4d00;
+}
+.ues-doc-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--ues-border); }
+.ues-doc-tabs button {
+  height: 34px; padding: 0 16px; font-size: 13px; font-weight: 620; color: var(--ues-muted);
+  border: 1px solid transparent; border-bottom: 0; border-radius: 8px 8px 0 0; margin-bottom: -1px;
+}
+.ues-doc-tabs button.is-active {
+  color: var(--ues-text); background: var(--ues-surface); border-color: var(--ues-border);
+  box-shadow: inset 0 2px 0 var(--ues-primary);
+}
+.ues-doc-grid { display: grid; grid-template-columns: 124px minmax(0, 1fr); gap: 8px 12px; align-items: center; }
+.ues-doc-label { font-size: 13px; font-weight: 560; color: var(--ues-muted); }
+.ues-doc-label .req { color: var(--ues-danger); }
+.ues-input.ues-readonly { display: flex; align-items: center; background: var(--ues-surface-soft); color: var(--ues-muted); }
+.ues-input.is-invalid, .ues-cell-input.is-invalid { border-color: #b42318 !important; background: #fff7f6 !important; }
+.ues-doc-summary {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 28px; padding: 12px 16px;
+  background: var(--ues-surface); border: 1px solid var(--ues-border); border-radius: 12px;
+}
+.ues-doc-summary > div { display: flex; align-items: center; gap: 10px; }
+.ues-doc-summary span { font-size: 13px; color: var(--ues-muted); }
+.ues-doc-summary strong { font-size: 18px; font-weight: 750; }
+.ues-doc-summary b { font-size: 14px; font-weight: 700; }
+.ues-link-btn { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--ues-primary-text); }
+.ues-link-btn:hover { text-decoration: underline; }
+.ues-doc-footer {
+  display: grid; grid-template-columns: minmax(320px, 2fr) minmax(240px, 1fr); gap: 12px 20px; padding: 12px 16px;
+  background: var(--ues-surface); border: 1px solid var(--ues-border); border-radius: 12px;
+}
+.ues-doc-footer label { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 12px; align-items: start; }
+.ues-doc-footer .ues-doc-label { padding-top: 7px; }
+
+/* Табличная часть */
+.ues-erp-lines { background: var(--ues-surface); border: 1px solid var(--ues-border); border-radius: 12px; overflow: hidden; }
+.ues-erp-lines-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--ues-border); }
+.ues-erp-lines .ues-table-wrap { border: 0; border-radius: 0; }
+.ues-lines-table { table-layout: fixed; min-width: 1120px; }
+.ues-lines-table td { padding-top: 5px; padding-bottom: 5px; height: 42px; }
+.ues-cell-input {
+  width: 100%; height: 28px; padding: 0 7px; font-size: 13px; color: var(--ues-text);
+  background: transparent; border: 1px solid transparent; border-radius: 6px; font-variant-numeric: tabular-nums;
+}
+.ues-cell-input:hover:not(:disabled) { border-color: var(--ues-border-strong); background: var(--ues-surface); }
+.ues-cell-input:focus { outline: none; border-color: var(--ues-primary-border); background: var(--ues-surface); box-shadow: 0 0 0 3px rgba(39, 98, 217, 0.12); }
+.ues-cell-input:disabled { color: var(--ues-text); cursor: default; }
+.ues-cell-input::-webkit-outer-spin-button, .ues-cell-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.ues-cell-select { height: 28px !important; font-size: 13px; border-color: transparent !important; background: transparent !important; box-shadow: none !important; }
+.ues-line:hover .ues-cell-select, .ues-line.is-active-line .ues-cell-select { border-color: var(--ues-border-strong) !important; background: var(--ues-surface) !important; }
+.ues-cell-icon { width: 26px; height: 26px; display: inline-grid; place-items: center; border-radius: 6px; color: var(--ues-muted); }
+.ues-cell-icon:hover { background: var(--ues-primary-soft); color: var(--ues-primary-text); }
+.ues-table tbody tr.ues-line.is-active-line td { background: var(--ues-primary-selected); }
+.ues-table tbody tr.ues-lines-room td {
+  height: auto; padding: 7px 10px; background: var(--ues-primary-soft);
+  border-top: 2px solid var(--ues-primary-border); box-shadow: inset 4px 0 0 var(--ues-primary);
+}
+.ues-table tbody tr.ues-lines-room:hover td { background: var(--ues-primary-soft); }
+.ues-lines-room-name {
+  width: 260px; height: 26px; padding: 0 6px; font-size: 13px; font-weight: 700; color: var(--ues-text);
+  background: transparent; border: 1px solid transparent; border-radius: 6px;
+}
+.ues-lines-room-name:hover:not(:disabled), .ues-lines-room-name:focus { border-color: var(--ues-border-strong); background: var(--ues-surface); outline: none; }
+.ues-table tbody tr.ues-line-warn td { background: #fff7ed; }
+
+/* Состояние строки в производстве (как ues-order-line-* в УЭС) */
+.ues-line-state { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 11px; font-size: 12px; font-weight: 650; white-space: nowrap; }
+.ues-line-state.is-draft { color: var(--ues-muted); padding: 0; }
+.ues-line-state.is-waiting { background: #ffd9d6; color: #d92d20; }
+.ues-line-state.is-in_work { background: #ffe0a3; color: #a65300; }
+.ues-line-state.is-ready { background: #eef8f1; color: #08752a; }
+.ues-table tbody tr.ues-line-waiting td:first-child { box-shadow: inset 3px 0 0 #d92d20; }
+.ues-table tbody tr.ues-line-in_work td:first-child { box-shadow: inset 3px 0 0 #e67e00; }
+.ues-table tbody tr.ues-line-ready td:first-child { box-shadow: inset 3px 0 0 #08752a; }
+.ues-table tbody tr.ues-line-ready td { background: #f7fcf8; }
+
+/* Связанные документы */
+.ues-linked { background: var(--ues-surface); border: 1px solid var(--ues-border); border-radius: 12px; overflow: hidden; }
+.ues-linked-row { display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 8px 16px; font-size: 13px; border-bottom: 1px solid var(--ues-border); }
+.ues-linked-row:last-child { border-bottom: 0; }
+.ues-linked-row.is-root { background: var(--ues-primary-soft); }
+.ues-linked-row.is-child { padding-left: 44px; }
+.ues-linked-row.is-clickable { cursor: pointer; }
+.ues-linked-row.is-clickable:hover, .ues-linked-row:focus { background: var(--ues-row-hover); outline: none; }
+.ues-linked-row.is-marked b { text-decoration: line-through; color: var(--ues-muted); }
+.ues-linked-icon { width: 18px; text-align: center; color: var(--ues-primary); font-weight: 800; }
+
+/* ---------- Производство ---------- */
+.ues-prod-order { background: var(--ues-surface); border: 1px solid var(--ues-border); border-radius: 12px; overflow: hidden; }
+.ues-prod-order.is-urgent { border-color: #f3b8b2; box-shadow: inset 4px 0 0 #d92d20; }
+.ues-prod-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 14px; }
+.ues-prod-title { display: inline-flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 750; color: var(--ues-primary-text); }
+.ues-prod-title:hover { text-decoration: underline; }
+.ues-prod-dealer { font-size: 13px; font-weight: 600; }
+.ues-prod-comment { padding: 0 14px 10px; font-size: 12.5px; color: var(--ues-muted); white-space: pre-line; }
+.ues-age-pill { height: 22px; display: inline-flex; align-items: center; padding: 0 8px; border-radius: 11px; font-size: 12px; font-weight: 650; background: var(--ues-surface-soft); color: var(--ues-muted); }
+.ues-age-pill.is-fresh { background: var(--ues-success-soft); color: var(--ues-success); }
+.ues-age-pill.is-warn { background: #fff4d6; color: #a65300; }
+.ues-age-pill.is-late { background: var(--ues-danger-soft); color: var(--ues-danger); }
+.ues-priority-pill { height: 24px; padding: 0 6px; border-radius: 12px; font-size: 12px; font-weight: 700; border: 1px solid var(--ues-border-strong); background: var(--ues-surface); color: var(--ues-text); }
+.ues-priority-pill.is-0 { background: #fde8e6; border-color: #f3b8b2; color: #b42318; }
+.ues-priority-pill.is-1 { background: #fff4d6; border-color: #f5d48a; color: #8a5a00; }
+.ues-prod-progress { position: relative; display: inline-flex; align-items: center; width: 150px; height: 22px; border-radius: 11px; background: var(--ues-surface-soft); overflow: hidden; border: 1px solid var(--ues-border); }
+.ues-prod-progress i { position: absolute; inset: 0 auto 0 0; background: #c9ecd4; }
+.ues-prod-progress.is-done i { background: #9fdcb2; }
+.ues-prod-progress b { position: relative; width: 100%; text-align: center; font-size: 12px; font-weight: 700; }
+
+.dark .ues-doc-banner { background: rgba(245, 180, 0, 0.1); border-color: rgba(245, 180, 0, 0.35); color: #f5c451; }
+.dark .ues-table tbody tr.ues-line-ready td { background: rgba(8, 117, 42, 0.1); }
+.dark .ues-table tbody tr.ues-line-warn td { background: rgba(230, 126, 0, 0.1); }
+.dark .ues-line-state.is-waiting { background: rgba(217, 45, 32, 0.18); color: #ff8b80; }
+.dark .ues-line-state.is-in_work { background: rgba(230, 126, 0, 0.2); color: #ffc266; }
+.dark .ues-line-state.is-ready { background: rgba(8, 117, 42, 0.22); color: #6fd68f; }
+.dark .ues-age-pill.is-warn, .dark .ues-priority-pill.is-1 { background: rgba(245, 180, 0, 0.15); border-color: rgba(245, 180, 0, 0.35); color: #f5c451; }
+.dark .ues-priority-pill.is-0 { background: rgba(217, 45, 32, 0.18); border-color: rgba(217, 45, 32, 0.4); color: #ff8b80; }
+.dark .ues-prod-progress i { background: rgba(54, 201, 79, 0.25); }
+.dark .ues-prod-progress.is-done i { background: rgba(54, 201, 79, 0.4); }
+
+@media (max-width: 900px) {
+  .ues-doc-footer { grid-template-columns: 1fr; }
+  .ues-doc-grid { grid-template-columns: 1fr; gap: 4px; }
+}

@@ -12,6 +12,8 @@ import NotFound from "@/pages/not-found";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
 import OrdersPage from "@/pages/orders";
+import OrderDocumentPage from "@/pages/orders/document";
+import { ProductionWorkPage, ProductionReadyPage } from "@/pages/production";
 import FinancePage from "@/pages/finance";
 import WarehousePage from "@/pages/warehouse";
 import DirectoriesOverviewPage from "@/pages/directories/overview";
@@ -104,6 +106,18 @@ function Router() {
       </Route>
       <Route path="/orders">
         <ProtectedRoute component={OrdersPage} />
+      </Route>
+      <Route path="/orders/new">
+        <ProtectedRoute component={OrderDocumentPage} />
+      </Route>
+      <Route path="/orders/doc/:id">
+        <ProtectedRoute component={OrderDocumentPage} />
+      </Route>
+      <Route path="/production">
+        <ProtectedRoute component={ProductionWorkPage} />
+      </Route>
+      <Route path="/production/ready">
+        <ProtectedRoute component={ProductionReadyPage} />
       </Route>
       <Route path="/kanban">
         <ProtectedRoute component={KanbanPage} />

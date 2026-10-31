@@ -1,6 +1,10 @@
 import { z } from "zod";
 
 export const sashSchema = z.object({
+  // id сохранённой створки: по нему сервер сохраняет её состояние в производстве.
+  id: z.string().optional(),
+  productionStatus: z.string().nullable().optional(),
+  productionReadyAt: z.string().nullable().optional(),
   width: z.string().min(1, "Обязательное поле"),
   height: z.string().min(1, "Обязательное поле"),
   quantity: z.string().min(1, "Обязательное поле").default("1"),
@@ -13,6 +17,11 @@ export const sashSchema = z.object({
   isCalculating: z.boolean().optional(), // Состояние загрузки коэффициента
   room: z.number().optional().default(1), // Номер комнаты для группировки
   roomName: z.string().optional(), // Название комнаты (опционально)
+  // Выбор дилера из мобильного замера (когда нет в справочниках).
+  systemName: z.string().optional(),
+  systemType: z.string().optional(),
+  category: z.string().optional(),
+  fabricName: z.string().optional(),
 });
 
 export const orderFormSchema = z.object({

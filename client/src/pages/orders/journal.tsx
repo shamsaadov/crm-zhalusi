@@ -63,6 +63,8 @@ export interface OrdersJournalProps {
   showProfit: boolean;
 
   onCreate: () => void;
+  onCreateProduct: () => void;
+  onSendToProduction: (orders: OrderWithRelations[]) => Promise<void>;
   onOpen: (o: OrderWithRelations) => void;
   onCutting: (o: OrderWithRelations) => void;
   onWorkshopPrint: (o: OrderWithRelations) => void;
@@ -110,7 +112,39 @@ const PAYMENT_LABEL: Record<Exclude<PaymentFilter, "all">, string> = {
   none: "Не оплачен",
 };
 
-function Dot({ state, title }: { state: "full" | "partial" | "sent" | "none"; title: string }) {
+type ProductionDot = "full" | "partial" | "sent" | "none";
+
+/** Значок «Производство» (как в УЭС): передан → частично готов → готов. */
+export function productionState(o: OrderWithRelations): ProductionDot {
+  const status = o.status || "Новый";
+  if (status === "Готов" || status === "Отгружен") return "full";
+  const total = o.productionTotal ?? 0;
+  const ready = o.productionReady ?? 0;
+  if (total > 0 && ready >= total) return "full";
+  if (ready > 0) return "partial";
+  if ((o.productionSent ?? 0) > 0 || status === "В производстве") return "sent";
+  return "none";
+}
+
+function productionTitle(o: OrderWithRelations, state: ProductionDot) {
+  const total = o.productionTotal ?? 0;
+  const ready = o.productionReady ?? 0;
+  const sent = o.productionSent ?? 0;
+  if (state === "full") return total ? `Готово с производства: ${total} из ${total}` : "Заказ готов";
+  if (state === "partial") return `Частично готов: ${ready} из ${total}`;
+  if (state === "sent") return sent < total ? `Передано в производство: ${sent} из ${total}` : "Передан в производство";
+  return "В производство не передан";
+}
+
+/** Отгрузить можно только готовое с производства (товар без производства — сразу). */
+export function isReadyToShip(o: OrderWithRelations) {
+  if (o.status === "Отгружен" || o.deletedAt) return false;
+  if (o.status === "Готов") return true;
+  const total = o.productionTotal ?? 0;
+  return total === 0 ? o.orderType === "product" : (o.productionReady ?? 0) >= total;
+}
+
+function Dot({ state, title }: { state: ProductionDot; title: string }) {
   return (
     <span
       className={cn(
@@ -167,23 +201,41 @@ export function OrdersJournal(p: OrdersJournalProps) {
     }
   };
 
-  // Отгрузить: только не отгруженные и с ценами тканей.
-  const shippable = selected.filter((o) => o.status !== "Отгружен" && !o.deletedAt);
+  // Отгрузить: только готовые с производства и с ценами тканей (как в УЭС).
+  const notShipped = selected.filter((o) => o.status !== "Отгружен" && !o.deletedAt);
+  const shippable = notShipped.filter(isReadyToShip);
+  const notReady = notShipped.filter((o) => !isReadyToShip(o));
   const shipBlockedBy = shippable.flatMap((o) => missingPriceFabrics(o, p.fabricStock).map((f) => `№${o.orderNumber}: ${f}`));
   const shipTitle = !selected.length
     ? "Выберите заказ в списке"
-    : !shippable.length
+    : !notShipped.length
       ? "Выбранные заказы уже отгружены"
+      : notReady.length
+        ? `Сначала производство: не готов ${notReady.map((o) => `№${o.orderNumber}`).join(", ")}`
       : shipBlockedBy.length
         ? `Укажите цену ткани — ${shipBlockedBy.join(", ")}`
         : shippable.length > 1
           ? "Отгрузить выбранные заказы"
           : "Отгрузить выбранный заказ";
   const ship = async () => {
-    if (!shippable.length || shipBlockedBy.length) return;
+    if (!shippable.length || notReady.length || shipBlockedBy.length) return;
     setBusy(true);
     try {
       for (const o of shippable) await p.onStatusChange(o.id, "Отгружен");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Передать в производство: есть изделия, ещё не переданные в цех.
+  const sendable = selected.filter(
+    (o) => !o.deletedAt && o.status !== "Отгружен" && (o.productionSent ?? 0) < (o.productionTotal ?? 0)
+  );
+  const sendToProduction = async () => {
+    if (!sendable.length) return;
+    setBusy(true);
+    try {
+      await p.onSendToProduction(sendable);
     } finally {
       setBusy(false);
     }
@@ -219,10 +271,23 @@ export function OrdersJournal(p: OrdersJournalProps) {
   return (
     <div className="space-y-3">
       <div className="ues-toolbar">
-        <button type="button" className="ues-btn primary" onClick={p.onCreate} data-testid="button-add-order">
-          <Plus className="h-4 w-4" />
-          Создать
-        </button>
+        <div className="ues-split-btn">
+          <button type="button" className="ues-btn primary" onClick={p.onCreate} data-testid="button-add-order">
+            <Plus className="h-4 w-4" />
+            Создать
+          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button type="button" className="ues-btn primary !px-1.5" aria-label="Другие виды заказа">
+                <ChevronDown className="h-3.5 w-3.5" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem onClick={p.onCreate}>Заказ покупателя (изделия)</DropdownMenuItem>
+              <DropdownMenuItem onClick={p.onCreateProduct}>Заказ товара (комплектующие)</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button type="button" className="ues-btn" disabled={!single}>
@@ -236,10 +301,28 @@ export function OrdersJournal(p: OrdersJournalProps) {
             <DropdownMenuItem onClick={() => single && p.onCustomerPrint(single)}>Накладная для клиента</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        <span className="ues-toolbar-sep" />
+        <button
+          type="button"
+          className="ues-btn production"
+          disabled={!sendable.length || busy}
+          title={
+            !selected.length
+              ? "Выберите заказ в списке"
+              : sendable.length
+                ? "Передать изделия в производство"
+                : "Всё уже передано в производство"
+          }
+          onClick={sendToProduction}
+          data-testid="button-send-production"
+        >
+          <span className="ues-action-icon" aria-hidden="true">⚙</span>
+          {sendable.length > 1 ? `В производство (${sendable.length})` : "В производство"}
+        </button>
         <button
           type="button"
           className="ues-btn ship"
-          disabled={!shippable.length || shipBlockedBy.length > 0 || busy}
+          disabled={!shippable.length || notReady.length > 0 || shipBlockedBy.length > 0 || busy}
           title={shipTitle}
           onClick={ship}
           data-testid="button-ship-orders"
@@ -452,8 +535,7 @@ export function OrdersJournal(p: OrdersJournalProps) {
                   const o = g.item;
                   const status = (o.status as OrderStatus) || "Новый";
                   const pay = o.paymentState ?? "none";
-                  const production: "full" | "sent" | "none" =
-                    status === "Готов" || status === "Отгружен" ? "full" : status === "В производстве" ? "sent" : "none";
+                  const production = productionState(o);
                   const missing = missingPriceFabrics(o, p.fabricStock);
                   const debt = typeof o.dealerBalance === "number" ? -o.dealerBalance : null;
                   const profit =
@@ -488,9 +570,7 @@ export function OrdersJournal(p: OrdersJournalProps) {
                       <td className="ues-ind-cell">
                         <Dot
                           state={production}
-                          title={
-                            production === "full" ? "Заказ готов" : production === "sent" ? "Передан в производство" : "В производство не передан"
-                          }
+                          title={productionTitle(o, production)}
                         />
                       </td>
                       <td className="ues-ind-cell">
