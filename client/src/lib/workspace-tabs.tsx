@@ -44,8 +44,15 @@ function readTabs(key: string | null): WorkspaceTab[] {
   }
 }
 
+// Параметры, которые только открывают что-то на экране (карточку заказа) и не
+// должны превращать экран в отдельную вкладку.
+const TRANSIENT_PARAMS = ["open"];
+
 export function currentFullPath() {
-  return window.location.pathname + window.location.search;
+  const params = new URLSearchParams(window.location.search);
+  for (const p of TRANSIENT_PARAMS) params.delete(p);
+  const qs = params.toString();
+  return window.location.pathname + (qs ? `?${qs}` : "");
 }
 
 export function WorkspaceTabsProvider({ children }: { children: React.ReactNode }) {

@@ -43,7 +43,7 @@ export function DataTable<T>({
 }: DataTableProps<T>) {
   if (isLoading) {
     return (
-      <div className="rounded-md border">
+      <div className="overflow-hidden rounded-[11px] border border-[var(--ues-border)] bg-[var(--ues-surface)] shadow-[var(--ues-shadow-sm)]">
         <Table>
           <TableHeader>
             <TableRow>
@@ -72,7 +72,7 @@ export function DataTable<T>({
 
   if (data.length === 0) {
     return (
-      <div className="rounded-md border">
+      <div className="overflow-hidden rounded-[11px] border border-[var(--ues-border)] bg-[var(--ues-surface)] shadow-[var(--ues-shadow-sm)]">
         <Table>
           <TableHeader>
             <TableRow>
@@ -99,7 +99,7 @@ export function DataTable<T>({
   }
 
   return (
-    <div className="rounded-md border">
+    <div className="overflow-hidden rounded-[11px] border border-[var(--ues-border)] bg-[var(--ues-surface)] shadow-[var(--ues-shadow-sm)]">
       <Table>
         <TableHeader>
           <TableRow>

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useSearch } from "wouter";
 import { useQuery, useMutation, useInfiniteQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import { DataTable } from "@/components/data-table";
@@ -564,6 +565,19 @@ export default function OrdersPage() {
       toast({ title: "Ошибка загрузки заказа", variant: "destructive" });
     }
   };
+
+  // /orders?open=<id> — открыть карточку заказа (ссылки из отчётов и журнала списаний).
+  const urlSearch = useSearch();
+  useEffect(() => {
+    const id = new URLSearchParams(urlSearch).get("open");
+    if (!id) return;
+    void openViewDialog({ id } as OrderWithRelations);
+    const params = new URLSearchParams(window.location.search);
+    params.delete("open");
+    const qs = params.toString();
+    window.history.replaceState(window.history.state, "", window.location.pathname + (qs ? `?${qs}` : ""));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlSearch]);
 
   const openEditDialog = async (order: OrderWithRelations) => {
     try {

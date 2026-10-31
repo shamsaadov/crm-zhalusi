@@ -243,7 +243,7 @@ body {
 .ues-input:focus { outline: none; border-color: var(--ues-primary-border); box-shadow: 0 0 0 3px rgba(39, 98, 217, 0.15); }
 
 /* Карточки показателей */
-.ues-kpis { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.ues-kpis { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
 .ues-kpi {
   background: var(--ues-surface);
   border: 1px solid var(--ues-border);
@@ -415,3 +415,12 @@ body {
 }
 .ues-field-label { font-size: 12px; font-weight: 600; color: var(--ues-muted); }
 .ues-field-label .req { color: var(--ues-danger); }
+
+/* ---------- Узкий экран ---------- */
+@media (max-width: 640px) {
+  .ues-page { padding: 16px 16px 28px; }
+  .ues-kpi { padding: 12px; }
+  .ues-kpi-value { font-size: 18px; }
+  .ues-toolbar { gap: 6px; }
+  .ues-toolbar .ues-input[type="date"] { flex: 1 1 130px; }
+}

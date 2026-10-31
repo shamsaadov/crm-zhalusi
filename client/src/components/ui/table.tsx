@@ -9,7 +9,7 @@ const Table = React.forwardRef<
   <div className="relative w-full overflow-auto">
     <table
       ref={ref}
-      className={cn("w-full caption-bottom text-sm", className)}
+      className={cn("w-full caption-bottom text-[13px]", className)}
       {...props}
     />
   </div>
@@ -20,7 +20,11 @@ const TableHeader = React.forwardRef<
   HTMLTableSectionElement,
   React.HTMLAttributes<HTMLTableSectionElement>
 >(({ className, ...props }, ref) => (
-  <thead ref={ref} className={cn("[&_tr]:border-b", className)} {...props} />
+  <thead
+    ref={ref}
+    className={cn("bg-[var(--ues-th-bg)] [&_tr]:border-b [&_tr:hover]:bg-transparent", className)}
+    {...props}
+  />
 ));
 TableHeader.displayName = "TableHeader";
 
@@ -43,7 +47,7 @@ const TableFooter = React.forwardRef<
   <tfoot
     ref={ref}
     className={cn(
-      "border-t bg-muted/50 font-medium [&>tr]:last:border-b-0",
+      "border-t bg-[var(--ues-th-bg)] font-bold [&>tr]:last:border-b-0",
       className
     )}
     {...props}
@@ -58,7 +62,7 @@ const TableRow = React.forwardRef<
   <tr
     ref={ref}
     className={cn(
-      "border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted",
+      "border-b border-[var(--ues-border)] transition-colors hover:bg-[var(--ues-row-hover)] data-[state=selected]:bg-[var(--ues-primary-soft)]",
       className
     )}
     {...props}
@@ -73,7 +77,8 @@ const TableHead = React.forwardRef<
   <th
     ref={ref}
     className={cn(
-      "h-9 px-2 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0",
+      // Шапка таблицы как в журналах УЭС: мелкий жирный текст на сером фоне.
+      "h-8 px-2.5 text-left align-middle text-[11px] font-bold text-[var(--ues-th-text)] whitespace-nowrap [&:has([role=checkbox])]:pr-0",
       className
     )}
     {...props}
@@ -88,7 +93,7 @@ const TableCell = React.forwardRef<
   <td
     ref={ref}
     className={cn(
-      "py-2 px-3 align-middle [&:has([role=checkbox])]:pr-0",
+      "py-1.5 px-2.5 align-middle [&:has([role=checkbox])]:pr-0",
       className
     )}
     {...props}
