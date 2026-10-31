@@ -3,6 +3,7 @@
 // поиск, фильтр с плашками, выбор нескольких заказов через Ctrl/⌘.
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useJournalBottomScroll } from "@/lib/journal-scroll";
 import { format } from "date-fns";
 import {
   AlertTriangle,
@@ -133,10 +134,14 @@ export function OrdersJournal(p: OrdersJournalProps) {
   const [busy, setBusy] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
-  const rows = useMemo(
-    () => (paymentFilter === "all" ? p.orders : p.orders.filter((o) => (o.paymentState ?? "none") === paymentFilter)),
-    [p.orders, paymentFilter]
-  );
+  // Сервер отдаёт заказы от новых к старым порциями; показываем как в УЭС —
+  // старые сверху, новые снизу. Более старые порции догружаются при прокрутке вверх.
+  const rows = useMemo(() => {
+    const list = paymentFilter === "all" ? p.orders : p.orders.filter((o) => (o.paymentState ?? "none") === paymentFilter);
+    return [...list].reverse();
+  }, [p.orders, paymentFilter]);
+  const tableRef = useRef<HTMLDivElement>(null);
+  useJournalBottomScroll(tableRef, rows.map((o) => o.id));
   const selected = rows.filter((o) => selectedIds.includes(o.id));
   const single = selected.length === 1 ? selected[0] : null;
 
@@ -372,7 +377,12 @@ export function OrdersJournal(p: OrdersJournalProps) {
         p.appTab
       ) : (
         <>
-          <div className="ues-table-wrap max-h-[calc(100vh-290px)]">
+          <div ref={tableRef} className="ues-table-wrap max-h-[calc(100vh-290px)]">
+            {p.loadMoreRef && (
+              <div ref={p.loadMoreRef} className="text-center text-[12px] text-[var(--ues-muted)]">
+                {p.isFetchingNextPage ? <div className="py-1.5">Загрузка более ранних заказов…</div> : null}
+              </div>
+            )}
             <table className="ues-table ues-orders-table">
               <thead>
                 <tr>
@@ -512,14 +522,9 @@ export function OrdersJournal(p: OrdersJournalProps) {
                 </tfoot>
               )}
             </table>
-            {p.loadMoreRef && (
-              <div ref={p.loadMoreRef} className="py-2 text-center text-[12px] text-[var(--ues-muted)]">
-                {p.isFetchingNextPage ? "Загрузка…" : p.hasNextPage ? "" : ""}
-              </div>
-            )}
           </div>
           <p className="text-[12px] text-[var(--ues-muted)]">
-            Двойной щелчок или Enter — открыть заказ. Ctrl или ⌘ + щелчок — выбрать несколько заказов для отгрузки или
+            Новые заказы внизу, более ранние догружаются при прокрутке вверх. Двойной щелчок или Enter — открыть заказ. Ctrl или ⌘ + щелчок — выбрать несколько заказов для отгрузки или
             смены статуса. Оплата распределяется по заказам дилера от старых к новым.
           </p>
         </>

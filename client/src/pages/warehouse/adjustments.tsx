@@ -1,6 +1,7 @@
 // Журнал «Корректировки остатков» (КО): излишки (оприходование) и недостачи.
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { useJournalBottomScroll } from "@/lib/journal-scroll";
 import { useQuery } from "@tanstack/react-query";
 import { Plus, Search } from "lucide-react";
 import { Layout } from "@/components/layout";
@@ -38,8 +39,12 @@ export default function AdjustmentsJournalPage() {
     const q = search.trim().toLowerCase();
     return data
       .filter((a) => a.date >= period.from && a.date <= period.to)
-      .filter((a) => !q || `${a.itemName} ${a.comment ?? ""}`.toLowerCase().includes(q));
+      .filter((a) => !q || `${a.itemName} ${a.comment ?? ""}`.toLowerCase().includes(q))
+      // Как в УЭС: старые сверху, новые снизу.
+      .sort((a, b) => a.date.localeCompare(b.date));
   }, [data, period, search]);
+  const tableRef = useRef<HTMLDivElement>(null);
+  useJournalBottomScroll(tableRef, rows.map((a) => `${a.type}-${a.id}`));
 
   const items = useMemo(
     () => [
@@ -123,7 +128,7 @@ export default function AdjustmentsJournalPage() {
           <span className="text-[12px] text-[var(--ues-muted)]">Найдено: {rows.length}</span>
         </div>
 
-        <div className="ues-table-wrap max-h-[calc(100vh-280px)]">
+        <div ref={tableRef} className="ues-table-wrap max-h-[calc(100vh-280px)]">
           <table className="ues-table">
             <thead>
               <tr>

@@ -1,6 +1,7 @@
 // Журнал «Поступления товаров» (ПТ) в стиле УЭС.
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { useJournalBottomScroll } from "@/lib/journal-scroll";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { Plus, Search } from "lucide-react";
@@ -40,8 +41,12 @@ export default function ReceiptsJournalPage() {
     const q = search.trim().toLowerCase();
     return receipts
       .filter((r) => !!r.supplierId)
-      .filter((r) => !q || `${r.supplier?.name ?? ""} ${r.comment ?? ""} ${r.total}`.toLowerCase().includes(q));
+      .filter((r) => !q || `${r.supplier?.name ?? ""} ${r.comment ?? ""} ${r.total}`.toLowerCase().includes(q))
+      // Как в УЭС: старые сверху, новые снизу.
+      .sort((a, b) => a.date.localeCompare(b.date) || String(a.createdAt ?? "").localeCompare(String(b.createdAt ?? "")));
   }, [receipts, search]);
+  const tableRef = useRef<HTMLDivElement>(null);
+  useJournalBottomScroll(tableRef, rows.map((r) => r.id));
   const total = rows.reduce((s, r) => s + parseFloat(r.total ?? "0"), 0);
 
   return (
@@ -84,7 +89,7 @@ export default function ReceiptsJournalPage() {
           <span className="text-[12px] text-[var(--ues-muted)]">Найдено: {rows.length}</span>
         </div>
 
-        <div className="ues-table-wrap max-h-[calc(100vh-260px)]">
+        <div ref={tableRef} className="ues-table-wrap max-h-[calc(100vh-260px)]">
           <table className="ues-table">
             <thead>
               <tr>

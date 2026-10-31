@@ -1,6 +1,7 @@
 // Журнал «Списания» (СП): расход материалов в заказы и списания по корректировкам.
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useMemo, useRef, useState } from "react";
+import { useJournalBottomScroll } from "@/lib/journal-scroll";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Search } from "lucide-react";
@@ -46,8 +47,11 @@ export default function WriteoffsJournalPage() {
       if (w.date > g.date) g.date = w.date;
       map.set(key, g);
     }
-    return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
+    // Как в УЭС: старые сверху, новые снизу.
+    return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
   }, [data, period, search]);
+  const tableRef = useRef<HTMLDivElement>(null);
+  useJournalBottomScroll(tableRef, groups.map((g) => g.key));
 
   const total = groups.reduce((s, g) => s + g.total, 0);
   const toggle = (k: string) =>
@@ -73,7 +77,7 @@ export default function WriteoffsJournalPage() {
           </div>
         </PeriodToolbar>
 
-        <div className="ues-table-wrap max-h-[calc(100vh-240px)]">
+        <div ref={tableRef} className="ues-table-wrap max-h-[calc(100vh-240px)]">
           <table className="ues-table">
             <thead>
               <tr>

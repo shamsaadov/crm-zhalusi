@@ -1,7 +1,8 @@
 // Журналы денежных документов в стиле УЭС (ErpDocumentJournal):
 // ПКО — поступления, РКО — выплаты и оплаты поставщикам, ПД — перемещения, плюс общий журнал.
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { useJournalBottomScroll } from "@/lib/journal-scroll";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { Plus, Search, Trash2 } from "lucide-react";
@@ -90,9 +91,11 @@ export function FinanceJournal({ kind }: { kind: CashDocKind }) {
     },
   });
 
+  // Как в УЭС: старые документы сверху, новые снизу (сервер отдаёт от новых к старым).
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return ops
+    return [...ops]
+      .reverse()
       .map((op) => ({ op, operationType: resolveOperationType(op, op.expenseType) }))
       .filter(({ op, operationType }) => {
         if (!q) return true;
@@ -127,6 +130,8 @@ export function FinanceJournal({ kind }: { kind: CashDocKind }) {
   );
 
   const open = (id: string) => navigate(`/finance/doc/${id}`);
+  const tableRef = useRef<HTMLDivElement>(null);
+  useJournalBottomScroll(tableRef, rows.map(({ op }) => op.id));
 
   const cashboxCell = (op: EnrichedOperation) =>
     op.type === "transfer" ? (
@@ -207,7 +212,7 @@ export function FinanceJournal({ kind }: { kind: CashDocKind }) {
           <span className="text-[12px] text-[var(--ues-muted)]">Найдено: {rows.length}</span>
         </div>
 
-        <div className="ues-table-wrap max-h-[calc(100vh-260px)]">
+        <div ref={tableRef} className="ues-table-wrap max-h-[calc(100vh-260px)]">
           <table className="ues-table">
             <thead>
               <tr>
