@@ -176,6 +176,7 @@ body {
   margin: 0 auto;
   padding: 22px 28px 32px;
 }
+.ues-page.is-wide { max-width: none; }
 .ues-page-caption {
   font-size: 10.5px;
   font-weight: 650;

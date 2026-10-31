@@ -486,7 +486,7 @@ export function OrdersJournal(p: OrdersJournalProps) {
                           )}
                         </span>
                       </td>
-                      <td className="max-w-[280px] truncate" title={o.comment ?? ""}>
+                      <td className="max-w-[520px] truncate" title={o.comment ?? ""}>
                         {o.comment || <span className="ues-muted">—</span>}
                       </td>
                       <td className={cn("num", debt !== null && debt > 0.004 && "ues-neg", debt !== null && debt < -0.004 && "ues-pos")}>

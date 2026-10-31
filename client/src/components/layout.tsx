@@ -39,6 +39,8 @@ interface LayoutProps {
   actions?: React.ReactNode;
   /** Оставлено для совместимости со старыми страницами. */
   breadcrumbs?: { label: string; href?: string }[];
+  /** Во всю ширину окна (широкие журналы), без ограничения ширины страницы. */
+  wide?: boolean;
 }
 
 const SIDEBAR_KEY = "ues-sidebar-collapsed";
@@ -54,7 +56,7 @@ function useIsNarrow() {
   return narrow;
 }
 
-export function Layout({ children, title, caption, actions }: LayoutProps) {
+export function Layout({ children, title, caption, actions, wide }: LayoutProps) {
   const [location] = useLocation();
   const narrow = useIsNarrow();
   const [collapsed, setCollapsed] = useState(() => {
@@ -105,7 +107,7 @@ export function Layout({ children, title, caption, actions }: LayoutProps) {
           </>
         )}
         <main className="min-w-0 flex-1 overflow-auto">
-          <div className="ues-page">
+          <div className={cn("ues-page", wide && "is-wide")}>
             <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
               <div className="min-w-0">
                 <div className="ues-page-caption">{caption ?? section?.title ?? ""}</div>

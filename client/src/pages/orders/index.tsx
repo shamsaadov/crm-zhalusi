@@ -1222,6 +1222,7 @@ export default function OrdersPage() {
     <Layout
       title="Заказы покупателей"
       caption="Журнал документов · ЗП"
+      wide
       actions={!showProfit ? (
           <Popover>
             <PopoverTrigger asChild>
