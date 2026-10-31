@@ -34,6 +34,7 @@ export async function loadFinData(userId: string): Promise<FinData> {
         status: orders.status,
         shippedAt: orders.shippedAt,
         salePrice: orders.salePrice,
+        date: orders.date,
       })
       .from(orders)
       .where(eq(orders.userId, userId)),

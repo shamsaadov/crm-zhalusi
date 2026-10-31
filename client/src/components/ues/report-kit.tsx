@@ -12,7 +12,9 @@ const moneyFmt = new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maxi
 /** «1 234 567,00» — как в УЭС, без знака рубля. */
 export function fmtMoney(v: number | null | undefined) {
   if (v === null || v === undefined || Number.isNaN(v)) return "—";
-  return moneyFmt.format(v);
+  // Округляем до копеек и убираем «-0,00».
+  const rounded = Math.round(v * 100) / 100 || 0;
+  return moneyFmt.format(rounded);
 }
 
 /** «01.10.2026» из «2026-10-01». */

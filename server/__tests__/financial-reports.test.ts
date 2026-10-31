@@ -5,6 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  calculateOrderPayments,
   calculateBalance,
   calculateCashFlow,
   calculateProfitAndLoss,
@@ -263,4 +264,24 @@ test("Розничный заказ без дилера: выручка один
   assert.equal(retail("customerAdvances"), 0);
   assert.equal(after.rows.find((r) => r.key === "receivables")!.amount, 1000, "остался только начальный долг ОкнаПлюс");
   assert.equal(after.kpis.difference, 0);
+});
+
+test("Оплата заказов: оплаты дилера закрывают заказы от старых к новым", () => {
+  const d = baseData(); // у d1 начальный долг 1000
+  d.orders.push(
+    { id: "a", orderNumber: 1, dealerId: "d1", status: "Отгружен", shippedAt: "2026-10-02", salePrice: "3000", date: "2026-10-01" },
+    { id: "b", orderNumber: 2, dealerId: "d1", status: "Новый", shippedAt: null, salePrice: "5000", date: "2026-10-05" },
+    { id: "c", orderNumber: 3, dealerId: "d1", status: "Новый", shippedAt: null, salePrice: "2000", date: "2026-10-09" },
+    { id: "r", orderNumber: 9, dealerId: null, status: "Новый", shippedAt: null, salePrice: "800", date: "2026-10-09" }
+  );
+  d.operations.push(
+    op({ type: "income", amount: "6000", date: "2026-10-10", dealerId: "d1" }),
+    op({ type: "income", amount: "500", date: "2026-10-10", operationType: "Оплата от покупателя", comment: "Оплата заказа №9" })
+  );
+  const p = calculateOrderPayments(d);
+  // 6000 − 1000 начального долга = 5000: заказ №1 целиком, №2 на 2000.
+  assert.deepEqual(p.get("a"), { paid: 3000, total: 3000, state: "full" });
+  assert.deepEqual(p.get("b"), { paid: 2000, total: 5000, state: "partial" });
+  assert.deepEqual(p.get("c"), { paid: 0, total: 2000, state: "none" });
+  assert.deepEqual(p.get("r"), { paid: 500, total: 800, state: "partial" });
 });

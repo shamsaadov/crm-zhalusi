@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { useSearch } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { useQuery, useMutation, useInfiniteQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import { DataTable } from "@/components/data-table";
@@ -48,7 +48,7 @@ import {
   type OrderFormValues,
   type ProductFormValues,
 } from "./schemas";
-import { getOrderColumns } from "./order-columns";
+import { OrdersJournal } from "./journal";
 import { ViewOrderDialog } from "./view-order-dialog";
 import { DeleteOrderDialog } from "./delete-order-dialog";
 import { CostCalculationDialog } from "./cost-calculation-dialog";
@@ -65,6 +65,7 @@ import { normalizeSashRooms } from "./normalize-sash-rooms";
 
 export default function OrdersPage() {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const coefficientCalculator = useCoefficientCalculator();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editFromUrl, setEditFromUrl] = useState<string | null>(null);
@@ -376,6 +377,9 @@ export default function OrdersPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/stock"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/charts"] });
+      for (const k of ["/api/reports/pnl", "/api/reports/balance", "/api/reports/settlements", "/api/warehouse/writeoffs"]) {
+        queryClient.invalidateQueries({ queryKey: [k] });
+      }
       toast({ title: "Статус обновлен" });
     },
     onError: (error: Error) => {
@@ -1214,23 +1218,55 @@ export default function OrdersPage() {
     setProfitUnlocking(false);
   };
 
-  const columns = getOrderColumns({
-    onWorkshopPrint: printInvoice,
-    onCustomerPrint: printCustomerInvoice,
-    onCutting: (order: OrderWithRelations) => {
-      setCuttingOrderId(order.id);
-      setCuttingOrderNumber(order.orderNumber);
-      setShowCuttingDialog(true);
-    },
-    onDelete: openDeleteDialog,
-    onStatusChange: (id, status) => updateStatusMutation.mutate({ id, status }),
-    showProfit,
-    fabricStock,
-  });
-
   return (
-    <Layout title="Заказы">
-      <div className="flex items-center justify-between gap-4 mb-4">
+    <Layout
+      title="Заказы покупателей"
+      caption="Журнал документов · ЗП"
+      actions={!showProfit ? (
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1.5">
+                <Lock className="h-3.5 w-3.5" />
+                Прибыль
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-56 p-3" align="end">
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Введите пароль</p>
+                <Input
+                  type="password"
+                  placeholder="Пароль"
+                  value={profitPasswordInput}
+                  onChange={(e) => setProfitPasswordInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleUnlockProfit()}
+                  className="h-8"
+                />
+                <Button
+                  size="sm"
+                  className="w-full"
+                  disabled={profitUnlocking || !profitPasswordInput}
+                  onClick={handleUnlockProfit}
+                >
+                  Показать
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
+        ) : (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1.5 text-green-600"
+            onClick={() => {
+              setShowProfit(false);
+              sessionStorage.removeItem("forsa-show-profit");
+            }}
+          >
+            <Unlock className="h-3.5 w-3.5" />
+            Скрыть прибыль
+          </Button>
+        )}
+    >
         <Dialog
           open={isDialogOpen}
           onOpenChange={(open) => {
@@ -1238,12 +1274,6 @@ export default function OrdersPage() {
             if (!open) resetForms();
           }}
         >
-          <DialogTrigger asChild>
-            <Button data-testid="button-add-order">
-              <Plus className="h-4 w-4 mr-2" />
-              Добавить
-            </Button>
-          </DialogTrigger>
           <DialogContent className="max-w-[95vw] max-h-[90vh] flex flex-col overflow-hidden">
             <DialogHeader>
               <DialogTitle>
@@ -1333,138 +1363,56 @@ export default function OrdersPage() {
           </DialogContent>
         </Dialog>
 
-        {!showProfit ? (
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-1.5">
-                <Lock className="h-3.5 w-3.5" />
-                Прибыль
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-56 p-3" align="end">
-              <div className="space-y-2">
-                <p className="text-sm font-medium">Введите пароль</p>
-                <Input
-                  type="password"
-                  placeholder="Пароль"
-                  value={profitPasswordInput}
-                  onChange={(e) => setProfitPasswordInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleUnlockProfit()}
-                  className="h-8"
-                />
-                <Button
-                  size="sm"
-                  className="w-full"
-                  disabled={profitUnlocking || !profitPasswordInput}
-                  onClick={handleUnlockProfit}
-                >
-                  Показать
-                </Button>
-              </div>
-            </PopoverContent>
-          </Popover>
-        ) : (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="gap-1.5 text-green-600"
-            onClick={() => {
-              setShowProfit(false);
-              sessionStorage.removeItem("forsa-show-profit");
-            }}
-          >
-            <Unlock className="h-3.5 w-3.5" />
-            Скрыть прибыль
-          </Button>
-        )}
-      </div>
-
-      <Tabs
-        value={orderTypeFilter}
-        onValueChange={(v) =>
-          setOrderTypeFilter(v as "all" | "sash" | "product" | "app")
-        }
-        className="w-full"
-      >
-        <div className="mb-4 flex items-center justify-between gap-2">
-          <TabsList>
-            <TabsTrigger value="all">Все заказы</TabsTrigger>
-            <TabsTrigger value="sash">Со створками</TabsTrigger>
-            <TabsTrigger value="product">Комплектующие</TabsTrigger>
-            <TabsTrigger value="app" className="relative">
-              Из приложения
-              {pendingAppCount > 0 && (
-                <span className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium text-destructive-foreground">
-                  {pendingAppCount}
-                </span>
-              )}
-            </TabsTrigger>
-          </TabsList>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-            className="gap-2"
-            title="Обновить данные"
-          >
-            <RefreshCw
-              className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
-            />
-            Обновить
-          </Button>
-        </div>
-
-        {orderTypeFilter === "app" ? (
-          <AppMeasurementsTab onConvertToOrder={openFromMeasurement} />
-        ) : (
-          <>
-            <FilterBar
-              search={search}
-              onSearchChange={setSearch}
-              searchPlaceholder="Поиск по номеру..."
-              showDateFilter
-              dateRange={dateRange}
-              onDateRangeChange={setDateRange}
-              filters={[
-                {
-                  key: "status",
-                  label: "Статус",
-                  value: statusFilter,
-                  options: ORDER_STATUSES.map((s) => ({ value: s, label: s })),
-                  onChange: setStatusFilter,
-                },
-                {
-                  key: "dealer",
-                  label: "Дилер",
-                  value: dealerFilter,
-                  options: dealers.map((d) => ({ value: d.id, label: d.fullName })),
-                  onChange: setDealerFilter,
-                },
-              ]}
-              onReset={() => {
-                setSearch("");
-                setDateRange({});
-                setStatusFilter("all");
-                setDealerFilter("all");
-                setOrderTypeFilter("all");
-              }}
-            />
-
-            <DataTable
-              columns={columns}
-              data={orders}
-              isLoading={ordersLoading}
-              emptyMessage="Заказы не найдены"
-              getRowKey={(order) => order.id}
-              onRowDoubleClick={openEditDialog}
-              hasNextPage={hasNextPage}
-              isFetchingNextPage={isFetchingNextPage}
-              loadMoreRef={loadMoreRef}
-            />
-          </>
-        )}
-      </Tabs>
+      <OrdersJournal
+        orders={orders}
+        isLoading={ordersLoading}
+        hasNextPage={hasNextPage}
+        isFetchingNextPage={isFetchingNextPage}
+        loadMoreRef={loadMoreRef}
+        search={search}
+        onSearchChange={setSearch}
+        dateRange={dateRange}
+        onDateRangeChange={setDateRange}
+        statusFilter={statusFilter}
+        onStatusFilterChange={setStatusFilter}
+        dealerFilter={dealerFilter}
+        onDealerFilterChange={setDealerFilter}
+        orderTypeFilter={orderTypeFilter}
+        onOrderTypeFilterChange={setOrderTypeFilter}
+        pendingAppCount={pendingAppCount}
+        dealers={dealers}
+        fabricStock={fabricStock}
+        showProfit={showProfit}
+        onCreate={() => {
+          resetForms();
+          setIsDialogOpen(true);
+        }}
+        onOpen={openEditDialog}
+        onCutting={(order) => {
+          setCuttingOrderId(order.id);
+          setCuttingOrderNumber(order.orderNumber);
+          setShowCuttingDialog(true);
+        }}
+        onWorkshopPrint={printInvoice}
+        onCustomerPrint={printCustomerInvoice}
+        onDelete={openDeleteDialog}
+        onStatusChange={(id, status) => updateStatusMutation.mutateAsync({ id, status }).catch(() => undefined)}
+        onReceipt={(order) => {
+          // ПКО по заказу: дилер, остаток к оплате и номер заказа в комментарии
+          // (по комментарию оплата розничного заказа находит свой заказ).
+          const rest = Math.max(0, parseFloat(order.salePrice?.toString() || "0") - (order.paidAmount ?? 0));
+          const q = new URLSearchParams({
+            operationType: "Оплата от покупателя",
+            amount: rest.toFixed(2),
+            comment: `Оплата заказа №${order.orderNumber}`,
+          });
+          if (order.dealerId) q.set("dealerId", order.dealerId);
+          setLocation(`/finance/new/income?${q}`);
+        }}
+        onRefresh={handleRefresh}
+        isRefreshing={isRefreshing}
+        appTab={<AppMeasurementsTab onConvertToOrder={openFromMeasurement} />}
+      />
 
       <ViewOrderDialog
         open={isViewDialogOpen}

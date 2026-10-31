@@ -166,10 +166,26 @@ export default function FinanceDocumentPage() {
   useEffect(() => {
     if (!isNew) return;
     initializedFor.current = null;
+    // Предзаполнение из ссылки (кнопка «ПКО» в журнале заказов).
+    const q = new URLSearchParams(window.location.search);
+    const preset = q.get("operationType");
+    const allowed: readonly string[] =
+      kind === "income" ? INCOME_OPERATION_TYPES : kind === "expense" ? EXPENSE_OPERATION_TYPES : [];
     setForm({
       ...EMPTY,
       date: todayKey(),
-      operationType: kind === "income" ? "Оплата от покупателя" : kind === "expense" ? "Операционные расходы" : "",
+      operationType:
+        preset && allowed.includes(preset)
+          ? preset
+          : kind === "income"
+            ? "Оплата от покупателя"
+            : kind === "expense"
+              ? "Операционные расходы"
+              : "",
+      amount: q.get("amount") && Number(q.get("amount")) > 0 ? String(Number(q.get("amount"))) : "",
+      dealerId: q.get("dealerId") ?? "",
+      supplierId: q.get("supplierId") ?? "",
+      comment: q.get("comment") ?? "",
     });
     setDirty(false);
   }, [isNew, kind]);

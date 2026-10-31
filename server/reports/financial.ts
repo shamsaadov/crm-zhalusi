@@ -24,6 +24,7 @@ export interface FinOrder {
   status: string | null;
   shippedAt: string | null; // YYYY-MM-DD
   salePrice: string | number | null;
+  date?: string | null; // дата заказа — порядок закрытия оплатами
 }
 
 export interface FinOperation {
@@ -896,3 +897,78 @@ export function calculateBalance(data: FinData, asOf: string) {
 }
 
 export { MIN_DATE, MAX_DATE };
+
+// ---------- Оплата заказов (значок «Оплата» в журнале заказов, как в УЭС) ----------
+
+export interface OrderPayment {
+  paid: number; // рубли
+  total: number;
+  state: "full" | "partial" | "none";
+}
+
+const ORDER_REF_RE = /заказ[ау]?\s*№\s*(\d+)/i;
+
+/**
+ * Сколько оплачено по каждому заказу. Платёж к заказу в базе не привязан, поэтому,
+ * как общий ПКО в УЭС, оплаты дилера закрывают его заказы от старых к новым
+ * (сначала гасится начальный долг). Розничные заказы без дилера закрываются
+ * платежами без дилера, в комментарии которых указан номер заказа
+ * («Оплата заказа №…», «Рассрочка … по заказу №…»).
+ */
+export function calculateOrderPayments(data: FinData): Map<string, OrderPayment> {
+  const ctx = makeCtx(data);
+  const result = new Map<string, OrderPayment>();
+
+  const poolByDealer = new Map<string, number>();
+  const retailByNumber = new Map<number, number>();
+  for (const d of data.dealers) {
+    const open = toKop(d.openingBalance);
+    poolByDealer.set(d.id, -open); // начальный долг съедает оплаты, начальный аванс добавляет
+  }
+  for (const op of data.operations) {
+    const t = ctx.opType.get(op.id);
+    if (t !== "Оплата от покупателя" && t !== "Возврат покупателю") continue;
+    const kop = toKop(op.amount) * (t === "Оплата от покупателя" ? 1 : -1);
+    if (op.dealerId) {
+      poolByDealer.set(op.dealerId, (poolByDealer.get(op.dealerId) ?? 0) + kop);
+    } else {
+      const m = op.comment?.match(ORDER_REF_RE);
+      if (m) {
+        const n = Number(m[1]);
+        retailByNumber.set(n, (retailByNumber.get(n) ?? 0) + kop);
+      }
+    }
+  }
+
+  const byDealer = new Map<string, FinOrderWithDate[]>();
+  for (const o of data.orders as FinOrderWithDate[]) {
+    const total = toKop(o.salePrice);
+    if (!o.dealerId) {
+      const paid = Math.max(0, Math.min(total, retailByNumber.get(o.orderNumber) ?? 0));
+      result.set(o.id, paymentOf(paid, total));
+      continue;
+    }
+    const list = byDealer.get(o.dealerId) ?? [];
+    list.push(o);
+    byDealer.set(o.dealerId, list);
+  }
+  byDealer.forEach((orders, dealerId) => {
+    let pool = Math.max(0, poolByDealer.get(dealerId) ?? 0);
+    orders
+      .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? "") || a.orderNumber - b.orderNumber)
+      .forEach((o) => {
+        const total = toKop(o.salePrice);
+        const paid = Math.min(pool, total);
+        pool -= paid;
+        result.set(o.id, paymentOf(paid, total));
+      });
+  });
+  return result;
+}
+
+type FinOrderWithDate = FinOrder;
+
+function paymentOf(paidKop: number, totalKop: number): OrderPayment {
+  const state = totalKop > 0 && paidKop >= totalKop ? "full" : paidKop > 0 ? "partial" : "none";
+  return { paid: rub(paidKop), total: rub(totalKop), state };
+}

@@ -4,6 +4,8 @@ import { db } from "../db";
 import { installmentPlans as installmentPlansTable } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { logAudit } from "../audit";
+import { calculateOrderPayments } from "../reports/financial";
+import { loadFinData } from "../reports/load";
 import { notify, notifyDealer } from "../notifications";
 
 interface AuthRequest extends Request {
@@ -366,6 +368,13 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
           return hasProductSash ? "product" : "sash";
         };
 
+        // Для значков журнала заказов (как в УЭС): оплата и списанные материалы.
+        const finData = await loadFinData(req.userId!);
+        const payments = calculateOrderPayments(finData);
+        const ordersWithWriteoffs = new Set(
+          finData.writeoffs.map((w) => w.orderId).filter((id): id is string => !!id)
+        );
+
         const enrichOrders = async (ordersToEnrich: any[]) => {
           return Promise.all(
             ordersToEnrich.map(async (order) => {
@@ -386,6 +395,9 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
                 sashesCount: sashes.length,
                 orderType: getOrderType(sashes),
                 fabricIds,
+                paidAmount: payments.get(order.id)?.paid ?? 0,
+                paymentState: payments.get(order.id)?.state ?? "none",
+                materialsWrittenOff: ordersWithWriteoffs.has(order.id),
               };
             })
           );

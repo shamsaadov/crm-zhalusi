@@ -81,7 +81,7 @@ export const NAV_SECTIONS: NavSection[] = [
       {
         title: "Заказы",
         items: [
-          { title: "Заказы", path: "/orders", code: "ЗК", icon: ClipboardList, description: "Журнал заказов и створок" },
+          { title: "Заказы покупателей", path: "/orders", code: "ЗП", icon: ClipboardList, description: "Заказы дилеров и розницы" },
           { title: "Канбан", path: "/kanban", icon: KanbanSquare, description: "Заказы по статусам производства" },
         ],
       },

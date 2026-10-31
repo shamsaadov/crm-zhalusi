@@ -47,6 +47,10 @@ export interface OrderWithRelations extends Order {
   // Уникальные id тканей заказа — нужны для детектора «нет цены за ткань»
   // (блокирует отгрузку и подсвечивает карточку заказа).
   fabricIds?: string[];
+  // Для значков журнала (как в УЭС): оплата по заказу и списанные материалы.
+  paidAmount?: number;
+  paymentState?: "full" | "partial" | "none";
+  materialsWrittenOff?: boolean;
 }
 
 export interface StockItem {
