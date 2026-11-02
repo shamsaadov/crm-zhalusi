@@ -696,3 +696,30 @@ body {
   .ues-doc-footer { grid-template-columns: 1fr; }
   .ues-doc-grid { grid-template-columns: 1fr; gap: 4px; }
 }
+
+/* ---------- Взаиморасчёты ---------- */
+.ues-btn.ues-tab-quiet { background: transparent; border-color: transparent; color: var(--ues-muted); }
+.ues-btn.ues-tab-quiet:hover { background: var(--ues-primary-soft-hover); color: var(--ues-text); }
+.ues-sort-head { display: inline-flex; align-items: center; gap: 4px; font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit; white-space: nowrap; }
+.ues-sort-head:hover { color: var(--ues-primary-text); }
+.ues-sort-head.is-active { color: var(--ues-primary-text); }
+.ues-sort-head span { font-size: 9px; }
+.ues-party-link { font-weight: 600; color: var(--ues-primary-text); text-align: left; text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; }
+.ues-party-link:hover { text-decoration-thickness: 2px; }
+.ues-settlements-table td.num { font-variant-numeric: tabular-nums; }
+
+/* Расчёты по датам */
+.ues-statement-table { min-width: 980px; }
+.ues-statement-table td.num { font-variant-numeric: tabular-nums; }
+.ues-statement-table .is-debt { color: var(--ues-danger); }
+.ues-statement-table .is-advance { color: var(--ues-success); }
+.ues-table tr.ues-statement-edge td { font-weight: 700; background: var(--ues-surface-soft); }
+.ues-table tbody tr.ues-statement-edge:hover td { background: var(--ues-surface-soft); }
+.ues-table tbody tr.ues-statement-pending td { background: var(--ues-primary-soft); }
+.ues-table tbody tr.ues-statement-pending:hover td { background: var(--ues-primary-soft); }
+.ues-statement-tag { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 11px; font-size: 12px; font-weight: 650; white-space: nowrap; background: var(--ues-surface-soft); color: var(--ues-muted); }
+.ues-statement-tag.is-goods { background: #fff4d6; color: #8a5a00; }
+.ues-statement-tag.is-payment { background: var(--ues-success-soft); color: var(--ues-success); }
+.ues-statement-tag.is-return { background: var(--ues-danger-soft); color: var(--ues-danger); }
+.ues-statement-tag.is-order { background: var(--ues-primary-selected); color: var(--ues-primary-text); }
+.dark .ues-statement-tag.is-goods { background: rgba(245, 180, 0, 0.15); color: #f5c451; }

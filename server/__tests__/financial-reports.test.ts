@@ -9,6 +9,8 @@ import {
   calculateBalance,
   calculateCashFlow,
   calculateProfitAndLoss,
+  partySettlements,
+  partyStatement,
   resolveOperationType,
   type FinData,
   type FinOperation,
@@ -284,4 +286,65 @@ test("Оплата заказов: оплаты дилера закрывают 
   assert.deepEqual(p.get("b"), { paid: 2000, total: 5000, state: "partial" });
   assert.deepEqual(p.get("c"), { paid: 0, total: 2000, state: "none" });
   assert.deepEqual(p.get("r"), { paid: 500, total: 800, state: "partial" });
+});
+
+// ---------- Взаиморасчёты ----------
+
+function settlementData(): FinData {
+  const data = baseData();
+  data.orders = [
+    { id: "o1", orderNumber: 1, dealerId: "d2", status: "Отгружен", shippedAt: "2026-10-01", salePrice: "1000", date: "2026-09-28" },
+    { id: "o2", orderNumber: 2, dealerId: "d2", status: "Отгружен", shippedAt: "2026-10-21", salePrice: "500", date: "2026-10-20" },
+    { id: "o3", orderNumber: 3, dealerId: "d2", status: "В производстве", shippedAt: null, salePrice: "300", date: "2026-10-30" },
+  ];
+  data.operations = [
+    op({ type: "income", operationType: "Оплата от покупателя", amount: "1000", date: "2026-10-25", dealerId: "d2" }),
+    op({ type: "income", operationType: "Оплата от покупателя", amount: "200", date: "2026-10-29", dealerId: "d2" }),
+  ];
+  return data;
+}
+
+test("Взаиморасчёты: долг, ожидаемые отгрузки, срок от незакрытой отгрузки, последняя оплата", () => {
+  const rows = partySettlements(settlementData(), "2026-11-01");
+  const d2 = rows.find((r) => r.id === "d2")!;
+  assert.equal(d2.net, 300); // 1500 отгружено − 1200 оплачено
+  assert.equal(d2.expected, 300);
+  assert.equal(d2.projected, 600);
+  assert.equal(d2.ageDays, 11); // первая отгрузка закрыта, остаток от 21.10
+  assert.equal(d2.ageFromOpening, false);
+  assert.equal(d2.lastPaymentDays, 3);
+});
+
+test("Взаиморасчёты: незакрытый начальный остаток — срок без дней, поставщик с минусом", () => {
+  const rows = partySettlements(settlementData(), "2026-11-01");
+  const d1 = rows.find((r) => r.id === "d1")!;
+  assert.equal(d1.net, 1000);
+  assert.equal(d1.ageDays, null);
+  assert.equal(d1.ageFromOpening, true);
+  const s1 = rows.find((r) => r.id === "s1")!;
+  assert.equal(s1.net, -500); // мы должны поставщику
+  assert.equal(s1.ageFromOpening, true);
+});
+
+test("Взаиморасчёты: заплатил вперёд — срока нет, минус считается в «с учётом отгрузок»", () => {
+  const data = settlementData();
+  data.operations.push(op({ type: "income", operationType: "Оплата от покупателя", amount: "500", date: "2026-10-31", dealerId: "d2" }));
+  const d2 = partySettlements(data, "2026-11-01").find((r) => r.id === "d2")!;
+  assert.equal(d2.net, -200);
+  assert.equal(d2.projected, 100);
+  assert.equal(d2.ageDays, null);
+  assert.equal(d2.ageFromOpening, false);
+});
+
+test("Расчёты по датам: начало + увеличение − уменьшение = конец, отгрузки вне долга отдельно", () => {
+  const s = partyStatement(settlementData(), "dealer", "d2", { from: "2026-10-20", to: "2026-10-31" }, "2026-11-01")!;
+  assert.equal(s.totals.opening, 1000); // отгрузка 01.10 до периода
+  assert.equal(s.totals.increase, 500);
+  assert.equal(s.totals.decrease, 1200);
+  assert.equal(s.totals.closing, 300);
+  assert.equal(s.totals.current, 300);
+  assert.equal(s.totals.projected, 600);
+  assert.deepEqual(s.rows.map((r) => r.closing), [1500, 500, 300]);
+  assert.deepEqual(s.pending.map((o) => o.orderNumber), [3]);
+  assert.equal(partyStatement(settlementData(), "dealer", "нет такого", {}, "2026-11-01"), null);
 });

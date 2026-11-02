@@ -39,6 +39,7 @@ import {
 } from "@/pages/finance/journal";
 import FinanceDocumentPage from "@/pages/finance/document";
 import SettlementsPage from "@/pages/finance/settlements";
+import SettlementStatementPage from "@/pages/finance/settlement-statement";
 import ReceiptsJournalPage from "@/pages/warehouse/receipts";
 import ReceiptDocumentPage from "@/pages/warehouse/receipt-document";
 import StockPage from "@/pages/warehouse/stock";
@@ -139,6 +140,9 @@ function Router() {
       </Route>
       <Route path="/finance/settlements">
         <ProtectedRoute component={SettlementsPage} />
+      </Route>
+      <Route path="/finance/settlements/:kind/:id">
+        <ProtectedRoute component={SettlementStatementPage} />
       </Route>
       <Route path="/finance/new/:kind">
         <ProtectedRoute component={FinanceDocumentPage} />

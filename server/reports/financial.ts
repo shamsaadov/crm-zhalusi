@@ -736,6 +736,221 @@ export function supplierSettlements(data: FinData, asOf: string, ctx = makeCtx(d
   return Array.from(map.values());
 }
 
+// ---------- Взаиморасчёты с контрагентами (как ues-settlements в УЭС) ----------
+
+export type PartyKind = "dealer" | "supplier";
+
+interface PartyMove {
+  key: string;
+  date: string;
+  type: "goods" | "receipt" | "payment" | "refund";
+  title: string;
+  note: string | null;
+  to: string | null;
+  delta: number; // > 0 — долг растёт, < 0 — уменьшается (копейки, знак контрагента)
+}
+
+interface PartyLedger {
+  kind: PartyKind;
+  id: string;
+  name: string;
+  opening: number;
+  moves: PartyMove[];
+  pending: { id: string; orderNumber: number; date: string | null; amount: number; status: string | null }[];
+}
+
+/** Все движения контрагентов на сегодня. Дальше сальдо, срок долга и выписка считаются из них. */
+function collectLedgers(data: FinData, today: string, ctx = makeCtx(data)) {
+  const ledgers = new Map<string, PartyLedger>();
+  const get = (kind: PartyKind, id: string) => {
+    const key = `${kind}:${id}`;
+    let l = ledgers.get(key);
+    if (!l) {
+      const name =
+        kind === "dealer"
+          ? ctx.dealers.get(id)?.name ?? "Без дилера (розница)"
+          : ctx.suppliers.get(id)?.name ?? "Без поставщика";
+      l = { kind, id, name, opening: 0, moves: [], pending: [] };
+      ledgers.set(key, l);
+    }
+    return l;
+  };
+  for (const d of data.dealers) get("dealer", d.id).opening = toKop(d.openingBalance);
+  for (const sup of data.suppliers) get("supplier", sup.id).opening = toKop(sup.openingBalance);
+
+  for (const o of data.orders) {
+    const party = get("dealer", o.dealerId ?? NO_DEALER);
+    const amount = toKop(o.salePrice);
+    if (isShipped(o) && o.shippedAt! <= today) {
+      party.moves.push({
+        key: `order-${o.id}`,
+        date: o.shippedAt!,
+        type: "goods",
+        title: `Заказ №${o.orderNumber}`,
+        note: null,
+        to: `/orders/doc/${o.id}`,
+        delta: amount,
+      });
+    } else {
+      party.pending.push({ id: o.id, orderNumber: o.orderNumber, date: o.date ?? null, amount, status: o.status });
+    }
+  }
+  for (const r of data.receipts) {
+    if (!r.supplierId || r.date > today) continue;
+    get("supplier", r.supplierId).moves.push({
+      key: `receipt-${r.id}`,
+      date: r.date,
+      type: "receipt",
+      title: "Поступление товаров",
+      note: null,
+      to: `/warehouse/receipt/${r.id}`,
+      delta: toKop(r.total),
+    });
+  }
+  for (const op of data.operations) {
+    if (op.date > today) continue;
+    const t = ctx.opType.get(op.id);
+    const money = (party: PartyLedger, type: "payment" | "refund", title: string, delta: number) =>
+      party.moves.push({
+        key: `op-${op.id}`,
+        date: op.date,
+        type,
+        title,
+        note: [op.cashboxId ? ctx.cashboxes.get(op.cashboxId)?.name : null, op.comment].filter(Boolean).join(" · ") || null,
+        to: `/finance/doc/${op.id}`,
+        delta,
+      });
+    const amount = toKop(op.amount);
+    if (t === "Оплата от покупателя") money(get("dealer", op.dealerId ?? NO_DEALER), "payment", "ПКО", -amount);
+    else if (t === "Возврат покупателю") money(get("dealer", op.dealerId ?? NO_DEALER), "refund", "РКО", amount);
+    else if (op.supplierId && t === "Оплата поставщику") money(get("supplier", op.supplierId), "payment", "РКО", -amount);
+    else if (op.supplierId && t === "Возврат от поставщика") money(get("supplier", op.supplierId), "refund", "ПКО", amount);
+  }
+  ledgers.forEach((l) => l.moves.sort((a, b) => a.date.localeCompare(b.date) || a.key.localeCompare(b.key)));
+  return ledgers;
+}
+
+const daysBetween = (from: string, to: string) =>
+  Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+
+/**
+ * Срок долга: оплаты закрывают самые старые начисления, срок — от самого старого незакрытого.
+ * Начальный остаток из справочника не имеет даты, поэтому дни по нему не считаем.
+ */
+function debtAge(l: PartyLedger, today: string): { ageDays: number | null; ageFromOpening: boolean } {
+  const none = { ageDays: null, ageFromOpening: false };
+  let credits = l.opening < 0 ? -l.opening : 0;
+  let balance = l.opening;
+  for (const m of l.moves) {
+    balance += m.delta;
+    if (m.delta < 0) credits += -m.delta;
+  }
+  if (balance <= 0) return none;
+  if (l.opening > 0) {
+    if (credits < l.opening) return { ageDays: null, ageFromOpening: true };
+    credits -= l.opening;
+  }
+  for (const m of l.moves) {
+    if (m.delta <= 0) continue;
+    if (credits < m.delta) return { ageDays: daysBetween(m.date, today), ageFromOpening: false };
+    credits -= m.delta;
+  }
+  return none;
+}
+
+/** Строки «Взаиморасчётов»: net > 0 — нам должны, net < 0 — мы должны или контрагент заплатил вперёд. */
+export function partySettlements(data: FinData, today: string) {
+  const rows = [];
+  for (const l of Array.from(collectLedgers(data, today).values())) {
+    const own = l.opening + l.moves.reduce((sum, m) => sum + m.delta, 0);
+    const expected = l.pending.reduce((sum, o) => sum + o.amount, 0);
+    if (own === 0 && expected === 0 && l.moves.length === 0) continue;
+    const net = l.kind === "dealer" ? own : -own;
+    let lastPayment: string | null = null;
+    for (const m of l.moves) if (m.type === "payment") lastPayment = m.date;
+    rows.push({
+      id: l.id,
+      kind: l.kind,
+      name: l.name,
+      net: rub(net),
+      expected: rub(expected),
+      projected: rub(net + expected),
+      ...debtAge(l, today),
+      lastPaymentDays: lastPayment ? daysBetween(lastPayment, today) : null,
+    });
+  }
+  return rows;
+}
+
+/** Расчёты с контрагентом по датам: на начало, движения с нарастающим долгом, на конец. */
+export function partyStatement(
+  data: FinData,
+  kind: PartyKind,
+  id: string,
+  { from, to }: { from?: string; to?: string },
+  today: string
+) {
+  const ledgers = collectLedgers(data, today);
+  const l = ledgers.get(`${kind}:${id}`);
+  if (!l && !(kind === "dealer" && id === NO_DEALER)) return null;
+  const party: PartyLedger = l ?? { kind, id, name: "Без дилера (розница)", opening: 0, moves: [], pending: [] };
+
+  let opening = party.opening;
+  let current = party.opening;
+  const inPeriod: PartyMove[] = [];
+  for (const m of party.moves) {
+    current += m.delta;
+    if (from && m.date < from) opening += m.delta;
+    else if (!to || m.date <= to) inPeriod.push(m);
+  }
+  let balance = opening;
+  let increase = 0;
+  let decrease = 0;
+  const count = { goods: 0, money: 0, refund: 0 };
+  const rows = inPeriod.map((m) => {
+    const before = balance;
+    balance += m.delta;
+    if (m.delta > 0) increase += m.delta;
+    else decrease += -m.delta;
+    if (m.type === "goods" || m.type === "receipt") count.goods += 1;
+    else if (m.type === "payment") count.money += 1;
+    else count.refund += 1;
+    return {
+      key: m.key,
+      date: m.date,
+      type: m.type,
+      title: m.title,
+      note: m.note,
+      to: m.to,
+      opening: rub(before),
+      increase: rub(Math.max(m.delta, 0)),
+      decrease: rub(Math.max(-m.delta, 0)),
+      closing: rub(balance),
+    };
+  });
+  const pendingTotal = party.pending.reduce((sum, o) => sum + o.amount, 0);
+  return {
+    kind,
+    id,
+    name: party.name,
+    today,
+    totals: {
+      opening: rub(opening),
+      increase: rub(increase),
+      decrease: rub(decrease),
+      closing: rub(balance),
+      current: rub(current),
+      projected: rub(current + pendingTotal),
+      ...count,
+    },
+    rows,
+    pending: party.pending
+      .slice()
+      .sort((a, b) => String(a.date ?? "").localeCompare(String(b.date ?? "")))
+      .map((o) => ({ ...o, amount: rub(o.amount) })),
+  };
+}
+
 // ---------- Баланс ----------
 
 export interface BalanceRow {

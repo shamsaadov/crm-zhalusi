@@ -2,7 +2,8 @@
 //   GET /api/reports/pnl?from&to
 //   GET /api/reports/cash-flow?from&to&cashboxId
 //   GET /api/reports/balance?asOf
-//   GET /api/reports/settlements?asOf
+//   GET /api/reports/settlements
+//   GET /api/reports/settlements/:kind/:id?from&to
 
 import { Router, Request, Response, NextFunction } from "express";
 import {
@@ -10,8 +11,10 @@ import {
   calculateCashFlow,
   calculateProfitAndLoss,
   dealerSettlements,
-  supplierSettlements,
+  partySettlements,
+  partyStatement,
   rub,
+  supplierSettlements,
 } from "../reports/financial";
 import { loadFinData } from "../reports/load";
 
@@ -22,6 +25,9 @@ interface AuthRequest extends Request {
 type AuthMiddleware = (req: AuthRequest, res: Response, next: NextFunction) => void;
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// Сегодня по Москве: от этого дня считаются сроки долгов и давность оплат.
+const moscowToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Moscow" }).format(new Date());
 
 function todayKey() {
   const d = new Date();
@@ -110,7 +116,8 @@ export function createFinancialReportsRouter(authMiddleware: AuthMiddleware): Ro
       if (asOf === "invalid") {
         return res.status(400).json({ message: "Дата должна быть в формате ГГГГ-ММ-ДД" });
       }
-      const date = asOf ?? todayKey();
+      const today = moscowToday();
+      const date = asOf ?? today;
       const data = await loadFinData(req.userId!);
       const map = (kind: "dealer" | "supplier") => (s: ReturnType<typeof dealerSettlements>[number]) => ({
         id: s.id,
@@ -122,12 +129,41 @@ export function createFinancialReportsRouter(authMiddleware: AuthMiddleware): Ro
       });
       res.json({
         asOf: date,
+        // dealers и suppliers на дату нужны форме ПКО/РКО (долг контрагента на дату документа).
         dealers: dealerSettlements(data, date).map(map("dealer")),
         suppliers: supplierSettlements(data, date).map(map("supplier")),
+        parties: partySettlements(data, today),
       });
     } catch (error) {
       console.error("Settlements report error:", error);
       res.status(500).json({ message: "Ошибка построения взаиморасчётов" });
+    }
+  });
+
+  // Расчёты с контрагентом по датам: /reports/settlements/dealer/<id>?from&to
+  router.get("/reports/settlements/:kind/:id", authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+      const { kind, id } = req.params;
+      if (kind !== "dealer" && kind !== "supplier") {
+        return res.status(404).json({ message: "Контрагент не найден" });
+      }
+      const from = parseDate(req.query.from);
+      const to = parseDate(req.query.to);
+      if (from === "invalid" || to === "invalid") {
+        return res.status(400).json({ message: "Дата должна быть в формате ГГГГ-ММ-ДД" });
+      }
+      const statement = partyStatement(
+        await loadFinData(req.userId!),
+        kind,
+        id,
+        { from: from ?? undefined, to: to ?? undefined },
+        moscowToday()
+      );
+      if (!statement) return res.status(404).json({ message: "Контрагент не найден" });
+      res.json(statement);
+    } catch (error) {
+      console.error("Party statement error:", error);
+      res.status(500).json({ message: "Ошибка построения расчётов" });
     }
   });
 
