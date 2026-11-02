@@ -99,15 +99,20 @@ export function OrderLines({ form, fieldArray, systems, fabrics, calculatingSash
     focusWidth(index + 1);
   };
 
-  // F12 — добавить строку в комнату активной строки (как «Добавить позицию · F12» в УЭС).
+  // Новое изделие — в комнату строки, на которой стоит пользователь, иначе в последнюю.
+  const addLine = () => {
+    const activeRoom = active != null ? sashes[active]?.room : undefined;
+    const room = rooms.rooms.find((r) => r.id === activeRoom) ?? rooms.rooms.at(-1);
+    addToRoom(room?.id ?? 1, room?.name ?? "");
+  };
+
+  // F12 — как «Добавить позицию · F12» в УЭС.
   useEffect(() => {
     if (locked) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "F12") return;
       e.preventDefault();
-      const roomId = active != null ? sashes[active]?.room ?? 1 : rooms.rooms.at(-1)?.id ?? 1;
-      const room = rooms.rooms.find((r) => r.id === roomId);
-      addToRoom(roomId, room?.name ?? "");
+      addLine();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -122,16 +127,22 @@ export function OrderLines({ form, fieldArray, systems, fabrics, calculatingSash
           type="button"
           className="ues-btn h-8"
           disabled={locked}
-          onClick={() => {
-            const room = rooms.rooms.at(-1);
-            addToRoom(room?.id ?? 1, room?.name ?? "");
-          }}
+          onClick={addLine}
           data-testid="button-add-line"
         >
           <Plus className="h-4 w-4" />
           Добавить изделие · F12
         </button>
-        <button type="button" className="ues-btn h-8" disabled={locked} onClick={() => rooms.addRoom()}>
+        <button
+          type="button"
+          className="ues-btn h-8"
+          disabled={locked}
+          onClick={() => {
+            // Следующее изделие пойдёт уже в новую комнату.
+            setActive(fields.length);
+            rooms.addRoom();
+          }}
+        >
           <Home className="h-4 w-4" />
           Комната
         </button>
@@ -199,28 +210,17 @@ export function OrderLines({ form, fieldArray, systems, fabrics, calculatingSash
                       <span className="ues-day-meta !ml-0">
                         {group.sashIndices.length} изд. · {fmtMoney(roomSum)}
                       </span>
-                      {!locked && (
-                        <span className="ml-auto flex gap-1">
-                          <button
-                            type="button"
-                            className="ues-btn h-7 px-2 text-[12px]"
-                            onClick={() => addToRoom(group.room.id, group.room.name)}
-                          >
-                            <Plus className="h-3.5 w-3.5" />
-                            Изделие
-                          </button>
-                          {rooms.rooms.length > 1 && (
-                            <button
-                              type="button"
-                              className="ues-btn h-7 px-2 text-[12px]"
-                              title="Удалить комнату вместе с изделиями"
-                              disabled={group.sashIndices.some((i) => sashes[i]?.productionStatus)}
-                              onClick={() => rooms.removeRoom(group.room.id)}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          )}
-                        </span>
+                      {!locked && rooms.rooms.length > 1 && (
+                        <button
+                          type="button"
+                          className="ues-btn ml-auto h-7 px-2 text-[12px]"
+                          title="Удалить комнату вместе с изделиями"
+                          aria-label={`Удалить комнату ${group.room.name || group.room.id}`}
+                          disabled={group.sashIndices.some((i) => sashes[i]?.productionStatus)}
+                          onClick={() => rooms.removeRoom(group.room.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
                       )}
                     </div>
                   </td>
