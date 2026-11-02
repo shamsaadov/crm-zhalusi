@@ -2053,7 +2053,7 @@ export function createOrdersRouter(authMiddleware: AuthMiddleware): Router {
           f.fabric_type as "fabricType",
           coalesce(fc.name, '') as "fabricColor",
           coalesce(sc.name, '') as "systemColor",
-          o.order_number as "orderNumber", to_char(o.date, 'YYYY-MM-DD') as "orderDate", o.status as "orderStatus",
+          o.order_number as "orderNumber", to_char(o.date, 'YYYY-MM-DD') as "orderDate", o.status as "orderStatus", o.sale_price as "salePrice",
           coalesce(o.production_priority, 'Обычно') as priority, o.comment,
           d.full_name as "dealerName"
         from order_sashes s
