@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { Plus, Search } from "lucide-react";
 import { Layout } from "@/components/layout";
-import { PeriodToolbar, fmtDate, fmtMoney, periodPreset } from "@/components/ues/report-kit";
+import { fmtDate, fmtMoney } from "@/components/ues/report-kit";
 import { useStoredState } from "@/lib/report-query";
 import { cn } from "@/lib/utils";
 import type { Supplier, WarehouseReceipt } from "@shared/schema";
@@ -19,14 +19,14 @@ interface ReceiptRow extends WarehouseReceipt {
 
 export default function ReceiptsJournalPage() {
   const [, navigate] = useLocation();
-  const [period, setPeriod] = useStoredState("journal:receipts:period", () => periodPreset("month"));
   const [supplierId, setSupplierId] = useStoredState("journal:receipts:supplier", () => "all");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const [showMarked, setShowMarked] = useState(false);
 
   const { data: suppliers = [] } = useQuery<Supplier[]>({ queryKey: ["/api/suppliers"] });
-  const params = new URLSearchParams({ from: period.from, to: period.to });
+  // Без периода: весь журнал, как в УЭС, новые документы внизу.
+  const params = new URLSearchParams();
   if (supplierId !== "all") params.set("supplierId", supplierId);
   if (showMarked) params.set("deleted", "include");
   const qs = params.toString();
@@ -55,8 +55,14 @@ export default function ReceiptsJournalPage() {
   return (
     <Layout title="Поступления товаров" caption="Журнал документов · ПТ">
       <div className="space-y-3">
-        <PeriodToolbar from={period.from} to={period.to} onChange={setPeriod}>
-          <span className="ues-toolbar-sep" />
+        <div className="ues-toolbar">
+          <Link href="/warehouse/receipt/new" className="ues-btn primary" data-testid="button-create-receipt">
+            <Plus className="h-4 w-4" />
+            Создать поступление
+          </Link>
+          <button type="button" className={cn("ues-btn", showMarked && "is-active")} onClick={() => setShowMarked((v) => !v)}>
+            Помеченные
+          </button>
           <select
             className="ues-input"
             value={supplierId}
@@ -70,16 +76,6 @@ export default function ReceiptsJournalPage() {
               </option>
             ))}
           </select>
-        </PeriodToolbar>
-
-        <div className="ues-toolbar">
-          <Link href="/warehouse/receipt/new" className="ues-btn primary" data-testid="button-create-receipt">
-            <Plus className="h-4 w-4" />
-            Создать поступление
-          </Link>
-          <button type="button" className={cn("ues-btn", showMarked && "is-active")} onClick={() => setShowMarked((v) => !v)}>
-            Помеченные
-          </button>
           <Link href="/warehouse/classic" className="ues-btn">
             Прежний экран склада
           </Link>
